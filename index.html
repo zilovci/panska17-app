@@ -280,4 +280,64 @@
                                     <p class="text-sm font-bold ${isOk ? 'line-through text-slate-400' : 'text-slate-900'}">${i.title}</p>
                                     <p class="text-[10px] text-slate-400 mt-1">${i.description || ''}</p>
                                 </div>
-                                <button onclick="openStat('${i.id}', '${i.title}', '${i.status}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-blue-600 text
+                                <button onclick="openStat('${i.id}', '${i.title}', '${i.status}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-blue-600 text-[10px] font-black uppercase tracking-widest shadow-sm hover:shadow-md transition">Aktualizovať</button>
+                            </div>
+                            <div class="space-y-4 border-l-2 ml-1 pl-5 border-slate-200">
+                                ${logs.map(u => `
+                                    <div class="text-[10px] relative">
+                                        <div class="absolute -left-[25px] top-1 w-2 h-2 rounded-full ${u.status_to === 'opravené' ? 'bg-green-500' : 'bg-blue-400'}"></div>
+                                        <p class="font-black text-slate-800 uppercase tracking-tighter">${new Date(u.created_at).toLocaleDateString()} <span class="text-blue-600 ml-2">• ${u.status_to}</span></p>
+                                        ${u.note ? `<p class="text-slate-500 italic mt-1 font-medium">${u.note}</p>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center italic">
+                        <div>
+                            <span class="text-[8px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1 block">${l.plan_ref || ''}</span>
+                            <h4 class="font-extrabold text-xl text-slate-900 tracking-tight leading-none">${l.name}</h4>
+                        </div>
+                        <button onclick="openAdd('${l.id}', '${l.name}')" class="bg-blue-600 text-white h-12 px-6 rounded-2xl flex items-center justify-center space-x-2 shadow-lg shadow-blue-600/20 active:scale-95 transition-all">
+                            <i class="fa-solid fa-plus text-xs"></i>
+                            <span class="text-[10px] font-black uppercase tracking-widest">Pridať závadu</span>
+                        </button>
+                    </div>
+                    ${issuesHtml}
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // HANDLERS
+        document.getElementById('f-add').onsubmit = async (e) => {
+            e.preventDefault();
+            const { data } = await sb.from('issues').insert([{
+                location_id: document.getElementById('f-add-id').value,
+                title: document.getElementById('f-add-title').value,
+                description: document.getElementById('f-add-desc').value,
+                status: 'zahlásené'
+            }]).select().single();
+            if (data) {
+                await sb.from('issue_updates').insert([{ issue_id: data.id, status_to: 'zahlásené', note: 'Nahlásené pri obhliadke' }]);
+                hideM('m-add'); e.target.reset(); loadInsp();
+            }
+        };
+
+        document.getElementById('f-stat').onsubmit = async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('f-stat-id').value;
+            const st = document.getElementById('f-stat-val').value;
+            const nt = document.getElementById('f-stat-note').value;
+            await sb.from('issues').update({ status: st, updated_at: new Date() }).eq('id', id);
+            await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: nt }]);
+            hideM('m-status'); e.target.reset(); loadInsp();
+        };
+
+        init();
+    </script>
+</body>
+</html>
