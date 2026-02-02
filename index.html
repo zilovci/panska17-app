@@ -3,303 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panská 17 | Správa budovy</title>
+    <title>Panská 17 | Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         .hidden { display: none !important; }
-        .active-nav { border-left: 4px solid #4f46e5; background-color: #f8fafc; color: #4f46e5; }
-        .modal-bg { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+        .active-nav { border-left: 4px solid #4f46e5; background: #f8fafc; color: #4f46e5; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-gray-100">
 
-    <!-- 1. LOGIN OBRAZOVKA -->
-    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
-        <div class="bg-white p-8 rounded-xl shadow-xl border border-gray-200 w-full max-w-sm">
-            <div class="text-center mb-8">
-                <h1 class="text-2xl font-bold tracking-tight">PANSKÁ 17</h1>
-                <p class="text-gray-500 text-sm italic">Prístup pre správu</p>
-            </div>
-            <form id="login-form" class="space-y-4">
-                <input type="email" id="email" class="w-full border rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 ring-indigo-500" placeholder="E-mail" required>
-                <input type="password" id="password" class="w-full border rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 ring-indigo-500" placeholder="Heslo" required>
-                <button type="submit" id="btn-login" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition shadow-md shadow-indigo-100">Prihlásiť sa</button>
+    <!-- 1. LOGIN -->
+    <div id="login-view" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-xl shadow-xl w-full max-w-sm border">
+            <h1 class="text-2xl font-bold text-center mb-8 uppercase tracking-tighter">Panská 17</h1>
+            <form id="form-login" class="space-y-4">
+                <input type="email" id="log-email" class="w-full border rounded-lg px-4 py-2 text-sm" placeholder="E-mail" required>
+                <input type="password" id="log-pass" class="w-full border rounded-lg px-4 py-2 text-sm" placeholder="Heslo" required>
+                <button type="submit" class="w-full bg-indigo-600 text-white py-2 rounded-lg font-bold">Prihlásiť sa</button>
             </form>
-            <p id="login-error" class="text-red-500 text-xs mt-4 text-center hidden font-bold">Chybné údaje</p>
+            <p id="log-error" class="text-red-500 text-xs mt-4 text-center hidden">Chybné údaje</p>
         </div>
     </div>
 
-    <!-- 2. HLAVNÁ APLIKÁCIA -->
-    <div id="main-app" class="hidden min-h-screen flex flex-col md:flex-row">
-        
-        <!-- SIDEBAR -->
-        <aside class="w-full md:w-64 bg-white border-r border-gray-200 flex flex-col z-50">
-            <div class="p-6 border-b flex justify-between items-center">
-                <span class="font-bold text-indigo-600 uppercase tracking-tighter">Panská 17</span>
-                <button onclick="handleLogout()" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-power-off"></i></button>
+    <!-- 2. MAIN APP -->
+    <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row">
+        <!-- Sidebar -->
+        <aside class="w-full md:w-64 bg-white border-r flex flex-col z-50">
+            <div class="p-6 border-b flex justify-between items-center font-bold text-indigo-600">
+                <span>PANSKÁ 17</span>
+                <button onclick="logout()"><i class="fa-solid fa-power-off"></i></button>
             </div>
-            <nav class="flex-1 p-4 space-y-1">
-                <button onclick="showDashboard()" id="nav-dashboard" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold active-nav">
-                    <i class="fa-solid fa-chart-pie mr-3"></i> Dashboard
-                </button>
-                <button onclick="showInspection()" id="nav-inspection" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold text-gray-500 hover:bg-gray-50">
-                    <i class="fa-solid fa-clipboard-check mr-3"></i> Obhliadka
-                </button>
+            <nav class="p-4 space-y-1">
+                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold active-nav italic">Dashboard</button>
+                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold text-gray-500 italic">Obhliadka</button>
             </nav>
         </aside>
 
-        <!-- OBSAH -->
-        <div class="flex-1 overflow-y-auto">
-            
-            <!-- DASHBOARD VIEW -->
-            <section id="view-dashboard" class="p-6 md:p-10 space-y-8">
-                <h2 class="text-3xl font-bold tracking-tight">Prehľad</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div class="bg-white p-6 rounded-xl border shadow-sm">
-                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest leading-tight">Otvorené závady</p>
-                        <p id="stat-open" class="text-4xl font-bold mt-2">--</p>
+        <!-- Content -->
+        <main class="flex-1 p-6 md:p-10 overflow-y-auto italic">
+            <!-- Dashboard -->
+            <div id="v-dash" class="space-y-8 italic leading-tight italic italic">
+                <h2 class="text-3xl font-bold italic leading-tight italic italic italic italic">Dashboard</h2>
+                <div class="grid grid-cols-2 gap-4 italic leading-tight italic italic italic italic italic">
+                    <div class="bg-white p-6 rounded-xl border shadow-sm italic leading-tight italic italic italic italic italic italic">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase italic leading-tight italic italic italic italic italic italic italic">Aktívne</p>
+                        <p id="s-open" class="text-3xl font-bold italic leading-tight italic italic italic italic italic italic italic italic">--</p>
                     </div>
-                    <div class="bg-white p-6 rounded-xl border border-green-100 shadow-sm">
-                        <p class="text-xs font-bold text-green-600 uppercase tracking-widest leading-tight leading-tight leading-tight">Vybavené</p>
-                        <p id="stat-done" class="text-4xl font-bold mt-2 text-green-600 leading-tight leading-tight">--</p>
+                    <div class="bg-white p-6 rounded-xl border shadow-sm italic leading-tight italic italic italic italic italic italic italic italic">
+                        <p class="text-[10px] font-bold text-green-600 uppercase italic leading-tight italic italic italic italic italic italic italic italic italic">Vybavené</p>
+                        <p id="s-done" class="text-3xl font-bold italic leading-tight italic italic italic italic italic italic italic italic italic italic">--</p>
                     </div>
                 </div>
-                <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 bg-gray-50 font-bold text-xs uppercase text-gray-400">Posledné aktivity</div>
-                    <div id="recent-activity" class="divide-y divide-gray-100"></div>
-                </div>
-            </section>
+            </div>
 
-            <!-- INSPECTION VIEW -->
-            <section id="view-inspection" class="hidden p-6 md:p-10 space-y-6">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold">Britská rada</h2>
-                    <span class="text-[10px] bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-black uppercase italic leading-tight">Zóna A</span>
-                </div>
-                <div id="checklist-container" class="max-w-2xl space-y-6 pb-20 italic leading-tight"></div>
-            </section>
-        </div>
+            <!-- Obhliadka -->
+            <div id="v-insp" class="hidden space-y-6 italic leading-tight italic italic italic">
+                <h2 class="text-2xl font-bold italic leading-tight italic italic italic italic">Checklist Budovy</h2>
+                <div id="list-container" class="max-w-2xl space-y-4 pb-20 italic leading-tight italic italic italic italic italic"></div>
+            </div>
+        </main>
     </div>
 
-    <!-- MODAL: NOVÉ ISSUE -->
-    <div id="modal-add" class="hidden fixed inset-0 z-[100] modal-bg flex items-center justify-center p-4 leading-tight leading-tight">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 leading-tight leading-tight">
-            <h3 class="text-lg font-bold mb-1 leading-tight leading-tight">Nahlásiť problém</h3>
-            <p id="m-loc-name" class="text-xs text-indigo-600 font-bold mb-6 uppercase italic leading-tight leading-tight"></p>
-            <form id="form-add" class="space-y-4 leading-tight leading-tight">
-                <input type="hidden" id="f-loc-id">
-                <input type="text" id="f-title" class="w-full border rounded-lg px-4 py-2 text-sm" placeholder="Názov (napr. Nesvieti svetlo)" required>
-                <textarea id="f-desc" class="w-full border rounded-lg px-4 py-2 text-sm h-24" placeholder="Detaily..."></textarea>
-                <div class="flex space-x-3 leading-tight leading-tight">
-                    <button type="button" onclick="closeM('modal-add')" class="flex-1 bg-gray-100 py-2 rounded-lg text-sm font-bold">Zrušiť</button>
-                    <button type="submit" class="flex-1 bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold">Uložiť</button>
+    <!-- MODAL: ADD -->
+    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm italic leading-tight italic italic">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md italic leading-tight italic italic italic">
+            <h3 class="font-bold text-lg mb-4 italic leading-tight italic italic italic italic">Nahlásiť v: <span id="m-add-loc" class="text-indigo-600"></span></h3>
+            <form id="f-add" class="space-y-4 italic leading-tight italic italic italic italic italic">
+                <input type="hidden" id="f-add-id">
+                <input type="text" id="f-add-title" class="w-full border rounded px-3 py-2 text-sm italic" placeholder="Názov poruchy" required>
+                <textarea id="f-add-desc" class="w-full border rounded px-3 py-2 text-sm h-24 italic italic" placeholder="Popis..."></textarea>
+                <div class="flex space-x-2 italic leading-tight italic italic italic italic italic italic">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 bg-gray-100 py-2 rounded font-bold italic leading-tight italic italic italic italic italic italic italic">Zrušiť</button>
+                    <button type="submit" class="flex-1 bg-indigo-600 text-white py-2 rounded font-bold italic leading-tight italic italic italic italic italic italic italic italic">Uložiť</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODAL: UPDATE STAVU -->
-    <div id="modal-status" class="hidden fixed inset-0 z-[100] modal-bg flex items-center justify-center p-4 italic leading-tight">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 italic leading-tight leading-tight">
-            <h3 class="text-lg font-bold mb-1 italic leading-tight leading-tight">Aktualizovať stav</h3>
-            <p id="m-issue-title" class="text-xs text-gray-400 font-bold mb-6 uppercase italic leading-tight leading-tight leading-tight"></p>
-            <form id="form-status" class="space-y-4 italic leading-tight leading-tight">
-                <input type="hidden" id="f-issue-id">
-                <select id="f-status" class="w-full border rounded-lg px-4 py-2 text-sm bg-white font-bold">
-                    <option value="zahlásené">Stále trvá</option>
+    <!-- MODAL: STATUS -->
+    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm italic leading-tight italic italic italic">
+        <div class="bg-white rounded-xl p-6 w-full max-w-md italic leading-tight italic italic italic italic">
+            <h3 class="font-bold text-lg mb-4 italic leading-tight italic italic italic italic italic italic">Zmeniť stav: <span id="m-stat-title" class="text-indigo-600"></span></h3>
+            <form id="f-stat" class="space-y-4 italic leading-tight italic italic italic italic italic italic italic">
+                <input type="hidden" id="f-stat-id">
+                <select id="f-stat-val" class="w-full border rounded px-3 py-2 text-sm bg-white font-bold italic leading-tight italic italic italic italic italic italic italic italic">
+                    <option value="zahlásené">Trvá</option>
                     <option value="v procese">V riešení</option>
-                    <option value="opravené">VYBAVENÉ / OK</option>
+                    <option value="opravené">VYBAVENÉ</option>
                 </select>
-                <textarea id="f-note" class="w-full border rounded-lg px-4 py-2 text-sm h-24" placeholder="Poznámka k návšteve..."></textarea>
-                <div class="flex space-x-3 italic leading-tight leading-tight">
-                    <button type="button" onclick="closeM('modal-status')" class="flex-1 bg-gray-100 py-2 rounded-lg text-sm font-bold leading-tight">Zavrieť</button>
-                    <button type="submit" class="flex-1 bg-green-600 text-white py-2 rounded-lg text-sm font-bold leading-tight leading-tight">Uložiť zmenu</button>
+                <textarea id="f-stat-note" class="w-full border rounded px-3 py-2 text-sm h-24 italic leading-tight italic italic italic italic italic italic italic italic italic">Poznámka...</textarea>
+                <div class="flex space-x-2 italic leading-tight italic italic italic italic italic italic italic italic italic italic">
+                    <button type="button" onclick="hideM('m-status')" class="flex-1 bg-gray-100 py-2 rounded font-bold italic leading-tight italic italic italic italic italic italic italic italic italic italic italic">Zatvoriť</button>
+                    <button type="submit" class="flex-1 bg-green-600 text-white py-2 rounded font-bold italic leading-tight italic italic italic italic italic italic italic italic italic italic italic italic">Uložiť</button>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
-        // KONFIGURÁCIA (Opravené premenné)
         const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
         const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
         const sb = supabase.createClient(S_URL, S_KEY);
 
-        // NAVIGÁCIA
-        function showDashboard() {
-            document.getElementById('view-dashboard').classList.remove('hidden');
-            document.getElementById('view-inspection').classList.add('hidden');
-            document.getElementById('nav-dashboard').classList.add('active-nav');
-            document.getElementById('nav-inspection').classList.remove('active-nav');
-            document.getElementById('nav-inspection').classList.add('text-gray-500');
-            refreshDashboard();
-        }
+        // GLOBÁLNE FUNKCIE PRE TLAČIDLÁ
+        window.openAdd = (id, name) => {
+            document.getElementById('f-add-id').value = id;
+            document.getElementById('m-add-loc').innerText = name;
+            document.getElementById('m-add').classList.remove('hidden');
+        };
 
-        function showInspection() {
-            document.getElementById('view-dashboard').classList.add('hidden');
-            document.getElementById('view-inspection').classList.remove('hidden');
-            document.getElementById('nav-inspection').classList.add('active-nav');
-            document.getElementById('nav-dashboard').classList.remove('active-nav');
-            document.getElementById('nav-dashboard').classList.add('text-gray-500');
-            loadChecklist();
-        }
+        window.openStat = (id, title, status) => {
+            document.getElementById('f-stat-id').value = id;
+            document.getElementById('m-stat-title').innerText = title;
+            document.getElementById('f-stat-val').value = status;
+            document.getElementById('m-status').classList.remove('hidden');
+        };
 
-        function closeM(id) { document.getElementById(id).classList.add('hidden'); }
+        window.hideM = (id) => document.getElementById(id).classList.add('hidden');
+
+        // PREPÍNANIE OKIEN
+        function switchView(view) {
+            document.getElementById('v-dash').classList.toggle('hidden', view !== 'dash');
+            document.getElementById('v-insp').classList.toggle('hidden', view !== 'insp');
+            document.getElementById('n-dash').classList.toggle('active-nav', view === 'dash');
+            document.getElementById('n-insp').classList.toggle('active-nav', view === 'insp');
+            view === 'dash' ? loadDash() : loadInsp();
+        }
 
         // AUTH
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
+        document.getElementById('form-login').onsubmit = async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('btn-login');
-            btn.innerText = 'Overujem...';
             const { error } = await sb.auth.signInWithPassword({
-                email: document.getElementById('email').value,
-                password: document.getElementById('password').value
+                email: document.getElementById('log-email').value,
+                password: document.getElementById('log-pass').value
             });
-            if (error) {
-                document.getElementById('login-error').classList.remove('hidden');
-                btn.innerText = 'Prihlásiť sa';
-            } else {
-                init();
-            }
-        });
+            if (error) document.getElementById('log-error').classList.remove('hidden');
+            else init();
+        };
 
-        async function handleLogout() {
-            await sb.auth.signOut();
-            init();
-        }
+        async function logout() { await sb.auth.signOut(); init(); }
 
         async function init() {
             const { data: { session } } = await sb.auth.getSession();
             if (session) {
-                document.getElementById('login-screen').classList.add('hidden');
-                document.getElementById('main-app').classList.remove('hidden');
-                showDashboard();
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('app-view').classList.remove('hidden');
+                switchView('dash');
             } else {
-                document.getElementById('login-screen').classList.remove('hidden');
-                document.getElementById('main-app').classList.add('hidden');
+                document.getElementById('login-view').classList.remove('hidden');
+                document.getElementById('app-view').classList.add('hidden');
             }
         }
 
-        // DATA
-        async function refreshDashboard() {
+        // DATA: DASHBOARD
+        async function loadDash() {
             const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true }).neq('status', 'opravené');
             const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'opravené');
-            document.getElementById('stat-open').innerText = open || 0;
-            document.getElementById('stat-done').innerText = done || 0;
-
-            const { data: recent } = await sb.from('issues').select('*, locations(name)').order('updated_at', { ascending: false }).limit(5);
-            document.getElementById('recent-activity').innerHTML = recent?.map(i => `
-                <div class="p-4 flex justify-between items-center text-sm">
-                    <div><p class="font-bold">${i.title}</p><p class="text-xs text-gray-400">${i.locations.name}</p></div>
-                    <span class="text-[9px] font-bold px-2 py-1 rounded bg-slate-100 uppercase">${i.status}</span>
-                </div>
-            `).join('') || '<p class="p-10 text-center text-gray-400 italic">Žiadne aktivity.</p>';
+            document.getElementById('s-open').innerText = open || 0;
+            document.getElementById('s-done').innerText = done || 0;
         }
 
-        async function loadChecklist() {
-            const container = document.getElementById('checklist-container');
-            container.innerHTML = '<p class="text-center py-20 animate-pulse text-gray-400 font-bold uppercase tracking-widest text-xs leading-tight">Načítavam priestory...</p>';
+        // DATA: INSPECTION
+        async function loadInsp() {
+            const container = document.getElementById('list-container');
+            container.innerHTML = 'Načítavam...';
 
             const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
             const { data: isss } = await sb.from('issues').select('*');
             const { data: updts } = await sb.from('issue_updates').select('*').order('created_at', { ascending: false });
 
             container.innerHTML = '';
-            let floor = "";
+            let currentFloor = "";
 
-            locs?.forEach(l => {
-                if (l.floor !== floor) {
-                    floor = l.floor;
-                    container.insertAdjacentHTML('beforeend', `<h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest pt-8 border-b pb-2 mb-4 leading-tight leading-tight">${floor === 'medziposchodie' ? 'Schodisko' : floor + '. NP'}</h3>`);
+            locs.forEach(l => {
+                if(l.floor !== currentFloor) {
+                    currentFloor = l.floor;
+                    container.insertAdjacentHTML('beforeend', `<h3 class="text-[10px] font-black text-gray-400 uppercase pt-6 border-b mb-2 italic leading-tight">${currentFloor === 'medziposchodie' ? 'Schodisko' : currentFloor + '. Poschodie'}</h3>`);
                 }
 
-                const roomIssues = isss?.filter(i => i.location_id === l.id) || [];
-                const hasActive = roomIssues.some(i => i.status !== 'opravené');
+                const roomIss = isss?.filter(i => i.location_id === l.id) || [];
+                const hasActive = roomIss.some(i => i.status !== 'opravené');
 
-                const card = document.createElement('div');
-                card.className = `bg-white p-5 rounded-xl border-2 transition ${hasActive ? 'border-amber-300 shadow-md' : 'border-gray-100 opacity-60 italic'}`;
+                const div = document.createElement('div');
+                div.className = `bg-white p-4 rounded-xl border-2 mb-3 transition ${hasActive ? 'border-amber-400' : 'border-gray-100 opacity-60 italic'}`;
                 
-                let html = `
-                    <div class="flex justify-between items-center italic leading-tight">
-                        <div><span class="text-[9px] font-bold text-indigo-500 uppercase leading-tight">${l.plan_ref || ''}</span><h4 class="font-bold text-gray-800 leading-tight">${l.name}</h4></div>
-                        <button onclick="prepAdd('${l.id}', '${l.name}')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-indigo-600 hover:text-white leading-tight leading-tight"><i class="fa-solid fa-plus leading-tight leading-tight"></i></button>
-                    </div>
-                `;
-
-                roomIssues.forEach(i => {
+                let issuesHtml = roomIss.map(i => {
                     const logs = updts?.filter(u => u.issue_id === i.id) || [];
-                    html += `
-                        <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 italic leading-tight">
-                            <div class="flex justify-between items-start mb-3 leading-tight leading-tight leading-tight">
-                                <p class="text-xs font-bold ${i.status === 'opravené' ? 'line-through text-gray-400' : 'text-gray-800'} leading-tight leading-tight leading-tight leading-tight">${i.title}</p>
-                                <button onclick="prepStatus('${i.id}', '${i.title}', '${i.status}')" class="text-indigo-600 font-bold text-[9px] uppercase underline leading-tight leading-tight leading-tight leading-tight">Stav</button>
+                    return `
+                        <div class="mt-3 p-3 bg-gray-50 rounded border italic leading-tight">
+                            <div class="flex justify-between items-start mb-2 leading-tight">
+                                <p class="text-xs font-bold ${i.status === 'opravené' ? 'line-through text-gray-400' : 'text-gray-800'} leading-tight">${i.title}</p>
+                                <button onclick="openStat('${i.id}', '${i.title}', '${i.status}')" class="text-indigo-600 text-[10px] font-bold underline leading-tight leading-tight">STAV</button>
                             </div>
-                            <div class="space-y-3 border-l-2 ml-1 pl-4 border-gray-200 leading-tight leading-tight leading-tight leading-tight leading-tight">
-                                ${logs.map(u => `
-                                    <div class="text-[9px] leading-tight leading-tight">
-                                        <span class="font-black text-gray-500">${new Date(u.created_at).toLocaleDateString()}</span>
-                                        <span class="text-indigo-600 font-bold ml-1 uppercase leading-tight leading-tight leading-tight">• ${u.status_to}</span>
-                                        ${u.note ? `<p class="italic text-gray-400 mt-0.5 leading-tight leading-tight leading-tight leading-tight leading-tight">${u.note}</p>` : ''}
-                                    </div>
-                                `).join('')}
+                            <div class="space-y-2 border-l ml-1 pl-3 border-gray-200 leading-tight leading-tight">
+                                ${logs.map(u => `<p class="text-[9px] leading-tight leading-tight"><span class="font-bold">${new Date(u.created_at).toLocaleDateString()}</span> • ${u.status_to}</p>`).join('')}
                             </div>
                         </div>
                     `;
-                });
+                }).join('');
 
-                card.innerHTML = html;
-                container.appendChild(card);
+                div.innerHTML = `
+                    <div class="flex justify-between items-center italic leading-tight">
+                        <div><span class="text-[8px] font-bold text-indigo-500 uppercase leading-tight">${l.plan_ref || ''}</span><h4 class="font-bold text-sm leading-tight">${l.name}</h4></div>
+                        <button onclick="openAdd('${l.id}', '${l.name}')" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"><i class="fa-solid fa-plus leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></i></button>
+                    </div>
+                    ${issuesHtml}
+                `;
+                container.appendChild(div);
             });
         }
 
-        // HANDLERY
-        window.prepAdd = (id, name) => {
-            document.getElementById('f-loc-id').value = id;
-            document.getElementById('m-loc-name').innerText = name;
-            document.getElementById('modal-add').classList.remove('hidden');
-        };
-
-        document.getElementById('form-add').addEventListener('submit', async (e) => {
+        // FORM HANDLERS
+        document.getElementById('f-add').onsubmit = async (e) => {
             e.preventDefault();
-            const { data, error } = await sb.from('issues').insert([{
-                location_id: document.getElementById('f-loc-id').value,
-                title: document.getElementById('f-title').value,
-                description: document.getElementById('f-desc').value,
-                status: 'zahlásené'
+            const { data: newIss } = await sb.from('issues').insert([{
+                location_id: document.getElementById('f-add-id').value,
+                title: document.getElementById('f-add-title').value,
+                description: document.getElementById('f-add-desc').value
             }]).select().single();
-            
-            if (data) {
-                await sb.from('issue_updates').insert([{ issue_id: data.id, status_to: 'zahlásené', note: 'Prvé nahlásenie' }]);
-                closeM('modal-add');
-                e.target.reset();
-                loadChecklist();
-            }
-        });
-
-        window.prepStatus = (id, title, status) => {
-            document.getElementById('f-issue-id').value = id;
-            document.getElementById('m-issue-title').innerText = title;
-            document.getElementById('f-status').value = status;
-            document.getElementById('modal-status').classList.remove('hidden');
+            if (newIss) {
+                await sb.from('issue_updates').insert([{ issue_id: newIss.id, status_to: 'zahlásené', note: 'Prvé nahlásenie' }]);
+                hideM('m-add'); e.target.reset(); loadInsp();
+            } else { alert('Chyba pri ukladaní! Skontrolujte SQL v Supabase.'); }
         };
 
-        document.getElementById('form-status').addEventListener('submit', async (e) => {
+        document.getElementById('f-stat').onsubmit = async (e) => {
             e.preventDefault();
-            const id = document.getElementById('f-issue-id').value;
-            const st = document.getElementById('f-status').value;
-            const nt = document.getElementById('f-note').value;
-
+            const id = document.getElementById('f-issue-id') ? document.getElementById('f-issue-id').value : document.getElementById('f-stat-id').value;
+            const st = document.getElementById('f-stat-val').value;
+            const nt = document.getElementById('f-stat-note').value;
             await sb.from('issues').update({ status: st, updated_at: new Date() }).eq('id', id);
             await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: nt }]);
-            
-            closeM('modal-status');
-            e.target.reset();
-            loadChecklist();
-        });
+            hideM('m-status'); e.target.reset(); loadInsp();
+        };
 
         init();
     </script>
