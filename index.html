@@ -22,7 +22,7 @@
 </head>
 <body>
 
-    <div id="app-view" class="min-h-screen flex flex-col md:flex-row">
+    <div id="app-view" class="min-h-screen flex flex-col md:flex-row leading-tight">
         <!-- SIDEBAR -->
         <aside class="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col z-50 fixed md:relative h-screen no-print">
             <div class="p-8 border-b flex items-center space-x-3">
@@ -30,77 +30,76 @@
                 <h1 class="font-black text-2xl tracking-tighter italic uppercase text-slate-900 leading-none">Panská 17</h1>
             </div>
             <nav class="flex-1 py-4">
-                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 leading-none">Dashboard</button>
-                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 leading-none">Obhliadka BR</button>
-                <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 leading-none">Report</button>
+                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Dashboard</button>
+                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Obhliadka BR</button>
+                <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Report</button>
                 <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 leading-none">Archív</button>
             </nav>
         </aside>
 
         <!-- MAIN CONTENT -->
-        <main class="flex-1 p-6 md:p-12 overflow-y-auto">
+        <main class="flex-1 p-6 md:p-12 overflow-y-auto leading-tight">
             
-            <!-- DASHBOARD -->
+            <!-- VIEW: DASHBOARD -->
             <div id="v-dash" class="max-w-4xl space-y-10">
                 <h2 class="text-3xl font-black tracking-tight italic uppercase italic">Dashboard</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm">
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aktívne položky</p>
-                        <p id="s-open" class="text-6xl font-black mt-2 tracking-tighter">--</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 leading-tight">
+                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm leading-tight">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight">Aktívne položky</p>
+                        <p id="s-open" class="text-6xl font-black mt-2 tracking-tighter leading-tight">--</p>
                     </div>
-                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm">
-                        <p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené / Hotové</p>
-                        <p id="s-done" class="text-6xl font-black mt-2 text-green-500 tracking-tighter">--</p>
+                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm leading-tight">
+                        <p class="text-[10px] font-black text-green-500 uppercase tracking-widest leading-tight">Vybavené záznamy</p>
+                        <p id="s-done" class="text-6xl font-black mt-2 text-green-500 tracking-tighter leading-tight">--</p>
                     </div>
                 </div>
             </div>
 
-            <!-- INSPECTION -->
-            <div id="v-insp" class="hidden max-w-4xl space-y-6 leading-tight">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-8 leading-tight">
-                    <h2 class="text-3xl font-black italic uppercase tracking-tighter italic leading-tight">Obhliadka BR</h2>
-                    <div class="mt-4 sm:mt-0 w-full sm:w-80 leading-tight">
-                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1 leading-tight">Prítomní (uloží sa k zmenám)</label>
-                        <input type="text" id="att-all" placeholder="Kto je dnes na obhliadke?" class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white italic leading-tight outline-none focus:ring-2 ring-blue-500">
+            <!-- VIEW: INSPECTION -->
+            <div id="v-insp" class="hidden max-w-4xl space-y-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-8">
+                    <h2 class="text-3xl font-black italic uppercase tracking-tighter italic">Obhliadka BR</h2>
+                    <div class="mt-4 sm:mt-0 w-full sm:w-80 space-y-2">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1">Prítomní na obhliadke</label>
+                        <input type="text" id="att-all" placeholder="Kto je dnes na obhliadke?" class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white font-medium focus:ring-2 ring-blue-500 outline-none italic leading-tight">
                     </div>
                 </div>
-                <div id="section-container" class="space-y-8 pb-32"></div>
+                <div id="section-container" class="space-y-10 pb-32"></div>
             </div>
 
-            <!-- REPORT VIEW -->
+            <!-- VIEW: REPORT -->
             <div id="v-rep" class="hidden max-w-6xl space-y-8 leading-tight">
                 <header class="flex justify-between items-center no-print leading-tight">
                     <h2 class="text-3xl font-black italic uppercase leading-tight italic">Report</h2>
-                    <button onclick="window.print()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-lg leading-tight">Vytlačiť Report</button>
+                    <button onclick="window.print()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-lg leading-tight">Vytlačiť</button>
                 </header>
                 
-                <div class="bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm print-card leading-tight">
+                <div class="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm print-card">
                     <div class="mb-10 flex justify-between items-end border-b-2 border-slate-900 pb-6 leading-tight">
-                        <div class="flex items-center space-x-3 leading-tight">
-                            <i class="fa-solid fa-building text-blue-600 text-3xl leading-tight"></i>
-                            <h1 class="font-black text-3xl tracking-tighter italic uppercase text-slate-900 leading-tight">Panská 17</h1>
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-building text-blue-600 text-3xl"></i>
+                            <h1 class="font-black text-3xl tracking-tighter italic uppercase text-slate-900">Panská 17</h1>
                         </div>
-                        <div class="text-right leading-tight">
-                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400 leading-tight">Dátum vygenerovania</p>
-                            <p class="font-bold text-lg leading-tight italic" id="rep-date"></p>
+                        <div class="text-right">
+                            <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Dátum reportu</p>
+                            <p class="font-bold text-lg italic leading-tight" id="rep-date"></p>
                         </div>
                     </div>
-
-                    <table class="w-full text-left text-[10px] border-collapse">
+                    <table class="w-full text-left text-[10px] border-collapse italic">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-900 italic">
-                                <th class="py-4 px-3 font-black uppercase tracking-widest w-48 italic">Miestnosť / Poschodie</th>
-                                <th class="py-4 px-3 font-black uppercase tracking-widest italic">História a detaily záznamu (Timeline)</th>
+                                <th class="py-4 px-3 font-black uppercase tracking-widest w-44 italic">Miestnosť / Posch.</th>
+                                <th class="py-4 px-3 font-black uppercase tracking-widest italic leading-tight">Detaily a História (Timeline)</th>
                                 <th class="py-4 px-3 font-black uppercase tracking-widest w-32 italic">Zodpovedný</th>
-                                <th class="py-4 px-3 font-black uppercase tracking-widest w-24 text-center italic leading-tight">Stav</th>
+                                <th class="py-4 px-3 font-black uppercase tracking-widest w-20 text-center italic">Stav</th>
                             </tr>
                         </thead>
-                        <tbody id="rep-list" class="divide-y divide-slate-100 leading-tight"></tbody>
+                        <tbody id="rep-list" class="divide-y divide-slate-100 italic"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- ARCHIVE -->
+            <!-- VIEW: ARCHIVE -->
             <div id="v-arch" class="hidden max-w-4xl space-y-6">
                 <h2 class="text-2xl font-bold italic text-slate-300 uppercase tracking-tighter leading-tight italic">Archív</h2>
                 <div id="archive-container" class="space-y-2 leading-tight"></div>
@@ -109,39 +108,39 @@
     </div>
 
     <!-- MODAL: ADD -->
-    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight">
+    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
         <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-lg shadow-2xl leading-tight">
-            <h3 class="font-black text-2xl mb-1 italic tracking-tighter uppercase leading-tight italic">Nový záznam</h3>
+            <h3 class="font-black text-2xl mb-1 italic tracking-tighter uppercase italic leading-tight">Nový záznam</h3>
             <p id="m-add-floor" class="text-blue-600 text-[10px] font-black uppercase tracking-[0.3em] mb-8 border-b pb-4 italic"></p>
             <form id="f-add" class="space-y-4 italic leading-tight">
-                <div class="grid grid-cols-2 gap-4 leading-tight italic">
+                <div class="grid grid-cols-2 gap-4 italic leading-tight">
                     <div class="space-y-1">
-                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1 leading-tight">Miestnosť</label>
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 leading-tight">Miestnosť</label>
                         <select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs bg-slate-50 font-bold outline-none leading-tight"></select>
                     </div>
-                    <div class="space-y-1 leading-tight">
-                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1 leading-tight">Zodpovedný</label>
+                    <div class="space-y-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 leading-tight">Zodpovedný</label>
                         <input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold outline-none leading-tight" placeholder="Meno">
                     </div>
                 </div>
                 <div class="space-y-1 leading-tight">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1 leading-tight">Názov záznamu</label>
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 leading-tight italic">Názov záznamu</label>
                     <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-bold leading-tight" placeholder="Čo sa zistilo?" required>
                 </div>
                 <div class="space-y-1 leading-tight">
-                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest italic ml-1 leading-tight">Detailný popis / Poznámka</label>
-                    <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium h-24 outline-none leading-tight" placeholder="Rozpíšte detaily poruchy..."></textarea>
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 leading-tight italic">Prvá poznámka / Detail</label>
+                    <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-xs font-medium h-24 outline-none leading-tight" placeholder="Popíšte situáciu podrobnejšie..."></textarea>
                 </div>
-                <div class="flex space-x-3 pt-6 italic leading-tight">
-                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-4 text-xs font-bold uppercase text-slate-300 italic leading-tight">Zrušiť</button>
-                    <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs leading-tight">Uložiť záznam</button>
+                <div class="flex space-x-3 pt-6">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-4 text-xs font-bold uppercase text-slate-300 italic">Zrušiť</button>
+                    <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold uppercase tracking-widest text-xs">Uložiť</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODAL: UPDATE -->
-    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight">
+    <!-- MODAL: UPDATE / HISTORY -->
+    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
         <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto leading-tight italic">
             <div class="flex justify-between items-start mb-8 leading-tight">
                 <h3 class="font-black text-2xl uppercase tracking-tighter italic leading-tight">Aktualizácia</h3>
@@ -150,35 +149,35 @@
             <form id="f-stat" class="space-y-6 text-left leading-tight italic">
                 <input type="hidden" id="f-stat-id">
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1 leading-tight">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight italic">Názov záznamu</label>
+                    <div class="space-y-1">
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">Upraviť názov</label>
                         <input type="text" id="f-stat-title-edit" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-slate-50 leading-tight">
                     </div>
                     <div class="space-y-1 leading-tight">
-                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight italic">Zodpovedný</label>
+                        <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">Zodpovedný</label>
                         <input type="text" id="f-stat-resp-edit" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold bg-slate-50 leading-tight">
                     </div>
                 </div>
-                <div class="space-y-1 leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight italic">Stav</label>
+                <div class="space-y-1">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">Zmeniť stav</label>
                     <select id="f-stat-val" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold leading-tight">
-                        <option value="zahlásené">Stále trvá (Zahlásené)</option>
-                        <option value="v procese">V riešení</option>
-                        <option value="opravené">VYBAVENÉ / OK</option>
+                        <option value="Zahlásené">Zahlásené / Trvá</option>
+                        <option value="V riešení">V riešení</option>
+                        <option value="Vybavené">Vybavené / OK</option>
                     </select>
                 </div>
-                <div class="space-y-1 leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight italic">Nová poznámka</label>
-                    <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl px-4 py-2 text-xs h-20 leading-tight" placeholder="Doplniť k priebehu..."></textarea>
+                <div class="space-y-1">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic">Nová poznámka</label>
+                    <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl px-4 py-2 text-xs h-20 leading-tight" placeholder="Doplniť k obhliadke..."></textarea>
                 </div>
-                <div class="pt-6 border-t leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic mb-4 block leading-tight">Celá história (záznamy z obhliadok)</label>
-                    <div id="m-history-list" class="space-y-3 leading-tight"></div>
+                <div class="pt-6 border-t">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest italic mb-4 block leading-tight">História zmien</label>
+                    <div id="m-history-list" class="space-y-3 leading-tight italic"></div>
                 </div>
                 <div class="pt-8 space-y-3 leading-tight font-bold italic">
                     <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase text-[10px] tracking-widest italic">Uložiť zmeny</button>
                     <button type="button" onclick="archiveIssue()" class="w-full border border-slate-200 py-3 rounded-xl font-bold uppercase text-[9px] text-slate-500 italic">Presunúť do archívu</button>
-                    <button type="button" onclick="hideM('m-status')" class="w-full py-2 text-[9px] font-bold text-slate-300 uppercase italic">Zavrieť</button>
+                    <button type="button" onclick="hideM('m-status')" class="w-full py-2 text-[9px] font-bold text-slate-300 uppercase italic leading-tight">Zavrieť</button>
                 </div>
             </form>
         </div>
@@ -192,29 +191,30 @@
         let allLocs = [];
         let allUpdates = [];
 
-        function switchView(v) {
+        async function switchView(v) {
             ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
             ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
             document.getElementById('v-'+v).classList.remove('hidden');
             document.getElementById('n-'+v).classList.add('nav-active');
-            if(v === 'dash') loadDash();
-            if(v === 'insp') loadSections();
-            if(v === 'arch') loadArchive();
-            if(v === 'rep') loadReports();
+            
+            if(v === 'dash') await loadDash();
+            if(v === 'insp') await loadSections();
+            if(v === 'arch') await loadArchive();
+            if(v === 'rep') await loadReports();
         }
 
         window.hideM = (id) => document.getElementById(id).classList.add('hidden');
 
         async function loadDash() {
-            const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).neq('status', 'opravené');
-            const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).eq('status', 'opravené');
+            const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).neq('status', 'Vybavené');
+            const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).eq('status', 'Vybavené');
             document.getElementById('s-open').innerText = open || 0;
             document.getElementById('s-done').innerText = done || 0;
         }
 
         async function loadSections() {
             const container = document.getElementById('section-container');
-            container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic tracking-widest italic">Synchronizujem...</div>';
+            container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Synchronizujem...</div>';
             
             const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
             allLocs = locs;
@@ -228,26 +228,25 @@
                 const floorLocs = locs.filter(l => l.floor === floor);
                 const floorIssues = isss.filter(i => floorLocs.some(l => l.id === i.location_id));
                 const div = document.createElement('div');
-                div.className = 'bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 italic';
+                div.className = 'bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 italic leading-tight';
                 
                 let issuesHtml = floorIssues.map(i => {
                     const logs = updts.filter(u => u.issue_id === i.id);
-                    const isOk = i.status === 'opravené';
-                    // Nájdeme prvotný popis (posledný v poli, lebo triedime od najnovšieho)
+                    const isOk = i.status === 'Vybavené';
                     const firstNote = logs.length > 0 ? logs[logs.length-1].note : '';
 
                     return `
                         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-start italic leading-tight">
-                            <div class="flex-1 italic leading-tight">
-                                <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest italic leading-tight">${i.locations.name}</p>
-                                <p class="text-sm font-bold ${isOk ? 'text-green-600' : 'text-slate-800'} italic leading-tight">${i.title}</p>
-                                ${firstNote ? `<p class="text-[11px] text-slate-500 mt-1 italic leading-snug">${firstNote}</p>` : ''}
-                                <div class="mt-3 flex items-center space-x-3 text-[8px] font-black text-blue-500 uppercase tracking-tight italic leading-tight">
-                                    <span>Naposledy: ${new Date(logs[0]?.created_at).toLocaleDateString()}</span>
+                            <div class="flex-1">
+                                <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest">${i.locations.name}</p>
+                                <p class="text-sm font-bold ${isOk ? 'text-green-600' : 'text-slate-800'}">${i.title}</p>
+                                ${firstNote ? `<p class="text-[11px] text-slate-500 mt-1 leading-snug">${firstNote}</p>` : ''}
+                                <div class="mt-3 flex items-center space-x-3 text-[8px] font-black text-blue-500 uppercase italic leading-tight">
                                     <span>Zodpovedný: ${i.responsible_person || '--'}</span>
+                                    <span>Nahlásené: ${new Date(i.created_at).toLocaleDateString()}</span>
                                 </div>
                             </div>
-                            <button onclick="prepStat('${i.id}', '${i.status}', '${i.title}', '${i.responsible_person}')" class="ml-4 text-[9px] font-black uppercase text-blue-600 underline italic leading-tight">Upraviť</button>
+                            <button onclick="prepStat('${i.id}', '${i.status}', '${i.title}', '${i.responsible_person}')" class="ml-4 text-[9px] font-black uppercase text-blue-600 underline">Upraviť</button>
                         </div>
                     `;
                 }).join('');
@@ -255,9 +254,9 @@
                 div.innerHTML = `
                     <div class="flex justify-between items-center border-b pb-4 mb-4 italic leading-tight">
                         <h3 class="font-black text-xl italic uppercase tracking-tighter text-slate-900 italic leading-tight">${floor}</h3>
-                        <button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none italic leading-tight">+ Pridať</button>
+                        <button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>
                     </div>
-                    <div class="space-y-3 italic leading-tight">${issuesHtml || '<p class="text-center py-6 text-[9px] text-slate-200 font-bold uppercase italic tracking-widest leading-tight">Bez záznamov</p>'}</div>
+                    <div class="space-y-3">${issuesHtml || '<p class="text-center py-6 text-[9px] text-slate-200 font-bold uppercase italic tracking-widest">Bez záznamov</p>'}</div>
                 `;
                 container.appendChild(div);
             });
@@ -265,8 +264,9 @@
 
         async function loadReports() {
             document.getElementById('rep-date').innerText = new Date().toLocaleDateString();
-            document.getElementById('rep-attendance').innerText = document.getElementById('att-all').value || '--';
             const list = document.getElementById('rep-list');
+            list.innerHTML = '<tr><td colspan="4" class="py-10 text-center animate-pulse uppercase text-[10px] font-bold text-slate-300">Generujem report...</td></tr>';
+            
             const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: true });
             const { data: updts } = await sb.from('issue_updates').select('*').order('created_at', { ascending: true });
 
@@ -275,20 +275,20 @@
                 return `
                     <tr class="italic">
                         <td class="py-6 px-3 border-b border-slate-100 align-top italic leading-snug">
-                            <span class="block font-black text-slate-400 uppercase tracking-tighter text-[9px] italic leading-tight">${i.locations.floor}</span>
-                            <span class="text-[11px] font-bold italic leading-tight">${i.locations.name}</span>
+                            <span class="block font-black text-slate-400 uppercase tracking-tighter text-[9px] leading-tight">${i.locations.floor}</span>
+                            <span class="text-[11px] font-bold leading-tight">${i.locations.name}</span>
                         </td>
                         <td class="py-6 px-3 border-b border-slate-100 align-top leading-snug italic">
-                            <p class="font-black text-slate-900 uppercase italic mb-3 leading-tight underline underline-offset-4 decoration-slate-200">${i.title}</p>
-                            <div class="space-y-3 italic">
+                            <p class="font-black text-slate-900 uppercase italic mb-4 leading-tight underline underline-offset-4 decoration-slate-100">${i.title}</p>
+                            <div class="space-y-4 italic">
                                 ${logs.map(u => `
-                                    <div class="flex items-start space-x-2 italic leading-snug">
-                                        <div class="w-16 flex-shrink-0 text-[8px] font-black text-slate-400 uppercase italic leading-tight">${new Date(u.created_at).toLocaleDateString()}</div>
+                                    <div class="flex items-start space-x-3 leading-snug">
+                                        <div class="w-20 flex-shrink-0 text-[8px] font-black text-slate-400 uppercase italic leading-tight">${new Date(u.created_at).toLocaleDateString()}</div>
                                         <div class="flex-1">
-                                            <p class="text-[10px] text-slate-700 italic leading-snug">${u.note || 'Záznam bez poznámky'}</p>
-                                            <p class="text-[7px] font-bold text-blue-400 uppercase italic leading-tight mt-0.5">${u.attendance || ''}</p>
+                                            <p class="text-[11px] text-slate-700 italic leading-snug font-medium">${u.note || 'Bez poznámky'}</p>
+                                            <p class="text-[7px] font-bold text-blue-500 uppercase italic leading-tight mt-1 opacity-70">${u.attendance || ''}</p>
                                         </div>
-                                        <div class="text-[7px] font-black px-1.5 py-0.5 bg-slate-50 border rounded uppercase italic leading-tight">${u.status_to}</div>
+                                        <div class="text-[7px] font-black px-1.5 py-0.5 border rounded uppercase italic leading-tight ${u.status_to === 'Vybavené' ? 'bg-green-50 text-green-600' : 'bg-slate-50 text-slate-500'}">${u.status_to}</div>
                                     </div>
                                 `).join('')}
                             </div>
@@ -297,7 +297,7 @@
                             <span class="text-[10px] font-bold text-slate-600 italic leading-tight">${i.responsible_person || '--'}</span>
                         </td>
                         <td class="py-6 px-3 border-b border-slate-100 align-top text-center leading-snug italic">
-                            <span class="text-[8px] font-black px-2 py-1 rounded uppercase italic leading-tight ${i.status === 'opravené' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'} italic">
+                            <span class="text-[8px] font-black px-2 py-1 rounded uppercase leading-tight ${i.status === 'Vybavené' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}">
                                 ${i.status}
                             </span>
                         </td>
@@ -312,12 +312,12 @@
             container.innerHTML = arch?.length ? arch.map(i => `
                 <div class="bg-white p-4 rounded-2xl border border-slate-100 opacity-60 flex justify-between items-center italic">
                     <div>
-                        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest italic leading-tight">${i.locations.name}</p>
-                        <p class="text-xs font-bold text-slate-600 leading-tight italic">${i.title}</p>
+                        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-tight">${i.locations.name}</p>
+                        <p class="text-xs font-bold text-slate-600 leading-tight">${i.title}</p>
                     </div>
-                    <button onclick="restoreIssue('${i.id}')" class="text-[9px] font-black uppercase text-blue-600 underline leading-none italic leading-tight">Vrátiť</button>
+                    <button onclick="restoreIssue('${i.id}')" class="text-[9px] font-black uppercase text-blue-600 underline leading-none italic">Vrátiť</button>
                 </div>
-            `).join('') : '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] tracking-widest italic leading-tight">Archív je prázdny</div>';
+            `).join('') : '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] tracking-widest italic">Archív je prázdny</div>';
         }
 
         window.prepAdd = (floor) => {
@@ -336,8 +336,8 @@
             document.getElementById('m-history-list').innerHTML = logs.map(u => `
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] leading-tight mb-2 italic">
                     <span class="font-black block text-slate-800 uppercase tracking-tighter mb-1 italic leading-tight">${new Date(u.created_at).toLocaleDateString()} • ${u.status_to}</span>
-                    <p class="text-slate-500 italic leading-tight leading-snug">${u.note || 'Bez textu'}</p>
-                    ${u.attendance ? `<p class="mt-2 font-black text-blue-500 uppercase text-[7px] italic leading-tight">${u.attendance}</p>` : ''}
+                    <p class="text-slate-500 italic leading-snug">${u.note || 'Bez textu'}</p>
+                    ${u.attendance ? `<p class="mt-2 font-black text-blue-500 uppercase text-[7px] italic">${u.attendance}</p>` : ''}
                 </div>
             `).join('');
             document.getElementById('m-status').classList.remove('hidden');
@@ -348,10 +348,10 @@
             const att = document.getElementById('att-all').value;
             const det = document.getElementById('f-add-note').value;
             const res = document.getElementById('f-add-resp').value;
-            const { data, error } = await sb.from('issues').insert([{ location_id: document.getElementById('f-add-loc-id').value, title: document.getElementById('f-add-title').value, responsible_person: res }]).select();
+            const { data, error } = await sb.from('issues').insert([{ location_id: document.getElementById('f-add-loc-id').value, title: document.getElementById('f-add-title').value, responsible_person: res, status: 'Zahlásené' }]).select();
             if (data && data[0]) {
-                await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'zahlásené', note: det, attendance: att ? 'Prítomní: ' + att : '' }]);
-                hideM('m-add'); e.target.reset(); loadSections();
+                await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'Zahlásené', note: det, attendance: att ? 'Prítomní: ' + att : '' }]);
+                hideM('m-add'); e.target.reset(); await loadSections();
             }
         };
 
@@ -365,28 +365,28 @@
             const att = document.getElementById('att-all').value;
             await sb.from('issues').update({ status: st, title: tl, responsible_person: re, updated_at: new Date() }).eq('id', id);
             await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: nt, attendance: att ? 'Doplnené: ' + att : '' }]);
-            hideM('m-status'); loadSections();
+            hideM('m-status'); await loadSections();
         };
 
         window.archiveIssue = async () => {
             const id = document.getElementById('f-stat-id').value;
             await sb.from('issues').update({ archived: true }).eq('id', id);
-            hideM('m-status'); loadSections();
+            hideM('m-status'); await loadSections();
         };
 
         window.restoreIssue = async (id) => {
             await sb.from('issues').update({ archived: false }).eq('id', id);
-            loadArchive();
+            await loadArchive();
         };
 
         window.confirmDelete = async () => {
             if(confirm("Vymazať záznam natrvalo?")) {
                 await sb.from('issues').delete().eq('id', document.getElementById('f-stat-id').value);
-                hideM('m-status'); loadSections();
+                hideM('m-status'); await loadSections();
             }
         };
 
-        init();
+        switchView('dash');
     </script>
 </body>
 </html>
