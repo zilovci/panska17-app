@@ -3,48 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panská 17 | Property Manager</title>
+    <title>Panská 17 | Property Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
         .hidden { display: none !important; }
-        .nav-active { background-color: #f1f5f9; color: #1e293b; border-left: 4px solid #1e293b; font-weight: 800; }
-        .modal-bg { background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); }
+        .nav-active { background-color: #f1f5f9; color: #0f172a; border-left: 4px solid #0f172a; font-weight: 800; }
+        .modal-bg { background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); }
+        @media print {
+            aside, nav, button, .no-print { display: none !important; }
+            main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+            .print-only { display: block !important; }
+            .card { border: 1px solid #eee !important; shadow: none !important; }
+        }
     </style>
 </head>
 <body class="text-slate-900">
 
-    <!-- LOGIN VIEW -->
+    <!-- LOGIN -->
     <div id="login-view" class="min-h-screen flex items-center justify-center p-4">
-        <div class="bg-white p-10 rounded-xl shadow-lg border border-slate-200 w-full max-w-sm text-center">
-            <h1 class="text-xl font-bold mb-8 uppercase tracking-widest">Panská 17</h1>
-            <form id="form-login" class="space-y-4 text-left border-b pb-8">
-                <input type="email" id="log-email" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 ring-slate-800" placeholder="E-mail" required>
-                <input type="password" id="log-pass" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 ring-slate-800" placeholder="Heslo" required>
-                <button type="submit" class="w-full bg-slate-900 text-white py-3 rounded-lg font-bold uppercase text-xs tracking-widest">Prihlásiť sa</button>
+        <div class="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-slate-100 w-full max-w-sm text-center leading-tight">
+            <h1 class="text-3xl font-black italic tracking-tighter mb-10 uppercase leading-tight leading-tight">Panská 17</h1>
+            <form id="form-login" class="space-y-4 text-left leading-tight leading-tight">
+                <input type="email" id="log-email" class="w-full border-slate-200 border-2 rounded-2xl px-5 py-4 text-sm outline-none focus:border-slate-900 leading-tight leading-tight" placeholder="E-mail" required>
+                <input type="password" id="log-pass" class="w-full border-slate-200 border-2 rounded-2xl px-5 py-4 text-sm outline-none focus:border-slate-900 leading-tight leading-tight" placeholder="Heslo" required>
+                <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-xs shadow-lg active:scale-95 transition-all mt-4 leading-tight leading-tight leading-tight leading-tight">Vstúpiť</button>
             </form>
-            <p id="log-error" class="text-red-500 text-[10px] mt-4 font-bold uppercase hidden">Chybné údaje</p>
+            <p id="log-error" class="text-red-500 text-[10px] mt-6 font-bold uppercase hidden italic leading-tight leading-tight leading-tight leading-tight">Chybné prihlasovacie údaje</p>
         </div>
     </div>
 
-    <!-- MAIN APP VIEW -->
+    <!-- MAIN APP -->
     <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row">
         <!-- SIDEBAR -->
-        <aside class="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col z-50 fixed md:relative h-screen">
-            <div class="p-6 border-b">
-                <span class="font-bold text-lg tracking-tight uppercase italic leading-none">Panská 17</span>
+        <aside class="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col z-50 fixed md:relative h-screen no-print">
+            <div class="p-8 border-b">
+                <span class="font-black text-2xl tracking-tighter italic uppercase text-slate-900">Panská 17</span>
             </div>
             <nav class="flex-1 py-4">
-                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">Dashboard</button>
-                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">Obhliadka - Britská rada</button>
-                <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-6 py-4 text-xs font-bold uppercase tracking-widest text-slate-400">Archív</button>
+                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Dashboard</button>
+                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Obhliadka - Britská rada</button>
+                <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Reporty</button>
+                <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-8 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Archív</button>
             </nav>
-            <div class="p-6 border-t mt-auto">
-                <button onclick="logout()" class="flex items-center space-x-2 text-slate-400 hover:text-red-600 transition-colors">
-                    <i class="fa-solid fa-power-off"></i>
+            <div class="p-8 border-t mt-auto">
+                <button onclick="logout()" class="flex items-center space-x-3 text-slate-400 hover:text-red-600 transition-all group">
+                    <i class="fa-solid fa-power-off group-hover:rotate-12 transition-transform"></i>
                     <span class="text-[10px] font-bold uppercase tracking-widest leading-none">Odhlásiť sa</span>
                 </button>
             </div>
@@ -52,96 +59,127 @@
 
         <!-- CONTENT -->
         <main class="flex-1 p-6 md:p-12 overflow-y-auto">
-            <!-- DASHBOARD -->
+            
+            <!-- VIEW: DASHBOARD -->
             <div id="v-dash" class="max-w-4xl space-y-10">
-                <h2 class="text-2xl font-bold">Aktuálny stav</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 leading-tight leading-tight">
-                    <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm leading-tight leading-tight leading-tight">
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight">Aktívne záznamy</p>
-                        <p id="s-open" class="text-5xl font-bold mt-1 leading-tight leading-tight leading-tight leading-tight leading-tight">--</p>
+                <header>
+                    <h2 class="text-3xl font-black tracking-tight leading-tight">Aktuálny stav</h2>
+                    <p class="text-slate-500 font-medium italic">Súhrnné štatistiky budovy</p>
+                </header>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 leading-tight leading-tight leading-tight">
+                    <div class="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm leading-tight leading-tight leading-tight leading-tight">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Rozpracované položky</p>
+                        <p id="s-open" class="text-6xl font-black mt-2 tracking-tighter leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">--</p>
                     </div>
-                    <div class="bg-white p-8 rounded-xl border border-slate-200 shadow-sm leading-tight leading-tight leading-tight leading-tight leading-tight">
-                        <p class="text-[10px] font-bold text-green-600 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Vybavené / Hotové</p>
-                        <p id="s-done" class="text-5xl font-bold mt-1 text-green-600 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">--</p>
+                    <div class="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                        <p class="text-[10px] font-black text-green-500 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Vybavené záznamy</p>
+                        <p id="s-done" class="text-6xl font-black mt-2 text-green-500 tracking-tighter leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">--</p>
                     </div>
                 </div>
             </div>
 
-            <!-- INSPECTION -->
-            <div id="v-insp" class="hidden max-w-3xl space-y-6 leading-tight leading-tight leading-tight leading-tight leading-tight">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-6 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <h2 class="text-2xl font-bold italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Obhliadka - Britská rada</h2>
-                    <div class="mt-4 sm:mt-0 flex space-x-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                        <input type="text" id="att-p17" placeholder="Prítomní za P17" class="text-[10px] border border-slate-200 rounded px-2 py-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                        <input type="text" id="att-br" placeholder="Prítomní za BR" class="text-[10px] border border-slate-200 rounded px-2 py-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+            <!-- VIEW: INSPECTION -->
+            <div id="v-insp" class="hidden max-w-3xl space-y-6 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-8 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <div>
+                        <h2 class="text-3xl font-black italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Obhliadka - Britská rada</h2>
+                        <p class="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Kontrola a nahlasovanie zmien</p>
+                    </div>
+                    <div class="mt-4 sm:mt-0 flex flex-col space-y-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                        <input type="text" id="att-p17" placeholder="Prítomní za Panská 17" class="text-[10px] border border-slate-200 rounded-xl px-4 py-2 bg-white italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                        <input type="text" id="att-br" placeholder="Prítomní za Britskú radu" class="text-[10px] border border-slate-200 rounded-xl px-4 py-2 bg-white italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
                     </div>
                 </div>
-                <div id="section-container" class="space-y-6 pb-20 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
+                <div id="section-container" class="space-y-8 pb-32 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
             </div>
 
-            <!-- ARCHIVE -->
-            <div id="v-arch" class="hidden max-w-3xl space-y-6 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                <h2 class="text-2xl font-bold italic text-slate-300 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Archivované položky</h2>
-                <div id="archive-container" class="space-y-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
+            <!-- VIEW: REPORTS -->
+            <div id="v-rep" class="hidden max-w-4xl space-y-10 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <header class="flex justify-between items-end leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <div>
+                        <h2 class="text-3xl font-black italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Reporty a Zápisnice</h2>
+                        <p class="text-slate-500 font-medium leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Generovanie podkladov pre nájomcov</p>
+                    </div>
+                    <button onclick="window.print()" class="bg-slate-900 text-white px-6 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest italic no-print leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Vytlačiť do PDF</button>
+                </header>
+                
+                <div class="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-sm leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <h3 class="text-xs font-black uppercase tracking-[0.3em] mb-6 text-slate-400 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Prehľad otvorených položiek</h3>
+                    <table class="w-full text-left text-xs italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                        <thead class="border-b-2 border-slate-900 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                            <tr>
+                                <th class="py-4 font-black uppercase italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Miestnosť</th>
+                                <th class="py-4 font-black uppercase italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Záznam</th>
+                                <th class="py-4 font-black uppercase italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Stav</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rep-open-list" class="divide-y divide-slate-100 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- VIEW: ARCHIVE -->
+            <div id="v-arch" class="hidden max-w-3xl space-y-6 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <h2 class="text-2xl font-bold italic text-slate-300 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Archivované (Skryté) položky</h2>
+                <div id="archive-container" class="space-y-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
             </div>
         </main>
     </div>
 
-    <!-- MODAL: ADD -->
-    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight leading-tight leading-tight leading-tight">
-        <div class="bg-white rounded-xl p-8 w-full max-w-md shadow-2xl leading-tight leading-tight leading-tight leading-tight leading-tight">
-            <h3 class="font-bold text-lg mb-1 uppercase tracking-tight italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Nový záznam</h3>
-            <p id="m-add-floor" class="text-indigo-600 text-[10px] font-bold uppercase tracking-widest mb-6 border-b pb-2 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></p>
-            <form id="f-add" class="space-y-4 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                <select id="f-add-loc-id" class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm bg-slate-50 font-semibold leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></select>
-                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight" placeholder="Popis novej položky" required>
-                <div class="flex space-x-2 pt-4 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs font-bold uppercase text-slate-300 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zrušiť</button>
-                    <button type="submit" class="flex-1 bg-slate-900 text-white py-3 rounded-lg font-bold uppercase text-xs leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Uložiť</button>
+    <!-- MODAL: ADD RECORD -->
+    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+        <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+            <h3 class="font-black text-2xl mb-1 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Nový záznam</h3>
+            <p id="m-add-floor" class="text-indigo-600 text-[10px] font-black uppercase tracking-[0.3em] mb-10 border-b pb-4 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></p>
+            <form id="f-add" class="space-y-5 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <select id="f-add-loc-id" class="w-full border border-slate-200 rounded-2xl px-5 py-4 text-sm bg-slate-50 font-bold leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></select>
+                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-2xl px-5 py-4 text-sm leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight" placeholder="Popis položky" required>
+                <div class="flex space-x-3 pt-6 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-4 text-xs font-bold uppercase text-slate-300 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zrušiť</button>
+                    <button type="submit" class="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold uppercase tracking-widest text-xs leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Uložiť</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- MODAL: UPDATE / EDIT -->
-    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight leading-tight leading-tight leading-tight leading-tight">
-        <div class="bg-white rounded-xl p-8 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-            <div class="flex justify-between items-start mb-6 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                <h3 class="font-bold text-lg uppercase tracking-tight italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Aktualizácia a história</h3>
-                <button onclick="confirmDelete()" class="text-red-300 hover:text-red-600 transition-colors leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"><i class="fa-solid fa-trash leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></i></button>
+    <!-- MODAL: UPDATE / HISTORY -->
+    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+        <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+            <div class="flex justify-between items-start mb-8 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <h3 class="font-black text-2xl uppercase tracking-tighter italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Aktualizácia a história</h3>
+                <button onclick="confirmDelete()" class="text-red-300 hover:text-red-600 transition-colors leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"><i class="fa-solid fa-trash leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></i></button>
             </div>
-            <form id="f-stat" class="space-y-4 text-left leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+            <form id="f-stat" class="space-y-6 text-left leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
                 <input type="hidden" id="f-stat-id">
                 
-                <div class="space-y-1 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Upraviť názov (Admin)</label>
-                    <input type="text" id="f-stat-title-edit" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <div class="space-y-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Upraviť názov (Admin)</label>
+                    <input type="text" id="f-stat-title-edit" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-slate-50 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
                 </div>
 
-                <div class="space-y-1 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zmeniť stav</label>
-                    <select id="f-stat-val" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-slate-50 font-bold leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                <div class="space-y-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zmeniť stav</label>
+                    <select id="f-stat-val" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
                         <option value="zahlásené">Stále trvá (Zahlásené)</option>
                         <option value="v procese">V riešení</option>
                         <option value="opravené">VYBAVENÉ / OK</option>
                     </select>
                 </div>
 
-                <div class="space-y-1 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Nová poznámka</label>
-                    <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs h-20 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight" placeholder="Doplniť k priebehu..."></textarea>
+                <div class="space-y-1 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Nová poznámka</label>
+                    <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm h-20 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></textarea>
                 </div>
 
-                <!-- HISTORY SECTION -->
-                <div class="pt-4 border-t leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Kompletná História</label>
-                    <div id="m-history-list" class="mt-2 space-y-2 max-h-40 overflow-y-auto leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
+                <div class="pt-6 border-t leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] italic mb-4 block leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Kompletná História zmien</label>
+                    <div id="m-history-list" class="space-y-3 max-h-60 overflow-y-auto pr-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight"></div>
                 </div>
 
-                <div class="pt-6 space-y-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-                    <button type="submit" class="w-full bg-slate-900 text-white py-3 rounded-lg font-bold uppercase text-[10px] tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Uložiť zmeny</button>
-                    <button type="button" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-lg font-bold uppercase text-[9px] text-slate-500 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight Berlin-2 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Archivovať (Skryť)</button>
-                    <button type="button" onclick="hideM('m-status')" class="w-full py-2 text-[9px] font-bold text-slate-300 uppercase leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zavrieť</button>
+                <div class="pt-8 space-y-3 leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+                    <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-xl font-bold uppercase text-[10px] tracking-widest leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Uložiť všetky zmeny</button>
+                    <button type="button" onclick="archiveIssue()" class="w-full border border-slate-200 py-3 rounded-xl font-bold uppercase text-[9px] text-slate-500 italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Archivovať (Skryť z obhliadky)</button>
+                    <button type="button" onclick="hideM('m-status')" class="w-full py-2 text-[9px] font-bold text-slate-300 uppercase leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Zatvoriť bez uloženia</button>
                 </div>
             </form>
         </div>
@@ -156,8 +194,8 @@
         let currentUpdates = [];
 
         function switchView(v) {
-            ['v-dash', 'v-insp', 'v-arch'].forEach(id => document.getElementById(id).classList.add('hidden'));
-            ['n-dash', 'n-insp', 'n-arch'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
+            ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
             
             document.getElementById('v-'+v).classList.remove('hidden');
             document.getElementById('n-'+v).classList.add('nav-active');
@@ -165,6 +203,7 @@
             if(v === 'dash') loadDash();
             if(v === 'insp') loadSections();
             if(v === 'arch') loadArchive();
+            if(v === 'rep') loadReports();
         }
 
         window.hideM = (id) => document.getElementById(id).classList.add('hidden');
@@ -218,61 +257,18 @@
                 const floorIssues = isss.filter(i => floorLocs.some(l => l.id === i.location_id));
 
                 const div = document.createElement('div');
-                div.className = 'bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4';
+                div.className = 'bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4';
                 
                 let issuesHtml = floorIssues.map(i => {
                     const logs = updts.filter(u => u.issue_id === i.id);
                     const isOk = i.status === 'opravené';
                     return `
-                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 flex justify-between items-start">
-                            <div class="flex-1">
-                                <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tight">${i.locations.name}</p>
-                                <p class="text-sm font-bold ${isOk ? 'text-green-600' : 'text-slate-800'}">${i.title}</p>
-                                <div class="mt-2 text-[8px] text-slate-400 font-bold uppercase space-y-0.5">
+                        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-start italic leading-tight">
+                            <div class="flex-1 italic leading-tight">
+                                <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tight italic leading-tight">${i.locations.name}</p>
+                                <p class="text-sm font-bold ${isOk ? 'text-green-600' : 'text-slate-800'} italic leading-tight">${i.title}</p>
+                                <div class="mt-2 text-[8px] text-slate-400 font-bold uppercase space-y-0.5 leading-tight italic">
                                     ${logs.slice(0,2).map(u => `<p>${new Date(u.created_at).toLocaleDateString()} • ${u.status_to} ${u.note ? ' : '+u.note : ''}</p>`).join('')}
                                 </div>
                             </div>
-                            <button onclick="prepStat('${i.id}', '${i.status}', '${i.title}')" class="ml-4 text-[9px] font-bold uppercase text-blue-600 underline">Upraviť</button>
-                        </div>
-                    `;
-                }).join('');
-
-                div.innerHTML = `
-                    <div class="flex justify-between items-center border-b pb-3">
-                        <h3 class="font-bold text-lg italic">${floor}</h3>
-                        <button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest leading-none">+ Pridať</button>
-                    </div>
-                    <div class="space-y-2">${issuesHtml || '<p class="text-center py-2 text-[9px] text-slate-300 font-bold uppercase italic">V poriadku</p>'}</div>
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        async function loadArchive() {
-            const container = document.getElementById('archive-container');
-            const { data: arch } = await sb.from('issues').select('*, locations(*)').eq('archived', true).order('updated_at', { ascending: false });
-            container.innerHTML = arch?.length ? arch.map(i => `
-                <div class="bg-white p-3 rounded-lg border border-slate-100 opacity-60 flex justify-between items-center italic">
-                    <div>
-                        <p class="text-[8px] font-bold text-slate-400 uppercase tracking-tight">${i.locations.name}</p>
-                        <p class="text-xs font-bold text-slate-600 leading-tight">${i.title}</p>
-                    </div>
-                    <button onclick="restoreIssue('${i.id}')" class="text-[9px] font-bold uppercase text-blue-600 underline leading-none">Vrátiť</button>
-                </div>
-            `).join('') : '<p class="text-center py-20 text-slate-300 font-bold uppercase text-[9px] tracking-widest">Archív je prázdny</p>';
-        }
-
-        window.prepAdd = (floor) => {
-            document.getElementById('m-add-floor').innerText = floor;
-            document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === floor).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-            document.getElementById('m-add').classList.remove('hidden');
-        };
-
-        window.prepStat = (id, status, title) => {
-            document.getElementById('f-stat-id').value = id;
-            document.getElementById('f-stat-val').value = status;
-            document.getElementById('f-stat-title-edit').value = title;
-            document.getElementById('f-stat-note').value = "";
-            
-            const historyList = document.getElementById('m-history-list');
-            const logs = currentUpdates.filter(u => u.issue_id === i
+                            <button oncl
