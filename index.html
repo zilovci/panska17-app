@@ -3,109 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panská 17 | Správa nehnuteľnosti</title>
+    <title>Panská 17 - Property Management</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        :root { --primary: #6366f1; --bg: #020617; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bg); color: white; overflow-x: hidden; }
-        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
-        .btn-gradient { background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); transition: all 0.3s ease; }
-        .btn-gradient:hover { transform: translateY(-2px); shadow: 0 10px 20px rgba(99, 102, 241, 0.4); }
-        .timeline-dot::after { content: ''; position: absolute; left: 7px; top: 20px; bottom: -20px; width: 2px; background: rgba(255,255,255,0.1); }
-        .timeline-item:last-child .timeline-dot::after { display: none; }
-        input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; }
-        .hide { display: none !important; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .hidden { display: none !important; }
+        .active-tab { border-left: 4px solid #4f46e5; background: #f8fafc; color: #4f46e5; }
+        .timeline-line { position: relative; }
+        .timeline-line::before { content: ''; position: absolute; left: 7px; top: 24px; bottom: 0; width: 1px; background: #e2e8f0; }
     </style>
 </head>
-<body>
+<body class="bg-gray-100 text-gray-900">
 
     <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="min-h-screen flex items-center justify-center p-6 z-[100] relative">
-        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.15),transparent)] pointer-events-none"></div>
-        <div class="glass w-full max-w-sm p-8 rounded-[2.5rem] shadow-2xl text-center">
-            <h1 class="text-3xl font-black italic tracking-tighter mb-2">PANSKÁ 17</h1>
-            <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-8 text-indigo-500">Property Access</p>
-            
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-200 w-full max-w-sm">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-bold tracking-tight">PANSKÁ 17</h1>
+                <p class="text-gray-500 text-sm">Správa budovy a obhliadky</p>
+            </div>
             <form id="login-form" class="space-y-4">
-                <input type="email" id="email" placeholder="E-mail" class="w-full px-5 py-4 rounded-2xl outline-none focus:ring-2 ring-indigo-500 transition-all text-sm" required>
-                <input type="password" id="password" placeholder="Heslo" class="w-full px-5 py-4 rounded-2xl outline-none focus:ring-2 ring-indigo-500 transition-all text-sm" required>
-                <button type="submit" class="w-full btn-gradient py-4 rounded-2xl font-extrabold text-sm uppercase tracking-widest shadow-lg shadow-indigo-500/20">Vstúpiť do systému</button>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">E-mail</label>
+                    <input type="email" id="email" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 ring-indigo-500" placeholder="meno@panska17.com" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Heslo</label>
+                    <input type="password" id="password" class="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 ring-indigo-500" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition shadow-md shadow-indigo-200">Prihlásiť sa</button>
             </form>
-            <p id="login-error" class="text-red-400 text-[10px] mt-4 font-bold uppercase hidden">Nesprávne údaje</p>
+            <p id="login-error" class="text-red-500 text-xs mt-4 text-center hidden">Nesprávny e-mail alebo heslo</p>
         </div>
     </div>
 
-    <!-- MAIN APP (Hidden until login) -->
-    <div id="main-app" class="hide max-w-xl mx-auto min-h-screen flex flex-col relative">
+    <!-- MAIN APP STRUCTURE -->
+    <div id="main-app" class="hidden flex flex-col md:flex-row min-h-screen">
         
-        <!-- HEADER -->
-        <header class="p-8 flex justify-between items-center z-10 sticky top-0 bg-[#020617]/80 backdrop-blur-md">
-            <div>
-                <h1 class="text-2xl font-black tracking-tighter uppercase italic leading-none">Panská 17</h1>
-                <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1">Inspection Dashboard</p>
+        <!-- SIDEBAR -->
+        <aside class="w-full md:w-64 bg-white border-r border-gray-200 flex flex-col">
+            <div class="p-6 border-b flex justify-between items-center">
+                <span class="font-bold text-lg">PANSKÁ 17</span>
+                <button onclick="handleLogout()" class="text-gray-400 hover:text-red-500 md:hidden"><i class="fa-solid fa-power-off"></i></button>
             </div>
-            <button onclick="handleLogout()" class="w-10 h-10 rounded-2xl glass flex items-center justify-center text-slate-400 hover:text-white">
-                <i class="fa-solid fa-power-off text-sm"></i>
-            </button>
-        </header>
+            <nav class="flex-1 p-4 space-y-1">
+                <button onclick="showView('dashboard')" id="nav-dashboard" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold active-tab transition">
+                    <i class="fa-solid fa-chart-line mr-3"></i> Dashboard
+                </button>
+                <button onclick="showView('inspection')" id="nav-inspection" class="w-full text-left px-4 py-3 rounded-lg text-sm font-semibold text-gray-500 hover:bg-gray-50 transition">
+                    <i class="fa-solid fa-clipboard-check mr-3"></i> Obhliadka
+                </button>
+            </nav>
+            <div class="p-4 border-t hidden md:block">
+                <button onclick="handleLogout()" class="w-full text-left px-4 py-2 text-sm text-gray-500 hover:text-red-500 font-medium transition">
+                    <i class="fa-solid fa-power-off mr-3"></i> Odhlásiť sa
+                </button>
+            </div>
+        </aside>
 
-        <!-- DASHBOARD -->
-        <main id="dashboard-view" class="p-6 space-y-8 flex-1">
-            <div class="grid grid-cols-2 gap-4">
-                <div class="glass p-6 rounded-[2.5rem] relative overflow-hidden group">
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Otvorené Issues</p>
-                    <p id="stat-open" class="text-4xl font-extrabold mt-1 tracking-tight">--</p>
-                    <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:opacity-10 transition-opacity">
-                        <i class="fa-solid fa-triangle-exclamation text-7xl"></i>
+        <!-- CONTENT -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            
+            <!-- DASHBOARD VIEW -->
+            <section id="view-dashboard" class="p-6 md:p-10 space-y-8 overflow-y-auto">
+                <div class="flex justify-between items-end">
+                    <div>
+                        <h2 class="text-3xl font-bold">Ahoj!</h2>
+                        <p class="text-gray-500">Tu je stav objektu k dnešnému dňu.</p>
                     </div>
                 </div>
-                <div class="glass p-6 rounded-[2.5rem]">
-                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Vybavené</p>
-                    <p id="stat-done" class="text-4xl font-extrabold mt-1 text-indigo-500 tracking-tight">--</p>
-                </div>
-            </div>
 
-            <button onclick="startInspection()" class="w-full btn-gradient p-10 rounded-[3rem] text-left shadow-2xl relative overflow-hidden group">
-                <div class="relative z-10">
-                    <h2 class="text-3xl font-extrabold leading-none italic">Spustiť<br>obhliadku</h2>
-                    <p class="text-white/60 text-[10px] mt-4 font-black uppercase tracking-widest">Britská rada • Zóna A</p>
+                <!-- Stats -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Otvorené závady</p>
+                        <p id="stat-open" class="text-4xl font-bold mt-2">--</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest text-indigo-600">V riešení</p>
+                        <p id="stat-progress" class="text-4xl font-bold mt-2 text-indigo-600">0</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest text-green-600">Opravené</p>
+                        <p id="stat-done" class="text-4xl font-bold mt-2 text-green-600">--</p>
+                    </div>
                 </div>
-                <i class="fa-solid fa-chevron-right absolute right-8 top-1/2 -translate-y-1/2 text-4xl opacity-20"></i>
-            </button>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div class="glass p-6 rounded-[2.5rem] opacity-30 cursor-not-allowed">
-                    <i class="fa-solid fa-file-pdf text-xl mb-2 text-slate-500"></i>
-                    <p class="text-[10px] font-bold uppercase tracking-widest">PDF Export</p>
+                <!-- Recent Activity Table -->
+                <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div class="p-5 border-b border-gray-100 bg-gray-50/50">
+                        <h3 class="font-bold">Posledná aktivita</h3>
+                    </div>
+                    <div id="recent-issues" class="divide-y divide-gray-100">
+                        <div class="p-10 text-center text-gray-400">Načítavam dáta...</div>
+                    </div>
                 </div>
-                <div class="glass p-6 rounded-[2.5rem] opacity-30 cursor-not-allowed">
-                    <i class="fa-solid fa-camera text-xl mb-2 text-slate-500"></i>
-                    <p class="text-[10px] font-bold uppercase tracking-widest">Fotogaléria</p>
+            </section>
+
+            <!-- INSPECTION VIEW (Checklist) -->
+            <section id="view-inspection" class="hidden p-6 md:p-10 space-y-6 overflow-y-auto">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold">Obhliadka priestorov</h2>
+                    <p class="text-gray-500">Postupujte podľa poschodí a miestností.</p>
                 </div>
-            </div>
-        </main>
-
-        <!-- INSPECTION LIST -->
-        <main id="inspection-view" class="hide flex-1 flex flex-col p-6 space-y-6">
-            <div class="flex justify-between items-center mb-4">
-                <button onclick="showDashboard()" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">← Späť</button>
-                <p class="text-[10px] font-black uppercase text-indigo-500 tracking-[0.3em]">Checklist</p>
-            </div>
-            <div id="location-list" class="space-y-6 pb-20"></div>
-        </main>
-
-        <footer class="p-8 text-center opacity-20">
-            <p class="text-[8px] font-bold tracking-[0.6em] uppercase italic">Panská 17 Digital Hub</p>
-        </footer>
+                
+                <div id="checklist-container" class="max-w-2xl space-y-6">
+                    <!-- Dinamicky nahrané miestnosti -->
+                </div>
+            </section>
+        </div>
     </div>
 
     <script>
+        // SUPABASE CONNECTION
         const SUPABASE_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // AUTH LOGIC
         const loginForm = document.getElementById('login-form');
@@ -113,114 +129,134 @@
             e.preventDefault();
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (error) {
                 document.getElementById('login-error').classList.remove('hidden');
             } else {
-                checkUser();
+                checkSession();
             }
         };
 
         async function handleLogout() {
-            await supabase.auth.signOut();
-            checkUser();
+            await supabaseClient.auth.signOut();
+            checkSession();
         }
 
-        async function checkUser() {
-            const { data: { session } } = await supabase.auth.getSession();
+        async function checkSession() {
+            const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
-                document.getElementById('login-screen').classList.add('hide');
-                document.getElementById('main-app').classList.remove('hide');
-                updateStats();
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                refreshData();
             } else {
-                document.getElementById('login-screen').classList.remove('hide');
-                document.getElementById('main-app').classList.add('hide');
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-app').classList.add('hidden');
             }
         }
 
-        // NAVIGATION
-        function showDashboard() {
-            document.getElementById('dashboard-view').classList.remove('hide');
-            document.getElementById('inspection-view').classList.add('hide');
-            updateStats();
+        // NAVIGATION LOGIC
+        function showView(viewName) {
+            document.getElementById('view-dashboard').classList.add('hidden');
+            document.getElementById('view-inspection').classList.add('hidden');
+            document.getElementById('nav-dashboard').classList.remove('active-tab');
+            document.getElementById('nav-inspection').classList.remove('active-tab');
+            document.getElementById('nav-dashboard').classList.add('text-gray-500');
+            document.getElementById('nav-inspection').classList.add('text-gray-500');
+
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            document.getElementById(`nav-${viewName}`).classList.add('active-tab');
+            document.getElementById(`nav-${viewName}`).classList.remove('text-gray-500');
+            
+            if(viewName === 'dashboard') refreshData();
+            if(viewName === 'inspection') loadInspection();
         }
 
-        function startInspection() {
-            document.getElementById('dashboard-view').classList.add('hide');
-            document.getElementById('inspection-view').classList.remove('hide');
-            renderLocations();
-        }
-
-        async function updateStats() {
-            const { count: open } = await supabase.from('issues').select('*', { count: 'exact', head: true }).neq('status', 'opravené');
-            const { count: done } = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'opravené');
+        // DATA LOGIC
+        async function refreshData() {
+            // Stats
+            const { count: open } = await supabaseClient.from('issues').select('*', { count: 'exact', head: true }).neq('status', 'opravené');
+            const { count: done } = await supabaseClient.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'opravené');
             document.getElementById('stat-open').innerText = open || 0;
             document.getElementById('stat-done').innerText = done || 0;
+
+            // Table
+            const { data: recent } = await supabaseClient.from('issues').select('*, locations(name)').order('updated_at', { ascending: false }).limit(5);
+            const list = document.getElementById('recent-issues');
+            if (recent && recent.length > 0) {
+                list.innerHTML = recent.map(i => `
+                    <div class="p-4 flex justify-between items-center hover:bg-gray-50">
+                        <div>
+                            <p class="text-sm font-semibold">${i.title}</p>
+                            <p class="text-xs text-gray-400">${i.locations?.name || 'Neznáma lokalita'}</p>
+                        </div>
+                        <span class="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 text-gray-600 uppercase">${i.status}</span>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<p class="p-10 text-center text-gray-400">Žiadne záznamy</p>';
+            }
         }
 
-        async function renderLocations() {
-            const container = document.getElementById('location-list');
-            container.innerHTML = '<div class="text-center py-20 text-slate-700 font-bold uppercase tracking-[0.3em] text-[10px] animate-pulse italic">Načítavam trasu...</div>';
+        async function loadInspection() {
+            const container = document.getElementById('checklist-container');
+            container.innerHTML = '<p class="text-center py-10 text-gray-400">Načítavam miestnosti...</p>';
 
-            const { data: locations } = await supabase.from('locations').select('*').order('sort_order', { ascending: true });
-            const { data: issues } = await supabase.from('issues').select('*');
-            const { data: updates } = await supabase.from('issue_updates').select('*').order('created_at', { ascending: false });
+            const { data: locations } = await supabaseClient.from('locations').select('*').order('sort_order', { ascending: true });
+            const { data: issues } = await supabaseClient.from('issues').select('*');
+            const { data: updates } = await supabaseClient.from('issue_updates').select('*').order('created_at', { ascending: false });
 
             container.innerHTML = '';
-            let lastFloor = "";
+            let currentFloor = "";
 
             locations.forEach(loc => {
-                if(loc.floor !== lastFloor) {
-                    lastFloor = loc.floor;
-                    container.insertAdjacentHTML('beforeend', `<h3 class="text-[9px] font-black text-slate-600 uppercase tracking-[0.4em] pt-8 mb-4 border-b border-white/5 pb-2 italic">${lastFloor === 'medziposchodie' ? 'Schodisko' : lastFloor + '. Poschodie'}</h3>`);
+                if(loc.floor !== currentFloor) {
+                    currentFloor = loc.floor;
+                    const floorLabel = currentFloor === 'medziposchodie' ? 'Schodisko' : currentFloor + '. Poschodie';
+                    container.insertAdjacentHTML('beforeend', `<h3 class="text-xs font-black text-gray-400 uppercase tracking-widest pt-6 border-b pb-2">${floorLabel}</h3>`);
                 }
 
                 const roomIssues = issues?.filter(i => i.location_id === loc.id) || [];
-                const hasIssues = roomIssues.length > 0;
+                const activeIssues = roomIssues.filter(i => i.status !== 'opravené');
 
                 const card = document.createElement('div');
-                card.className = `glass p-6 rounded-[2.5rem] flex flex-col transition-all mb-4 ${hasIssues ? 'border-indigo-500/30' : 'opacity-40'}`;
+                card.className = `bg-white p-5 rounded-xl border-2 transition ${activeIssues.length > 0 ? 'border-amber-300 shadow-md' : 'border-gray-100 opacity-60'}`;
                 
-                card.innerHTML = `
-                    <div class="flex justify-between items-center mb-2">
-                        <div>
-                            <p class="text-[8px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-1">${loc.plan_ref || ''}</p>
-                            <h4 class="font-extrabold text-white text-base tracking-tight">${loc.name}</h4>
-                        </div>
-                        ${hasIssues ? '<div class="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.6)]"></div>' : '<i class="fa-solid fa-check text-slate-800 text-xs"></i>'}
-                    </div>
-
-                    ${hasIssues ? `
-                        <div class="mt-6 space-y-6">
-                            ${roomIssues.map(i => {
-                                const itemUpdates = updates?.filter(u => u.issue_id === i.id) || [];
-                                return `
-                                    <div class="bg-white/5 p-5 rounded-3xl border border-white/5">
-                                        <p class="text-xs font-extrabold text-white mb-4 leading-tight">${i.title}</p>
-                                        <div class="space-y-4">
-                                            ${itemUpdates.map(u => `
-                                                <div class="relative pl-6 timeline-item">
-                                                    <div class="absolute left-0 top-1 w-4 h-4 rounded-full glass border-indigo-500/50 flex items-center justify-center timeline-dot">
-                                                        <div class="w-1.5 h-1.5 rounded-full ${u.status_to === 'opravené' ? 'bg-green-500' : 'bg-indigo-500'}"></div>
-                                                    </div>
-                                                    <p class="text-[10px] font-bold text-slate-200">
-                                                        ${new Date(u.created_at).toLocaleDateString('sk-SK')} — ${u.status_to.toUpperCase()}
-                                                    </p>
-                                                    ${u.note ? `<p class="text-[9px] text-slate-500 font-medium italic mt-1 leading-relaxed">${u.note}</p>` : ''}
-                                                </div>
-                                            `).join('')}
+                let issuesHtml = "";
+                roomIssues.forEach(i => {
+                    const itemUpdates = updates?.filter(u => u.issue_id === i.id) || [];
+                    issuesHtml += `
+                        <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                            <p class="text-sm font-bold ${i.status === 'opravené' ? 'line-through text-gray-400' : 'text-gray-800'}">${i.title}</p>
+                            <div class="mt-3 space-y-4 timeline-line ml-1">
+                                ${itemUpdates.map(u => `
+                                    <div class="relative pl-6 text-[11px]">
+                                        <div class="absolute left-0 top-1 w-3.5 h-3.5 rounded-full bg-white border-2 ${u.status_to === 'opravené' ? 'border-green-500' : 'border-indigo-500'} flex items-center justify-center">
+                                            <div class="w-1.5 h-1.5 rounded-full ${u.status_to === 'opravené' ? 'bg-green-500' : 'bg-indigo-500'}"></div>
                                         </div>
+                                        <p class="font-bold text-gray-700">${new Date(u.created_at).toLocaleDateString('sk-SK')} — ${u.status_to.toUpperCase()}</p>
+                                        ${u.note ? `<p class="text-gray-400 italic mt-0.5">${u.note}</p>` : ''}
                                     </div>
-                                `;
-                            }).join('')}
+                                `).join('')}
+                            </div>
                         </div>
-                    ` : ''}
+                    `;
+                });
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-[9px] font-black text-indigo-500 uppercase">${loc.plan_ref || ''}</span>
+                            <h4 class="font-bold text-gray-800 leading-none mt-0.5">${loc.name}</h4>
+                        </div>
+                        ${activeIssues.length > 0 ? '<span class="bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1 rounded">POZOR</span>' : '<i class="fa-solid fa-check text-green-500"></i>'}
+                    </div>
+                    ${issuesHtml}
                 `;
                 container.appendChild(card);
             });
         }
 
-        checkUser();
+        checkSession();
     </script>
 </body>
 </html>
