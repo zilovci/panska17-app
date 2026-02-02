@@ -3,124 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panská 17 | Property Management</title>
+    <title>Panská 17 | Správa nehnuteľnosti</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0f172a; color: white; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
-        .card-active { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+        :root { --primary: #6366f1; --bg: #020617; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: var(--bg); color: white; overflow-x: hidden; }
+        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
+        .btn-gradient { background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); transition: all 0.3s ease; }
+        .btn-gradient:hover { transform: translateY(-2px); shadow: 0 10px 20px rgba(99, 102, 241, 0.4); }
+        .timeline-dot::after { content: ''; position: absolute; left: 7px; top: 20px; bottom: -20px; width: 2px; background: rgba(255,255,255,0.1); }
+        .timeline-item:last-child .timeline-dot::after { display: none; }
+        input { background: rgba(255,255,255,0.05) !important; border: 1px solid rgba(255,255,255,0.1) !important; color: white !important; }
+        .hide { display: none !important; }
     </style>
 </head>
-<body class="antialiased">
+<body>
 
-    <div id="app" class="max-w-xl mx-auto min-h-screen flex flex-col relative overflow-hidden">
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="min-h-screen flex items-center justify-center p-6 z-[100] relative">
+        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.15),transparent)] pointer-events-none"></div>
+        <div class="glass w-full max-w-sm p-8 rounded-[2.5rem] shadow-2xl text-center">
+            <h1 class="text-3xl font-black italic tracking-tighter mb-2">PANSKÁ 17</h1>
+            <p class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-8 text-indigo-500">Property Access</p>
+            
+            <form id="login-form" class="space-y-4">
+                <input type="email" id="email" placeholder="E-mail" class="w-full px-5 py-4 rounded-2xl outline-none focus:ring-2 ring-indigo-500 transition-all text-sm" required>
+                <input type="password" id="password" placeholder="Heslo" class="w-full px-5 py-4 rounded-2xl outline-none focus:ring-2 ring-indigo-500 transition-all text-sm" required>
+                <button type="submit" class="w-full btn-gradient py-4 rounded-2xl font-extrabold text-sm uppercase tracking-widest shadow-lg shadow-indigo-500/20">Vstúpiť do systému</button>
+            </form>
+            <p id="login-error" class="text-red-400 text-[10px] mt-4 font-bold uppercase hidden">Nesprávne údaje</p>
+        </div>
+    </div>
+
+    <!-- MAIN APP (Hidden until login) -->
+    <div id="main-app" class="hide max-w-xl mx-auto min-h-screen flex flex-col relative">
         
-        <!-- BG ORB -->
-        <div class="absolute top-[-10%] left-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[120px]"></div>
-
         <!-- HEADER -->
-        <header class="p-8 flex justify-between items-center z-10">
+        <header class="p-8 flex justify-between items-center z-10 sticky top-0 bg-[#020617]/80 backdrop-blur-md">
             <div>
-                <h1 class="text-2xl font-extrabold tracking-tighter uppercase">Panská 17</h1>
-                <div class="flex items-center space-x-2 mt-1">
-                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em]">Live Monitoring BC</p>
-                </div>
+                <h1 class="text-2xl font-black tracking-tighter uppercase italic leading-none">Panská 17</h1>
+                <p class="text-[9px] text-slate-500 font-bold uppercase tracking-[0.3em] mt-1">Inspection Dashboard</p>
             </div>
-            <div class="w-10 h-10 rounded-2xl glass flex items-center justify-center">
-                <i class="fa-solid fa-building-shield text-blue-400"></i>
-            </div>
+            <button onclick="handleLogout()" class="w-10 h-10 rounded-2xl glass flex items-center justify-center text-slate-400 hover:text-white">
+                <i class="fa-solid fa-power-off text-sm"></i>
+            </button>
         </header>
 
-        <!-- DASHBOARD VIEW -->
-        <main id="dashboard-view" class="p-6 space-y-8 flex-1 z-10">
-            
-            <!-- Bento Stats -->
+        <!-- DASHBOARD -->
+        <main id="dashboard-view" class="p-6 space-y-8 flex-1">
             <div class="grid grid-cols-2 gap-4">
-                <div class="glass p-6 rounded-[2.5rem]">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Otvorené</p>
-                    <p id="stat-open" class="text-4xl font-extrabold mt-2 text-white">--</p>
+                <div class="glass p-6 rounded-[2.5rem] relative overflow-hidden group">
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Otvorené Issues</p>
+                    <p id="stat-open" class="text-4xl font-extrabold mt-1 tracking-tight">--</p>
+                    <div class="absolute -right-2 -bottom-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                        <i class="fa-solid fa-triangle-exclamation text-7xl"></i>
+                    </div>
                 </div>
                 <div class="glass p-6 rounded-[2.5rem]">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vybavené</p>
-                    <p id="stat-done" class="text-4xl font-extrabold mt-2 text-blue-500">--</p>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Vybavené</p>
+                    <p id="stat-done" class="text-4xl font-extrabold mt-1 text-indigo-500 tracking-tight">--</p>
                 </div>
             </div>
 
-            <!-- Main Button -->
-            <button onclick="startInspection()" class="w-full card-active p-10 rounded-[3rem] text-left shadow-2xl shadow-blue-900/40 relative overflow-hidden transition-transform active:scale-95">
-                <i class="fa-solid fa- binoculars absolute right-[-10%] bottom-[-10%] text-9xl text-white/10 rotate-12"></i>
+            <button onclick="startInspection()" class="w-full btn-gradient p-10 rounded-[3rem] text-left shadow-2xl relative overflow-hidden group">
                 <div class="relative z-10">
                     <h2 class="text-3xl font-extrabold leading-none italic">Spustiť<br>obhliadku</h2>
-                    <p class="text-blue-100/70 text-sm mt-4 font-semibold uppercase tracking-wider">Britská rada (Zóna A)</p>
+                    <p class="text-white/60 text-[10px] mt-4 font-black uppercase tracking-widest">Britská rada • Zóna A</p>
                 </div>
+                <i class="fa-solid fa-chevron-right absolute right-8 top-1/2 -translate-y-1/2 text-4xl opacity-20"></i>
             </button>
 
-            <!-- Secondary Actions -->
             <div class="grid grid-cols-2 gap-4">
-                <div class="glass p-6 rounded-[2.5rem] opacity-40">
-                    <i class="fa-solid fa-file-invoice text-xl mb-2 text-slate-500"></i>
-                    <p class="text-[10px] font-bold uppercase">Reporty</p>
+                <div class="glass p-6 rounded-[2.5rem] opacity-30 cursor-not-allowed">
+                    <i class="fa-solid fa-file-pdf text-xl mb-2 text-slate-500"></i>
+                    <p class="text-[10px] font-bold uppercase tracking-widest">PDF Export</p>
                 </div>
-                <div class="glass p-6 rounded-[2.5rem] opacity-40">
-                    <i class="fa-solid fa-gear text-xl mb-2 text-slate-500"></i>
-                    <p class="text-[10px] font-bold uppercase">Nastavenia</p>
+                <div class="glass p-6 rounded-[2.5rem] opacity-30 cursor-not-allowed">
+                    <i class="fa-solid fa-camera text-xl mb-2 text-slate-500"></i>
+                    <p class="text-[10px] font-bold uppercase tracking-widest">Fotogaléria</p>
                 </div>
             </div>
         </main>
 
-        <!-- INSPECTION VIEW -->
-        <main id="inspection-view" class="hidden flex-1 flex flex-col z-10">
-            <div class="p-8 flex justify-between items-center">
-                <button onclick="showDashboard()" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight leading-tight leading-tight">← Späť</button>
-                <p class="text-[10px] font-black uppercase text-blue-400 tracking-[0.3em] leading-tight leading-tight leading-tight">Checklist Trasy</p>
+        <!-- INSPECTION LIST -->
+        <main id="inspection-view" class="hide flex-1 flex flex-col p-6 space-y-6">
+            <div class="flex justify-between items-center mb-4">
+                <button onclick="showDashboard()" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">← Späť</button>
+                <p class="text-[10px] font-black uppercase text-indigo-500 tracking-[0.3em]">Checklist</p>
             </div>
-            
-            <div id="location-list" class="p-6 space-y-6 pb-32 italic italic leading-tight italic">
-                <!-- Miestnosti sa nahrajú tu -->
-            </div>
+            <div id="location-list" class="space-y-6 pb-20"></div>
         </main>
 
-        <!-- FOOTER -->
-        <footer class="p-8 text-center opacity-30 italic leading-tight italic italic italic italic">
-            <p class="text-[8px] font-bold tracking-[0.5em] uppercase italic leading-tight italic italic italic italic italic italic">Panská 17 Digital Hub</p>
+        <footer class="p-8 text-center opacity-20">
+            <p class="text-[8px] font-bold tracking-[0.6em] uppercase italic">Panská 17 Digital Hub</p>
         </footer>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // AUTH LOGIC
+        const loginForm = document.getElementById('login-form');
+        loginForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) {
+                document.getElementById('login-error').classList.remove('hidden');
+            } else {
+                checkUser();
+            }
+        };
+
+        async function handleLogout() {
+            await supabase.auth.signOut();
+            checkUser();
+        }
+
+        async function checkUser() {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                document.getElementById('login-screen').classList.add('hide');
+                document.getElementById('main-app').classList.remove('hide');
+                updateStats();
+            } else {
+                document.getElementById('login-screen').classList.remove('hide');
+                document.getElementById('main-app').classList.add('hide');
+            }
+        }
+
+        // NAVIGATION
         function showDashboard() {
-            document.getElementById('dashboard-view').classList.remove('hidden');
-            document.getElementById('inspection-view').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hide');
+            document.getElementById('inspection-view').classList.add('hide');
             updateStats();
         }
 
         function startInspection() {
-            document.getElementById('dashboard-view').classList.add('hidden');
-            document.getElementById('inspection-view').classList.remove('hidden');
-            window.scrollTo(0,0);
+            document.getElementById('dashboard-view').classList.add('hide');
+            document.getElementById('inspection-view').classList.remove('hide');
             renderLocations();
         }
 
         async function updateStats() {
-            const { count: open } = await supabaseClient.from('issues').select('*', { count: 'exact', head: true }).neq('status', 'opravené');
-            const { count: done } = await supabaseClient.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'opravené');
+            const { count: open } = await supabase.from('issues').select('*', { count: 'exact', head: true }).neq('status', 'opravené');
+            const { count: done } = await supabase.from('issues').select('*', { count: 'exact', head: true }).eq('status', 'opravené');
             document.getElementById('stat-open').innerText = open || 0;
             document.getElementById('stat-done').innerText = done || 0;
         }
 
         async function renderLocations() {
             const container = document.getElementById('location-list');
-            container.innerHTML = '<div class="text-center py-20 text-slate-600 animate-pulse text-xs font-bold uppercase tracking-widest leading-tight leading-tight leading-tight leading-tight">Skenujem miestnosti...</div>';
+            container.innerHTML = '<div class="text-center py-20 text-slate-700 font-bold uppercase tracking-[0.3em] text-[10px] animate-pulse italic">Načítavam trasu...</div>';
 
-            const { data: locations } = await supabaseClient.from('locations').select('*').order('sort_order', { ascending: true });
-            const { data: openIssues } = await supabaseClient.from('issues').select('*').neq('status', 'opravené');
+            const { data: locations } = await supabase.from('locations').select('*').order('sort_order', { ascending: true });
+            const { data: issues } = await supabase.from('issues').select('*');
+            const { data: updates } = await supabase.from('issue_updates').select('*').order('created_at', { ascending: false });
 
             container.innerHTML = '';
             let lastFloor = "";
@@ -128,40 +172,55 @@
             locations.forEach(loc => {
                 if(loc.floor !== lastFloor) {
                     lastFloor = loc.floor;
-                    container.insertAdjacentHTML('beforeend', `<h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] pt-8 mb-4 border-b border-white/5 pb-2 italic leading-tight italic leading-tight leading-tight leading-tight">${lastFloor === 'medziposchodie' ? 'Schodisko' : lastFloor}</h3>`);
+                    container.insertAdjacentHTML('beforeend', `<h3 class="text-[9px] font-black text-slate-600 uppercase tracking-[0.4em] pt-8 mb-4 border-b border-white/5 pb-2 italic">${lastFloor === 'medziposchodie' ? 'Schodisko' : lastFloor + '. Poschodie'}</h3>`);
                 }
 
-                const roomIssues = openIssues?.filter(i => i.location_id === loc.id) || [];
+                const roomIssues = issues?.filter(i => i.location_id === loc.id) || [];
                 const hasIssues = roomIssues.length > 0;
 
-                const div = document.createElement('div');
-                div.className = `glass p-6 rounded-[2.5rem] flex flex-col transition-all ${hasIssues ? 'border-amber-500/50 bg-amber-500/5 italic leading-tight italic italic' : 'opacity-60 italic leading-tight italic italic italic italic'}`;
+                const card = document.createElement('div');
+                card.className = `glass p-6 rounded-[2.5rem] flex flex-col transition-all mb-4 ${hasIssues ? 'border-indigo-500/30' : 'opacity-40'}`;
                 
-                div.innerHTML = `
-                    <div class="flex justify-between items-center italic leading-tight italic italic italic italic italic">
+                card.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
                         <div>
-                            <p class="text-[9px] font-bold text-blue-400 uppercase mb-1 italic leading-tight italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">${loc.plan_ref || ''}</p>
-                            <h4 class="font-extrabold text-white italic leading-tight italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">${loc.name}</h4>
+                            <p class="text-[8px] font-bold text-indigo-400 uppercase tracking-widest leading-none mb-1">${loc.plan_ref || ''}</p>
+                            <h4 class="font-extrabold text-white text-base tracking-tight">${loc.name}</h4>
                         </div>
-                        ${hasIssues ? '<div class="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shadow-lg shadow-amber-900/20 italic leading-tight italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight"><i class="fa-solid fa-exclamation text-white italic leading-tight italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight"></i></div>' : '<i class="fa-solid fa-circle-check text-slate-700 italic leading-tight italic italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight"></i>'}
+                        ${hasIssues ? '<div class="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.6)]"></div>' : '<i class="fa-solid fa-check text-slate-800 text-xs"></i>'}
                     </div>
 
                     ${hasIssues ? `
-                        <div class="mt-4 space-y-3 italic leading-tight italic italic italic italic italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">
-                            ${roomIssues.map(i => `
-                                <div class="bg-white/5 p-4 rounded-2xl border border-white/5 italic leading-tight italic italic italic italic italic italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">
-                                    <p class="text-xs font-bold text-white italic leading-tight italic italic italic italic italic italic italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">${i.title}</p>
-                                    <p class="text-[9px] text-slate-500 mt-2 italic leading-tight italic italic italic italic italic italic italic italic italic italic italic italic italic italic italic italic leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight">${i.responsible_person || 'Nezadané'} • ${new Date(i.created_at).toLocaleDateString()}</p>
-                                </div>
-                            `).join('')}
+                        <div class="mt-6 space-y-6">
+                            ${roomIssues.map(i => {
+                                const itemUpdates = updates?.filter(u => u.issue_id === i.id) || [];
+                                return `
+                                    <div class="bg-white/5 p-5 rounded-3xl border border-white/5">
+                                        <p class="text-xs font-extrabold text-white mb-4 leading-tight">${i.title}</p>
+                                        <div class="space-y-4">
+                                            ${itemUpdates.map(u => `
+                                                <div class="relative pl-6 timeline-item">
+                                                    <div class="absolute left-0 top-1 w-4 h-4 rounded-full glass border-indigo-500/50 flex items-center justify-center timeline-dot">
+                                                        <div class="w-1.5 h-1.5 rounded-full ${u.status_to === 'opravené' ? 'bg-green-500' : 'bg-indigo-500'}"></div>
+                                                    </div>
+                                                    <p class="text-[10px] font-bold text-slate-200">
+                                                        ${new Date(u.created_at).toLocaleDateString('sk-SK')} — ${u.status_to.toUpperCase()}
+                                                    </p>
+                                                    ${u.note ? `<p class="text-[9px] text-slate-500 font-medium italic mt-1 leading-relaxed">${u.note}</p>` : ''}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
                     ` : ''}
                 `;
-                container.appendChild(div);
+                container.appendChild(card);
             });
         }
 
-        updateStats();
+        checkUser();
     </script>
 </body>
 </html>
