@@ -15,12 +15,9 @@
         .modal-bg { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); }
         .mobile-menu-open { transform: translateX(0) !important; }
         
-        /* NÁHĽADY V APPKE - TESNE VĽAVO OD UPRAVIŤ */
         .app-thumb { width: 38px; height: 38px; object-fit: cover; border-radius: 6px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; margin-left: -12px; transition: 0.2s; }
         .app-thumb:first-child { margin-left: 0; }
         .app-thumb:hover { transform: scale(1.2) translateY(-2px); z-index: 50; }
-
-        /* NÁHĽADY V REPORTE (OBRAZOVKA) */
         .report-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e8f0; cursor: pointer; margin-top: 4px; }
 
         @media print {
@@ -40,45 +37,124 @@
 </head>
 <body>
 
+    <!-- MOBILE HEADER -->
     <div class="md:hidden flex items-center justify-between p-4 bg-white border-b no-print">
         <button onclick="toggleMenu()" class="text-slate-600 menu-toggle"><i class="fa-solid fa-bars text-xl"></i></button>
-        <div class="flex items-center space-x-2"><i class="fa-solid fa-building text-blue-600 italic"></i><span class="font-black italic uppercase text-sm tracking-tighter">Panská 17</span></div>
+        <div class="flex items-center space-x-2 italic"><i class="fa-solid fa-building text-blue-600 italic"></i><span class="font-black italic uppercase text-sm tracking-tighter">Panská 17</span></div>
         <div class="w-6"></div>
     </div>
 
     <div id="app-view" class="min-h-screen flex flex-col md:flex-row leading-tight italic">
+        <!-- SIDEBAR -->
         <aside id="sidebar" class="fixed inset-y-0 left-0 z-[60] w-64 bg-white border-r border-slate-200 transform -translate-x-full transition-transform duration-300 md:relative md:translate-x-0 no-print">
-            <div class="p-8 border-b"><h1 class="font-black text-3xl tracking-tighter italic uppercase text-slate-900 leading-none italic">Panská 17</h1></div>
+            <div class="p-8 border-b italic"><h1 class="font-black text-3xl tracking-tighter italic uppercase text-slate-900 leading-none italic">Panská 17</h1></div>
             <nav class="flex-1 py-4">
                 <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 italic">Dashboard</button>
                 <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 italic">Obhliadka BR</button>
                 <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 italic">Report</button>
                 <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400 italic">Archív</button>
             </nav>
-            <div class="p-8 border-t mt-auto italic"><button onclick="location.reload()" class="text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase tracking-widest italic leading-tight italic"><i class="fa-solid fa-rotate mr-2 italic"></i>Obnoviť</button></div>
+            <div class="p-8 border-t mt-auto italic">
+                <button onclick="location.reload()" class="text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase tracking-widest italic leading-tight"><i class="fa-solid fa-rotate mr-2 italic"></i>Obnoviť</button>
+            </div>
         </aside>
 
         <main class="flex-1 p-4 md:p-12 overflow-y-auto italic">
-            <div id="v-dash" class="max-w-4xl space-y-10 italic"><h2 class="text-3xl font-black tracking-tight italic uppercase italic">Dashboard</h2><div class="grid grid-cols-1 sm:grid-cols-2 gap-4 italic"><div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm italic"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Aktívne</p><p id="s-open" class="text-6xl font-black tracking-tighter italic leading-tight">--</p></div><div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm italic"><p class="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1 italic">Vybavené</p><p id="s-done" class="text-6xl font-black tracking-tighter text-green-500 italic leading-tight">--</p></div></div></div>
-            <div id="v-insp" class="hidden max-w-4xl space-y-6 italic"><div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-8 italic"><h2 class="text-3xl font-black italic uppercase tracking-tighter italic">Obhliadka BR</h2><div class="mt-4 sm:mt-0 w-full sm:w-80 italic leading-tight"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white italic font-bold"></div></div><div id="section-container" class="space-y-6 pb-32 italic"></div></div>
-            <div id="v-rep" class="hidden max-w-6xl space-y-8 italic leading-tight"><header class="flex justify-between items-center no-print italic leading-tight"><h2 class="text-3xl font-black italic uppercase leading-tight italic">Report</h2><button onclick="window.print()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest italic shadow-lg leading-tight italic">Tlačiť PDF</button></header><div class="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm print-card italic leading-tight italic"><div class="mb-8 flex justify-between items-end border-b-2 border-slate-900 pb-4 italic leading-tight"><h1 class="font-black text-2xl tracking-tighter italic uppercase text-slate-900 italic leading-tight italic">Panská 17</h1><p class="font-bold text-sm italic italic leading-tight italic" id="rep-date"></p></div><table class="w-full border-collapse italic text-[9px] leading-tight italic"><thead class="bg-slate-50 border-b border-slate-900 italic"><tr><th class="py-2 px-2 w-1/4 text-left uppercase font-black italic leading-tight">Miestnosť / Podlažie</th><th class="py-2 px-2 w-3/4 text-left uppercase font-black italic leading-tight">Timeline & Fotodokumentácia</th><th class="py-2 px-2 w-16 text-center uppercase font-black italic leading-tight">Stav</th></tr></thead><tbody id="rep-list" class="divide-y divide-slate-100"></tbody></table></div></div>
-            <div id="v-arch" class="hidden max-w-4xl space-y-6 italic"><h2 class="text-2xl font-bold italic text-slate-300 uppercase tracking-tighter italic leading-tight italic">Archív</h2><div id="archive-container" class="space-y-2 italic leading-tight italic"></div></div>
+            <!-- DASHBOARD -->
+            <div id="v-dash" class="max-w-4xl space-y-10 italic leading-tight">
+                <h2 class="text-3xl font-black tracking-tight italic uppercase italic">Dashboard</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 italic leading-tight">
+                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm italic leading-tight"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">Aktívne</p><p id="s-open" class="text-6xl font-black tracking-tighter leading-tight">--</p></div>
+                    <div class="bg-white p-10 rounded-[2rem] border border-slate-100 shadow-sm italic leading-tight"><p class="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1 italic">Vybavené</p><p id="s-done" class="text-6xl font-black tracking-tighter text-green-500 leading-tight">--</p></div>
+                </div>
+            </div>
+
+            <!-- INSPECTION -->
+            <div id="v-insp" class="hidden max-w-4xl space-y-6 italic leading-tight">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-8 italic leading-tight">
+                    <h2 class="text-3xl font-black italic uppercase tracking-tighter italic leading-tight">Obhliadka BR</h2>
+                    <div class="mt-4 sm:mt-0 w-full sm:w-80 leading-tight italic leading-tight"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white italic font-bold leading-tight"></div>
+                </div>
+                <div id="section-container" class="space-y-6 pb-32 italic"></div>
+            </div>
+
+            <!-- REPORT -->
+            <div id="v-rep" class="hidden max-w-6xl space-y-8 italic leading-tight">
+                <header class="flex justify-between items-center no-print italic leading-tight">
+                    <h2 class="text-2xl font-black italic uppercase leading-tight italic">Britská rada - správa o údržbe a opravách</h2>
+                    <button onclick="window.print()" class="bg-slate-900 text-white px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest italic shadow-lg leading-tight">Tlačiť PDF</button>
+                </header>
+                <div class="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm print-card italic leading-tight">
+                    <div class="mb-8 flex justify-between items-end border-b-2 border-slate-900 pb-4 italic leading-tight leading-tight">
+                        <h1 class="font-black text-2xl tracking-tighter italic uppercase text-slate-900 leading-tight">Panská 17</h1>
+                        <p class="font-bold text-sm italic italic leading-tight" id="rep-date"></p>
+                    </div>
+                    <table class="w-full border-collapse italic text-[9px] leading-tight"><thead class="bg-slate-50 border-b border-slate-900 italic"><tr><th class="py-2 px-2 w-1/4 text-left uppercase font-black italic leading-tight">Miestnosť / Podlažie</th><th class="py-2 px-2 w-3/4 text-left uppercase font-black italic leading-tight">Timeline & Fotodokumentácia</th><th class="py-2 px-2 w-16 text-center uppercase font-black italic leading-tight">Stav</th></tr></thead><tbody id="rep-list" class="divide-y divide-slate-100"></tbody></table>
+                </div>
+            </div>
+
+            <!-- ARCHIVE -->
+            <div id="v-arch" class="hidden max-w-4xl space-y-6 italic leading-tight"><h2 class="text-2xl font-bold italic text-slate-300 uppercase tracking-tighter italic leading-tight">Archív</h2><div id="archive-container" class="space-y-2 italic leading-tight"></div></div>
         </main>
     </div>
 
-    <!-- MODAL: STATUS -->
-    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg italic leading-tight"><div class="bg-white rounded-[2.5rem] p-8 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto italic text-left leading-tight"><div class="flex justify-between items-center mb-6 border-b pb-4 italic leading-tight"><h3 class="font-black text-xl uppercase italic leading-tight">Aktualizácia</h3><button onclick="confirmDelete()" class="text-red-300 hover:text-red-600 italic leading-tight"><i class="fa-solid fa-trash italic"></i></button></div><form id="f-stat" class="space-y-4 italic leading-tight"><input type="hidden" id="f-stat-id"><input type="hidden" id="f-stat-update-id"><div class="grid grid-cols-2 gap-3 italic"><input type="text" id="f-stat-title-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50 italic leading-tight"><input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50 italic leading-tight" placeholder="Zodpovedný"></div><div class="grid grid-cols-2 gap-3 italic leading-tight"><input type="date" id="f-stat-date" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic leading-tight"><select id="f-stat-val" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic leading-tight"><option value="Zahlásené">Zahlásené</option><option value="V riešení">V riešení</option><option value="Vybavené">Vybavené</option><option value="Opravené">Opravené</option></select></div><textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 italic outline-none focus:ring-1 ring-blue-500 italic leading-tight" placeholder="Nová poznámka..."></textarea><div class="space-y-1 italic leading-tight"><label class="text-[9px] font-black text-slate-400 uppercase italic ml-1 italic leading-tight">Pridať fotku</label><input type="file" id="f-stat-photo" accept="image/*" class="w-full text-[10px] text-slate-400 italic leading-tight italic"></div><div id="m-history-list" class="space-y-3 pt-4 border-t italic leading-tight italic"></div><div id="saving-indicator" class="hidden text-center text-blue-600 font-bold animate-pulse text-[10px] uppercase italic italic leading-tight">Sync...</div><div class="flex flex-col space-y-2 pt-4 italic font-bold leading-tight italic"><button type="submit" id="btn-save-stat" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-[10px] italic leading-tight italic">Uložiť zmeny</button><button type="button" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-xl font-bold text-[9px] text-slate-500 uppercase italic leading-tight italic">Archivovať</button><button type="button" onclick="hideM('m-status')" class="w-full py-1 text-[9px] font-bold text-slate-300 uppercase italic leading-tight italic">Zavrieť</button></div></form></div></div>
-
     <!-- MODAL: ADD RECORD -->
-    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg italic leading-tight italic"><div class="bg-white rounded-[2rem] p-10 w-full max-w-lg shadow-2xl italic leading-tight italic"><h3 class="font-black text-2xl mb-6 uppercase italic leading-tight italic">Nový záznam</h3><form id="f-add" class="space-y-4 italic leading-tight italic"><input type="date" id="f-add-date" class="w-full border border-slate-200 rounded-xl p-3 text-xs bg-slate-50 font-bold italic leading-tight italic"><input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic leading-tight italic" placeholder="Zodpovedný"><select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic leading-tight italic"></select><input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold italic leading-tight italic" placeholder="Názov položky" required><textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24 italic leading-tight italic" placeholder="Popis..."></textarea><input type="file" id="f-add-photo" accept="image/*" class="text-xs text-slate-400 italic leading-tight italic"><div class="flex space-x-3 pt-4 italic leading-tight italic"><button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-300 italic font-bold leading-tight italic">Zrušiť</button><button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs italic shadow-lg leading-tight italic">Uložiť</button></div></form></div></div>
+    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg italic leading-tight">
+        <div class="bg-white rounded-[2rem] p-10 w-full max-w-lg shadow-2xl italic leading-tight leading-tight">
+            <h3 class="font-black text-2xl mb-6 uppercase italic leading-tight">Nový záznam</h3>
+            <form id="f-add" class="space-y-4 italic leading-tight">
+                <input type="date" id="f-add-date" class="w-full border border-slate-200 rounded-xl p-3 text-xs bg-slate-50 font-bold italic">
+                <input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Zodpovedný">
+                <select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic font-bold"></select>
+                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold italic" placeholder="Názov položky" required>
+                <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24 italic" placeholder="Popis..."></textarea>
+                <input type="file" id="f-add-photo" accept="image/*" class="text-xs text-slate-400 italic">
+                <div class="flex space-x-3 pt-4 italic font-bold">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-300">Zrušiť</button>
+                    <button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs shadow-lg leading-tight">Uložiť</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: UPDATE / HISTORY -->
+    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg italic leading-tight">
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto italic text-left leading-tight">
+            <div class="flex justify-between items-center mb-6 border-b pb-4 italic leading-tight"><h3 class="font-black text-xl uppercase italic leading-tight">Aktualizácia</h3><button onclick="confirmDelete()" class="text-red-300 hover:text-red-600 italic leading-tight"><i class="fa-solid fa-trash italic"></i></button></div>
+            <form id="f-stat" class="space-y-5 italic leading-tight">
+                <input type="hidden" id="f-stat-id"><input type="hidden" id="f-stat-update-id">
+                <div class="grid grid-cols-2 gap-3 italic leading-tight">
+                    <input type="text" id="f-stat-title-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50 italic">
+                    <input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50 italic" placeholder="Zodpovedný">
+                </div>
+                <div class="grid grid-cols-2 gap-3 italic leading-tight">
+                    <input type="date" id="f-stat-date" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic">
+                    <select id="f-stat-val" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic">
+                        <option value="Zahlásené">Zahlásené</option><option value="V riešení">V riešení</option><option value="Vybavené">Vybavené</option><option value="Opravené">Opravené</option>
+                    </select>
+                </div>
+                <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 italic outline-none focus:ring-1 ring-blue-500" placeholder="Nová poznámka..."></textarea>
+                <div class="space-y-1 italic leading-tight leading-tight"><label class="text-[9px] font-black text-slate-400 uppercase italic leading-tight leading-tight">Pridať fotku</label><input type="file" id="f-stat-photo" accept="image/*" class="w-full text-[10px] text-slate-400 italic"></div>
+                <div id="m-history-list" class="space-y-3 pt-4 border-t italic"></div>
+                <div id="saving-indicator" class="hidden text-center text-blue-600 font-bold animate-pulse text-[10px] uppercase italic">Sync...</div>
+                <div class="flex flex-col space-y-2 pt-4 italic font-bold">
+                    <button type="submit" id="btn-save-stat" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-[10px] italic leading-tight">Uložiť zmeny</button>
+                    <button type="button" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-xl font-bold text-[9px] text-slate-500 uppercase leading-tight">Archivovať</button>
+                    <button type="button" onclick="hideM('m-status')" class="w-full py-1 text-[9px] font-bold text-slate-300 uppercase leading-tight">Zavrieť</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <script>
         const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
         const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
         const sb = supabase.createClient(S_URL, S_KEY);
-        let allLocs = [], allUpdates = [];
+        let allLocs = [], allIssues = [], allUpdates = [];
+
         function toggleMenu() { document.getElementById('sidebar').classList.toggle('mobile-menu-open'); }
         function fmtD(str) { if(!str) return '--'; const d = str.split('T')[0].split('-'); return `${d[2]}.${d[1]}.${d[0]}`; }
+
         async function switchView(v) {
             ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
             ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
@@ -86,17 +162,27 @@
             if(window.innerWidth < 768) document.getElementById('sidebar').classList.remove('mobile-menu-open');
             if(v === 'dash') await loadDash(); if(v === 'insp') await loadSections(); if(v === 'arch') await loadArchive(); if(v === 'rep') await loadReports();
         }
+
         window.hideM = (id) => document.getElementById(id).classList.add('hidden');
-        async function uploadPhoto(file) { if (!file) return null; const name = `${Date.now()}_${file.name.replace(/\s/g, '_')}`; const { error } = await sb.storage.from('photos').upload(name, file); if (error) return null; return `${S_URL}/storage/v1/object/public/photos/${name}`; }
+
+        async function uploadPhoto(file) {
+            if (!file) return null;
+            const name = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+            const { error } = await sb.storage.from('photos').upload(name, file);
+            if (error) return null;
+            return `${S_URL}/storage/v1/object/public/photos/${name}`;
+        }
+
         async function loadDash() {
             const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).not('status', 'in', '("Opravené","Vybavené")');
             const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).or('status.eq.Opravené,status.eq.Vybavené');
             document.getElementById('s-open').innerText = open || 0; document.getElementById('s-done').innerText = done || 0;
         }
+
         async function loadSections() {
             const container = document.getElementById('section-container'); container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Sync...</div>';
             const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true }); allLocs = locs;
-            const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false });
+            const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false }); allIssues = isss;
             const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false }); allUpdates = updts;
             container.innerHTML = ''; const floors = [...new Set(locs.map(l => l.floor))];
             floors.forEach(floor => {
@@ -106,12 +192,13 @@
                     const logs = updts.filter(u => u.issue_id === i.id);
                     const photos = logs.filter(l => l.photo_url).map(l => `<img src="${l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`).join('');
                     const isDone = i.status === 'Opravené' || i.status === 'Vybavené';
-                    return `<div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-start italic leading-tight"><div class="flex-1 italic leading-tight"><p class="text-[8px] font-black text-slate-400 uppercase italic leading-none italic">${i.locations?.name || '--'}</p><p class="text-sm font-bold ${isDone ? 'text-green-600' : 'text-slate-800'} italic italic">${i.title}</p><p class="mt-1 text-[8px] text-slate-400 font-bold uppercase italic leading-tight italic">Naposledy: ${fmtD(logs[0]?.event_date)} • ${i.responsible_person || '--'}</p></div><div class="flex items-center space-x-3 ml-4"><div class="flex items-center">${photos}</div><button onclick="prepStat('${i.id}', '${i.status}', '${i.title.replace(/'/g, "\\'")}', '${(i.responsible_person || "").replace(/'/g, "\\'")}')" class="bg-white px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase text-blue-600 underline italic leading-tight italic">Upraviť</button></div></div>`;
+                    return `<div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-start italic leading-tight"><div class="flex-1 italic leading-tight leading-tight"><p class="text-[8px] font-black text-slate-400 uppercase italic leading-none italic leading-tight">${i.locations?.name || '--'}</p><p class="text-sm font-bold ${isDone ? 'text-green-600' : 'text-slate-800'} italic italic leading-tight">${i.title}</p><p class="mt-1 text-[8px] text-slate-400 font-bold uppercase italic italic leading-tight">Naposledy: ${fmtD(logs[0]?.event_date)} • ${i.responsible_person || '--'}</p></div><div class="flex items-center space-x-3 ml-4"><div class="flex items-center leading-tight">${photos}</div><button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase text-blue-600 underline italic leading-tight leading-tight">Upraviť</button></div></div>`;
                 }).join('');
-                div.innerHTML = `<div class="flex justify-between items-center border-b pb-4 mb-4 italic"><h3 class="font-black text-xl italic uppercase text-slate-900 italic leading-tight">${floor}</h3><button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none italic leading-tight">+ Pridať</button></div><div class="space-y-4 italic leading-tight">${issuesHtml || '<p class="text-center py-6 text-[9px] text-slate-200 font-bold uppercase italic tracking-widest leading-tight">OK</p>'}</div>`;
+                div.innerHTML = `<div class="flex justify-between items-center border-b pb-4 mb-4 italic leading-tight"><h3 class="font-black text-xl italic uppercase text-slate-900 italic leading-tight">${floor}</h3><button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button></div><div class="space-y-4 italic leading-tight">${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase italic tracking-widest leading-tight">OK</p>'}</div>`;
                 container.appendChild(div);
             });
         }
+
         async function loadReports() {
             document.getElementById('rep-date').innerText = new Date().toLocaleDateString();
             const list = document.getElementById('rep-list'); const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
@@ -119,26 +206,41 @@
             isss.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
             list.innerHTML = isss.map(i => {
                 const logs = updts.filter(u => u.issue_id === i.id);
-                return `<tr class="rep-row italic leading-snug"><td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight"><span class="block font-black text-slate-400 uppercase text-[7px] italic leading-tight">${i.locations.floor}</span><span class="text-[10px] font-bold italic leading-tight italic leading-tight">${i.locations.name}</span><p class="text-[7px] font-bold text-slate-400 uppercase mt-2 italic leading-tight italic">Zodpovedá: ${i.responsible_person || '--'}</p></td><td class="py-5 px-3 align-top italic leading-snug"><p class="font-black text-slate-900 uppercase italic mb-3 leading-tight italic leading-tight">${i.title}</p><div class="space-y-4 italic leading-tight">${logs.map(u => `<div class="flex justify-between items-start space-x-2 border-l pl-3 border-slate-100 pb-2 italic leading-tight"><div class="flex-1 italic leading-tight"><div class="flex items-center space-x-2 mb-1 italic leading-tight"><span class="font-black text-[7px] text-slate-400 uppercase italic leading-tight italic">${fmtD(u.event_date)}</span><span class="text-[6px] font-black px-1 border rounded uppercase italic leading-tight italic ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span></div><p class="text-[9px] text-slate-700 italic leading-tight italic leading-tight">${u.note || '--'}</p></div>${u.photo_url ? `<img src="${u.photo_url}" class="report-thumb shadow-sm border border-slate-50 cursor-pointer italic leading-tight italic" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('')}</div></td><td class="py-5 px-1 align-top text-center italic leading-tight italic"><span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase italic leading-tight italic ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span></td></tr>`;
+                return `<tr class="rep-row italic leading-snug leading-tight"><td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight"><span class="block font-black text-slate-400 uppercase text-[7px] italic leading-tight leading-tight">${i.locations.floor}</span><span class="text-[10px] font-bold italic leading-tight italic leading-tight leading-tight">${i.locations.name}</span><p class="text-[7px] font-bold text-slate-400 uppercase mt-2 italic leading-tight italic leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p></td><td class="py-5 px-3 align-top italic leading-snug leading-tight"><p class="font-black text-slate-900 uppercase italic mb-3 leading-tight italic leading-tight leading-tight">${i.title}</p><div class="space-y-4 italic leading-tight leading-tight">${logs.map(u => `<div class="flex justify-between items-start space-x-2 border-l pl-3 border-slate-100 pb-2 italic leading-tight"><div class="flex-1 italic leading-tight"><div class="flex items-center space-x-2 mb-1 italic leading-tight leading-tight"><span class="font-black text-[7px] text-slate-400 uppercase italic leading-tight italic leading-tight leading-tight">${fmtD(u.event_date)}</span><span class="text-[6px] font-black px-1 border rounded uppercase italic leading-tight italic leading-tight ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span></div><p class="text-[9px] text-slate-700 italic leading-tight italic leading-tight leading-tight leading-tight leading-tight">${u.note || '--'}</p></div>${u.photo_url ? `<img src="${u.photo_url}" class="report-thumb cursor-pointer italic leading-tight italic leading-tight" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('')}</div></td><td class="py-5 px-1 align-top text-center italic leading-tight leading-tight italic"><span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase italic leading-tight italic leading-tight ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span></td></tr>`;
             }).join('');
         }
+
         async function loadArchive() {
             const container = document.getElementById('archive-container'); const { data: arch } = await sb.from('issues').select('*, locations(*)').eq('archived', true).order('updated_at', { ascending: false });
-            container.innerHTML = arch?.length ? arch.map(i => `<div class="bg-white p-4 rounded-2xl border border-slate-100 opacity-60 flex justify-between items-center italic"><div><p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none italic">${i.locations.name}</p><p class="text-[13px] font-bold text-slate-600 italic leading-tight italic">${i.title}</p></div><button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline italic leading-tight italic">Vrátiť</button></div>`).join('') : '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] italic">Prázdne</div>';
+            container.innerHTML = arch?.length ? arch.map(i => `<div class="bg-white p-4 rounded-2xl border border-slate-100 opacity-60 flex justify-between items-center italic leading-tight leading-tight"><div><p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none italic leading-tight">${i.locations.name}</p><p class="text-[13px] font-bold text-slate-600 italic leading-tight italic leading-tight leading-tight leading-tight">${i.title}</p></div><button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline leading-none italic leading-tight italic leading-tight">Vrátiť</button></div>`).join('') : '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">Prázdne</div>';
         }
-        window.prepAdd = (floor) => { document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0]; document.getElementById('m-add-floor').innerText = floor; document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === floor).map(l => `<option value="${l.id}">${l.name}</option>`).join(''); document.getElementById('m-add').classList.remove('hidden'); };
-        window.prepStat = (id, status, title, resp) => {
-            document.getElementById('f-stat-id').value = id; document.getElementById('f-stat-val').value = status; document.getElementById('f-stat-title-edit').value = title; document.getElementById('f-stat-resp-edit').value = (resp === 'undefined' || resp === 'null') ? '' : resp; document.getElementById('f-stat-note').value = ""; document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
+
+        window.prepAdd = (floor) => {
+            document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
+            document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === floor).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+            document.getElementById('m-add').classList.remove('hidden');
+        };
+
+        window.prepStat = (id) => {
+            const item = allIssues.find(i => i.id === id); if(!item) return;
+            document.getElementById('f-stat-id').value = id;
+            document.getElementById('f-stat-val').value = item.status;
+            document.getElementById('f-stat-title-edit').value = item.title;
+            document.getElementById('f-stat-resp-edit').value = item.responsible_person || '';
+            document.getElementById('f-stat-note').value = "";
+            document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
             const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
-            document.getElementById('m-history-list').innerHTML = logs.map(u => `<div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight italic"><div class="flex justify-between items-start mb-1 italic leading-tight italic"><span class="font-black block text-slate-800 uppercase tracking-tighter italic leading-tight italic">${fmtD(u.event_date)} • ${u.status_to}</span><div class="flex space-x-2 italic leading-tight italic"><button type="button" onclick="editHEntry('${u.id}')" class="text-blue-500 italic leading-none italic"><i class="fa-solid fa-pencil italic"></i></button><button type="button" onclick="delHEntry('${u.id}')" class="text-red-300 italic leading-none italic"><i class="fa-solid fa-trash-can italic"></i></button></div></div><p class="text-slate-500 leading-snug leading-tight italic italic leading-tight italic">${u.note || '--'}</p>${u.photo_url ? `<img src="${u.photo_url}" class="app-thumb mt-2 italic leading-tight italic" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('');
+            document.getElementById('m-history-list').innerHTML = logs.map(u => `<div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight"><div class="flex justify-between items-start mb-1 leading-tight"><span class="font-black block text-slate-800 uppercase tracking-tighter italic leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span><div class="flex space-x-2 leading-tight"><button type="button" onclick="window.editHEntry('${u.id}')" class="text-blue-500 italic leading-none italic leading-tight"><i class="fa-solid fa-pencil italic"></i></button><button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 italic leading-none italic leading-tight"><i class="fa-solid fa-trash-can italic"></i></button></div></div><p class="text-slate-500 leading-snug italic italic leading-tight">${u.note || '--'}</p>${u.photo_url ? `<img src="${u.photo_url}" class="app-thumb mt-2 italic leading-tight" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('');
             document.getElementById('m-status').classList.remove('hidden');
         };
+
         document.getElementById('f-add').onsubmit = async (e) => {
             e.preventDefault(); const btn = document.getElementById('btn-save-new'); btn.innerText = "Sync..."; btn.disabled = true;
             const pUrl = await uploadPhoto(document.getElementById('f-add-photo').files[0]);
             const { data } = await sb.from('issues').insert([{ location_id: document.getElementById('f-add-loc-id').value, title: document.getElementById('f-add-title').value, responsible_person: document.getElementById('f-add-resp').value, status: 'Zahlásené' }]).select();
             if (data?.[0]) { await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'Zahlásené', note: document.getElementById('f-add-note').value, event_date: document.getElementById('f-add-date').value, photo_url: pUrl, attendance: document.getElementById('att-all').value }]); hideM('m-add'); e.target.reset(); btn.innerText = "ULOŽIŤ"; btn.disabled = false; await loadSections(); }
         };
+
         document.getElementById('f-stat').onsubmit = async (e) => {
             e.preventDefault(); const btn = document.getElementById('btn-save-stat'); btn.innerText = "Sync..."; btn.disabled = true;
             const uId = document.getElementById('f-stat-update-id').value; const pUrl = await uploadPhoto(document.getElementById('f-stat-photo').files[0]);
@@ -148,11 +250,13 @@
             else { await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: document.getElementById('f-stat-note').value, event_date: document.getElementById('f-stat-date').value, photo_url: pUrl, attendance: document.getElementById('att-all').value }]); }
             hideM('m-status'); btn.innerText = "ULOŽIŤ ZMENY"; btn.disabled = false; await loadSections();
         };
+
         window.archiveIssue = async () => { if(confirm("Archivovať?")) { await sb.from('issues').update({ archived: true }).eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
         window.restoreIssue = async (id) => { await sb.from('issues').update({ archived: false }).eq('id', id); await loadArchive(); };
         window.confirmDelete = async () => { if(confirm("Vymazať natrvalo?")) { await sb.from('issues').delete().eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
-        window.delHEntry = async (id) => { if(confirm("Zmazať?")) { await sb.from('issue_updates').delete().eq('id', id); hideM('m-status'); await loadSections(); } };
+        window.delHEntry = async (id) => { if(confirm("Zmazať bod histórie?")) { await sb.from('issue_updates').delete().eq('id', id); hideM('m-status'); await loadSections(); } };
         window.editHEntry = (id) => { const entry = allUpdates.find(u => u.id === id); if(!entry) return; document.getElementById('f-stat-update-id').value = entry.id; document.getElementById('f-stat-note').value = entry.note || ""; document.getElementById('f-stat-date').value = entry.event_date ? entry.event_date.split('T')[0] : ""; document.getElementById('f-stat-val').value = entry.status_to; };
+        
         async function init() { document.getElementById('app-view').classList.remove('hidden'); switchView('dash'); }
         init();
     </script>
