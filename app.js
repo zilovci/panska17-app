@@ -119,7 +119,7 @@ window.prepStat = (id) => {
                 <p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p>
             </div>
             <p class="text-slate-500 leading-snug italic">${u.note || '--'}</p>
-            ${u.photo_url ? `<img src="${u.photo_url}?width=300&quality=30" class="app-thumb mt-2 italic" onclick="window.open('${u.photo_url}')">` : ''}
+            ${u.photo_url ? `<img src="${u.photo_url}?width=200&quality=20" class="app-thumb mt-2 italic" onclick="window.open('${u.photo_url}')">` : ''}
         </div>`).join('');
     document.getElementById('m-status').classList.remove('hidden');
 };
