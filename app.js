@@ -8,12 +8,30 @@ let currentEditingPhotoUrl = null;
 const fmtD = (str) => { if(!str) return '--'; const d = str.split('T')[0].split('-'); return `${d[2]}.${d[1]}.${d[0]}`; };
 window.hideM = (id) => document.getElementById(id).classList.add('hidden');
 
-async function handleLogout() { 
-    await sb.auth.signOut(); 
+// ODHLÁSENIE
+window.handleLogout = async () => {
+    await sb.auth.signOut();
     localStorage.clear();
     sessionStorage.clear();
-    window.location.replace(window.location.href);
-}
+    location.reload();
+};
+
+// LOGIN
+document.getElementById('f-login').onsubmit = async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-login');
+    btn.innerText = "Sync...";
+    const { error } = await sb.auth.signInWithPassword({
+        email: document.getElementById('log-email').value,
+        password: document.getElementById('log-pass').value
+    });
+    if (error) {
+        document.getElementById('log-error').classList.remove('hidden');
+        btn.innerText = "Prihlásiť sa";
+    } else {
+        init();
+    }
+};
 
 async function uploadPhoto(file) {
     if (!file) return null;
@@ -42,7 +60,7 @@ async function loadDash() {
 
 async function loadSections() {
     const container = document.getElementById('section-container');
-    container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Sync...</div>';
+    container.innerHTML = '<div class="py-20 text-center animate-pulse text-slate-300 uppercase italic">Načítavam...</div>';
     const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true }); allLocs = locs || [];
     const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false }); allIssues = isss || [];
     const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false }); allUpdates = updts || [];
@@ -61,31 +79,30 @@ async function loadSections() {
             const fLog = logs.length > 0 ? logs[logs.length-1] : null;
             return `
                 <div class="flex justify-between items-start italic mb-6 last:mb-0">
-                    <div class="flex-1">
-                        <p class="text-[8px] font-black text-slate-400 uppercase mb-1">${i.locations?.name || '--'}</p>
+                    <div class="flex-1 italic">
+                        <p class="text-[8px] font-black text-slate-400 uppercase leading-none italic">${i.locations?.name || '--'}</p>
                         <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} mb-1">${i.title}</p>
-                        <p class="text-[8px] text-slate-400 font-bold uppercase">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
+                        <p class="text-[8px] text-slate-400 font-bold uppercase italic">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
                     </div>
                     <div class="flex items-center space-x-3 ml-4">
                         <div class="flex items-center">${photos}</div>
-                        <button onclick="prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase text-blue-600 underline">Upraviť</button>
+                        <button onclick="prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline italic">Upraviť</button>
                     </div>
                 </div>`;
         }).join('');
-        div.innerHTML = `<div class="flex justify-between items-center border-b pb-4 mb-4"><h3 class="font-black text-xl italic uppercase text-slate-900">${floor}</h3><button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button></div><div>${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase">Budova OK</p>'}</div>`;
+        div.innerHTML = `<div class="flex justify-between items-center border-b pb-4 mb-4"><h3 class="font-black text-xl italic uppercase text-slate-900">${floor}</h3><button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button></div><div>${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase">OK</p>'}</div>`;
         container.appendChild(div);
     });
 }
 
 async function loadReports() {
-    document.getElementById('rep-date-screen').innerText = new Date().toLocaleDateString();
     const list = document.getElementById('rep-list');
     const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
     const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
     isss.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
     list.innerHTML = isss.map(i => {
         const logs = updts.filter(u => u.issue_id === i.id);
-        return `<tr class="rep-row italic"><td class="py-5 px-2 align-top border-r border-slate-50"><span class="block font-black text-slate-400 uppercase text-[7px]">${i.locations.floor}</span><span class="text-[10px] font-bold">${i.locations.name}</span><p class="text-[7px] font-bold text-slate-400 uppercase mt-2">Zodpovedá: ${i.responsible_person || '--'}</p></td><td class="py-5 px-3 align-top"><p class="font-bold text-slate-900 mb-3">${i.title}</p><div class="space-y-4">${logs.map(u => `<div class="flex justify-between items-start space-x-2 pb-1"><div class="flex-1"><div class="flex items-center space-x-2 mb-1"><span class="font-black text-[7px] text-slate-400 uppercase">${fmtD(u.event_date)}</span><span class="text-[6px] font-black px-1 border rounded uppercase ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span></div><p class="text-[9px] text-slate-700 leading-snug">${u.note || '--'}</p></div>${u.photo_url ? `<img src="${u.photo_url}?width=100&quality=20" class="report-thumb" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('')}</div></td><td class="py-5 px-1 align-top text-center"><span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span></td></tr>`;
+        return `<tr class="rep-row italic"><td class="py-5 px-2 align-top border-r border-slate-50"><span class="block font-black text-slate-400 uppercase text-[7px]">${i.locations.floor}</span><span class="text-[10px] font-bold">${i.locations.name}</span></td><td class="py-5 px-3 align-top"><p class="font-bold text-slate-900 mb-3">${i.title}</p><div class="space-y-4">${logs.map(u => `<div class="flex justify-between items-start space-x-2 pb-1"><div class="flex-1"><div class="flex items-center space-x-2 mb-1"><span class="font-black text-[7px] text-slate-400 uppercase">${fmtD(u.event_date)}</span><span class="text-[6px] font-black px-1 border rounded uppercase ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span></div><p class="text-[9px] text-slate-700 italic leading-snug">${u.note || '--'}</p></div>${u.photo_url ? `<img src="${u.photo_url}?width=120&quality=30" class="report-thumb" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('')}</div></td><td class="py-5 px-1 align-top text-center"><span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span></td></tr>`;
     }).join('');
 }
 
@@ -106,13 +123,17 @@ window.prepStat = (id) => {
     document.getElementById('f-stat-reported-edit').value = item.reported_by || '';
     document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('f-stat-loc-id').innerHTML = allLocs.map(l => `<option value="${l.id}" ${l.id === item.location_id ? 'selected' : ''}>${l.floor}: ${l.name}</option>`).join('');
+    
     const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
     document.getElementById('m-history-list').innerHTML = logs.map(u => `
-        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
-            <div class="flex justify-between items-start mb-1"><span class="font-black block text-slate-800 uppercase">${fmtD(u.event_date)} • ${u.status_to}</span><div class="flex space-x-2"><button type="button" onclick="editHEntry('${u.id}')" class="text-blue-500"><i class="fa-solid fa-pencil"></i></button><button type="button" onclick="delHEntry('${u.id}')" class="text-red-300"><i class="fa-solid fa-trash-can"></i></button></div></div>
-            <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 mb-2"><p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p></div>
-            <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
-            ${u.photo_url ? `<img src="${u.photo_url}?width=150&quality=30" class="app-thumb mt-2" onclick="window.open('${u.photo_url}')">` : ''}
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight italic">
+            <div class="flex justify-between items-start mb-1 italic"><span class="font-black block text-slate-800 uppercase">${fmtD(u.event_date)} • ${u.status_to}</span><div class="flex space-x-2"><button type="button" onclick="editHEntry('${u.id}')" class="text-blue-500"><i class="fa-solid fa-pencil"></i></button><button type="button" onclick="delHEntry('${u.id}')" class="text-red-300"><i class="fa-solid fa-trash-can"></i></button></div></div>
+            <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 italic mb-2">
+                <p>Nahlásil: ${u.attendance || '--'}</p>
+                <p>Zodpovedný: ${item.responsible_person || '--'}</p>
+            </div>
+            <p class="text-slate-500 leading-snug italic">${u.note || '--'}</p>
+            ${u.photo_url ? `<img src="${u.photo_url}?width=200&quality=30" class="app-thumb mt-2 italic" onclick="window.open('${u.photo_url}')">` : ''}
         </div>`).join('');
     document.getElementById('m-status').classList.remove('hidden');
 };
@@ -131,24 +152,32 @@ window.editHEntry = (id) => {
 window.delHEntry = async (id) => { if(confirm("Zmazať?")) { await sb.from('issue_updates').delete().eq('id', id); window.prepStat(document.getElementById('f-stat-id').value); } };
 
 document.getElementById('f-add').onsubmit = async (e) => {
-    e.preventDefault(); const btn = document.getElementById('btn-save-new'); btn.disabled = true;
+    e.preventDefault(); const btn = document.getElementById('btn-save-new'); btn.innerText = "Sync..."; btn.disabled = true;
     const pUrl = await uploadPhoto(document.getElementById('f-add-photo').files[0]);
     const { data } = await sb.from('issues').insert([{ location_id: document.getElementById('f-add-loc-id').value, title: document.getElementById('f-add-title').value, responsible_person: document.getElementById('f-add-resp').value, reported_by: document.getElementById('f-add-reported').value, status: 'Zahlásené' }]).select();
-    if (data?.[0]) { await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'Zahlásené', note: document.getElementById('f-add-note').value, event_date: document.getElementById('f-add-date').value, photo_url: pUrl, attendance: document.getElementById('f-add-reported').value }]); hideM('m-add'); e.target.reset(); btn.disabled = false; await loadSections(); }
+    if (data?.[0]) { await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'Zahlásené', note: document.getElementById('f-add-note').value, event_date: document.getElementById('f-add-date').value, photo_url: pUrl, attendance: document.getElementById('f-add-reported').value }]); hideM('m-add'); e.target.reset(); btn.innerText = "ULOŽIŤ"; btn.disabled = false; await loadSections(); }
 };
 
 document.getElementById('f-stat').onsubmit = async (e) => {
-    e.preventDefault(); const btn = document.getElementById('btn-save-stat'); btn.disabled = true;
+    e.preventDefault(); const btn = document.getElementById('btn-save-stat'); btn.innerText = "Sync..."; btn.disabled = true;
     const uId = document.getElementById('f-stat-update-id').value; const pUrl = await uploadPhoto(document.getElementById('f-stat-photo').files[0]);
     const id = document.getElementById('f-stat-id').value; const st = document.getElementById('f-stat-val').value;
     await sb.from('issues').update({ status: st, title: document.getElementById('f-stat-title-edit').value, responsible_person: document.getElementById('f-stat-resp-edit').value, reported_by: document.getElementById('f-stat-reported-edit').value, location_id: document.getElementById('f-stat-loc-id').value, updated_at: new Date() }).eq('id', id);
     if(uId) { await sb.from('issue_updates').update({ status_to: st, note: document.getElementById('f-stat-note').value, event_date: document.getElementById('f-stat-date').value, photo_url: pUrl || currentEditingPhotoUrl || undefined, attendance: document.getElementById('f-stat-reported-edit').value }).eq('id', uId); }
     else { await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: document.getElementById('f-stat-note').value, event_date: document.getElementById('f-stat-date').value, photo_url: pUrl, attendance: document.getElementById('f-stat-reported-edit').value }]); }
-    hideM('m-status'); btn.disabled = false; await loadSections();
+    hideM('m-status'); btn.innerText = "ULOŽIŤ ZMENY"; btn.disabled = false; await loadSections();
 };
 
 window.archiveIssue = async () => { if(confirm("Archivovať?")) { await sb.from('issues').update({ archived: true }).eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
 window.restoreIssue = async (id) => { await sb.from('issues').update({ archived: false }).eq('id', id); await loadArchive(); };
 window.confirmDelete = async () => { if(confirm("Vymazať natrvalo?")) { await sb.from('issues').delete().eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
 
-switchView('dash');
+async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+        document.getElementById('login-view').classList.add('hidden');
+        document.getElementById('app-view').classList.remove('hidden');
+        switchView('dash');
+    }
+}
+init();
