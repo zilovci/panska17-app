@@ -139,4 +139,36 @@ async function init() {
     if (session) { document.getElementById('login-view').classList.add('hidden'); document.getElementById('app-view').classList.remove('hidden'); switchView('dash'); }
     else { document.getElementById('login-view').classList.remove('hidden'); document.getElementById('app-view').classList.add('hidden'); }
 }
+async function loadArchive() {
+    const container = document.getElementById('archive-container');
+    container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Sync...</div>';
+    
+    const { data: arch } = await sb.from('issues')
+        .select('*, locations(*)')
+        .eq('archived', true)
+        .order('updated_at', { ascending: false });
+
+    if (!arch || arch.length === 0) {
+        container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] italic">Archív je prázdny</div>';
+        return;
+    }
+
+    container.innerHTML = arch.map(i => `
+        <div class="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center italic mb-4">
+            <div>
+                <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">${i.locations?.name || '--'}</p>
+                <p class="text-[13px] font-bold text-slate-600 italic">${i.title}</p>
+            </div>
+            <button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline italic leading-tight">Vrátiť</button>
+        </div>
+    `).join('');
+}
+
+window.restoreIssue = async (id) => {
+    if(confirm("Vrátiť tento záznam z archívu?")) {
+        await sb.from('issues').update({ archived: false }).eq('id', id);
+        await loadArchive();
+        await loadSections(); // Obnoví aj zoznam obhliadky
+    }
+};
 init();
