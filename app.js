@@ -1,0 +1,154 @@
+const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
+const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
+const sb = supabase.createClient(S_URL, S_KEY);
+
+let allLocs = [], allIssues = [], allUpdates = [];
+let currentEditingPhotoUrl = null;
+
+const fmtD = (str) => { if(!str) return '--'; const d = str.split('T')[0].split('-'); return `${d[2]}.${d[1]}.${d[0]}`; };
+window.hideM = (id) => document.getElementById(id).classList.add('hidden');
+
+async function handleLogout() { 
+    await sb.auth.signOut(); 
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.replace(window.location.href);
+}
+
+async function uploadPhoto(file) {
+    if (!file) return null;
+    const name = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    await sb.storage.from('photos').upload(name, file);
+    return `${S_URL}/storage/v1/object/public/photos/${name}`;
+}
+
+async function switchView(v) {
+    ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
+    ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
+    document.getElementById('v-'+v).classList.remove('hidden');
+    document.getElementById('n-'+v).classList.add('nav-active');
+    if(v === 'dash') loadDash();
+    if(v === 'insp') loadSections();
+    if(v === 'arch') loadArchive();
+    if(v === 'rep') loadReports();
+}
+
+async function loadDash() {
+    const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).not('status', 'in', '("Opravené","Vybavené")');
+    const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true }).eq('archived', false).or('status.eq.Opravené,status.eq.Vybavené');
+    document.getElementById('s-open').innerText = open || 0;
+    document.getElementById('s-done').innerText = done || 0;
+}
+
+async function loadSections() {
+    const container = document.getElementById('section-container');
+    container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Sync...</div>';
+    const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true }); allLocs = locs || [];
+    const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false }); allIssues = isss || [];
+    const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false }); allUpdates = updts || [];
+    
+    container.innerHTML = '';
+    const floors = [...new Set(allLocs.map(l => l.floor))];
+    floors.forEach(floor => {
+        const floorLocs = allLocs.filter(l => l.floor === floor);
+        const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
+        const div = document.createElement('div');
+        div.className = 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm italic leading-tight mb-6';
+        
+        let issuesHtml = floorIssues.map(i => {
+            const logs = allUpdates.filter(u => u.issue_id === i.id).sort((a,b) => new Date(a.event_date) - new Date(b.event_date));
+            const photos = updts.filter(u => u.issue_id === i.id && u.photo_url).map(l => `<img src="${l.photo_url}?width=60&quality=20" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`).join('');
+            const fLog = logs.length > 0 ? logs[logs.length-1] : null;
+            return `
+                <div class="flex justify-between items-start italic mb-6 last:mb-0">
+                    <div class="flex-1">
+                        <p class="text-[8px] font-black text-slate-400 uppercase mb-1">${i.locations?.name || '--'}</p>
+                        <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} mb-1">${i.title}</p>
+                        <p class="text-[8px] text-slate-400 font-bold uppercase">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
+                    </div>
+                    <div class="flex items-center space-x-3 ml-4">
+                        <div class="flex items-center">${photos}</div>
+                        <button onclick="prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase text-blue-600 underline">Upraviť</button>
+                    </div>
+                </div>`;
+        }).join('');
+        div.innerHTML = `<div class="flex justify-between items-center border-b pb-4 mb-4"><h3 class="font-black text-xl italic uppercase text-slate-900">${floor}</h3><button onclick="prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button></div><div>${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase">Budova OK</p>'}</div>`;
+        container.appendChild(div);
+    });
+}
+
+async function loadReports() {
+    document.getElementById('rep-date-screen').innerText = new Date().toLocaleDateString();
+    const list = document.getElementById('rep-list');
+    const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
+    const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
+    isss.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
+    list.innerHTML = isss.map(i => {
+        const logs = updts.filter(u => u.issue_id === i.id);
+        return `<tr class="rep-row italic"><td class="py-5 px-2 align-top border-r border-slate-50"><span class="block font-black text-slate-400 uppercase text-[7px]">${i.locations.floor}</span><span class="text-[10px] font-bold">${i.locations.name}</span><p class="text-[7px] font-bold text-slate-400 uppercase mt-2">Zodpovedá: ${i.responsible_person || '--'}</p></td><td class="py-5 px-3 align-top"><p class="font-bold text-slate-900 mb-3">${i.title}</p><div class="space-y-4">${logs.map(u => `<div class="flex justify-between items-start space-x-2 pb-1"><div class="flex-1"><div class="flex items-center space-x-2 mb-1"><span class="font-black text-[7px] text-slate-400 uppercase">${fmtD(u.event_date)}</span><span class="text-[6px] font-black px-1 border rounded uppercase ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span></div><p class="text-[9px] text-slate-700 leading-snug">${u.note || '--'}</p></div>${u.photo_url ? `<img src="${u.photo_url}?width=100&quality=20" class="report-thumb" onclick="window.open('${u.photo_url}')">` : ''}</div>`).join('')}</div></td><td class="py-5 px-1 align-top text-center"><span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span></td></tr>`;
+    }).join('');
+}
+
+window.prepAdd = (fN) => { 
+    document.getElementById('m-add-floor-label').innerText = fN; 
+    document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0]; 
+    document.getElementById('f-add-reported').value = document.getElementById('att-all').value; 
+    document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join(''); 
+    document.getElementById('m-add').classList.remove('hidden'); 
+};
+
+window.prepStat = (id) => {
+    const item = allIssues.find(i => i.id === id); if(!item) return;
+    document.getElementById('f-stat-id').value = id; 
+    document.getElementById('f-stat-val').value = item.status;
+    document.getElementById('f-stat-title-edit').value = item.title; 
+    document.getElementById('f-stat-resp-edit').value = item.responsible_person || '';
+    document.getElementById('f-stat-reported-edit').value = item.reported_by || '';
+    document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('f-stat-loc-id').innerHTML = allLocs.map(l => `<option value="${l.id}" ${l.id === item.location_id ? 'selected' : ''}>${l.floor}: ${l.name}</option>`).join('');
+    const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
+    document.getElementById('m-history-list').innerHTML = logs.map(u => `
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
+            <div class="flex justify-between items-start mb-1"><span class="font-black block text-slate-800 uppercase">${fmtD(u.event_date)} • ${u.status_to}</span><div class="flex space-x-2"><button type="button" onclick="editHEntry('${u.id}')" class="text-blue-500"><i class="fa-solid fa-pencil"></i></button><button type="button" onclick="delHEntry('${u.id}')" class="text-red-300"><i class="fa-solid fa-trash-can"></i></button></div></div>
+            <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 mb-2"><p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p></div>
+            <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
+            ${u.photo_url ? `<img src="${u.photo_url}?width=150&quality=30" class="app-thumb mt-2" onclick="window.open('${u.photo_url}')">` : ''}
+        </div>`).join('');
+    document.getElementById('m-status').classList.remove('hidden');
+};
+
+window.editHEntry = (id) => { 
+    const e = allUpdates.find(u => u.id === id); if(!e) return; 
+    document.getElementById('f-stat-update-id').value = e.id; 
+    document.getElementById('f-stat-note').value = e.note || ""; 
+    document.getElementById('f-stat-date').value = e.event_date ? e.event_date.split('T')[0] : ""; 
+    document.getElementById('f-stat-val').value = e.status_to; 
+    document.getElementById('f-stat-reported-edit').value = e.attendance || ""; 
+    if(e.photo_url) { document.getElementById('edit-photo-preview').classList.remove('hidden'); document.getElementById('edit-photo-img').src = e.photo_url; currentEditingPhotoUrl = e.photo_url; }
+    else { document.getElementById('edit-photo-preview').classList.add('hidden'); currentEditingPhotoUrl = null; }
+};
+
+window.delHEntry = async (id) => { if(confirm("Zmazať?")) { await sb.from('issue_updates').delete().eq('id', id); window.prepStat(document.getElementById('f-stat-id').value); } };
+
+document.getElementById('f-add').onsubmit = async (e) => {
+    e.preventDefault(); const btn = document.getElementById('btn-save-new'); btn.disabled = true;
+    const pUrl = await uploadPhoto(document.getElementById('f-add-photo').files[0]);
+    const { data } = await sb.from('issues').insert([{ location_id: document.getElementById('f-add-loc-id').value, title: document.getElementById('f-add-title').value, responsible_person: document.getElementById('f-add-resp').value, reported_by: document.getElementById('f-add-reported').value, status: 'Zahlásené' }]).select();
+    if (data?.[0]) { await sb.from('issue_updates').insert([{ issue_id: data[0].id, status_to: 'Zahlásené', note: document.getElementById('f-add-note').value, event_date: document.getElementById('f-add-date').value, photo_url: pUrl, attendance: document.getElementById('f-add-reported').value }]); hideM('m-add'); e.target.reset(); btn.disabled = false; await loadSections(); }
+};
+
+document.getElementById('f-stat').onsubmit = async (e) => {
+    e.preventDefault(); const btn = document.getElementById('btn-save-stat'); btn.disabled = true;
+    const uId = document.getElementById('f-stat-update-id').value; const pUrl = await uploadPhoto(document.getElementById('f-stat-photo').files[0]);
+    const id = document.getElementById('f-stat-id').value; const st = document.getElementById('f-stat-val').value;
+    await sb.from('issues').update({ status: st, title: document.getElementById('f-stat-title-edit').value, responsible_person: document.getElementById('f-stat-resp-edit').value, reported_by: document.getElementById('f-stat-reported-edit').value, location_id: document.getElementById('f-stat-loc-id').value, updated_at: new Date() }).eq('id', id);
+    if(uId) { await sb.from('issue_updates').update({ status_to: st, note: document.getElementById('f-stat-note').value, event_date: document.getElementById('f-stat-date').value, photo_url: pUrl || currentEditingPhotoUrl || undefined, attendance: document.getElementById('f-stat-reported-edit').value }).eq('id', uId); }
+    else { await sb.from('issue_updates').insert([{ issue_id: id, status_to: st, note: document.getElementById('f-stat-note').value, event_date: document.getElementById('f-stat-date').value, photo_url: pUrl, attendance: document.getElementById('f-stat-reported-edit').value }]); }
+    hideM('m-status'); btn.disabled = false; await loadSections();
+};
+
+window.archiveIssue = async () => { if(confirm("Archivovať?")) { await sb.from('issues').update({ archived: true }).eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
+window.restoreIssue = async (id) => { await sb.from('issues').update({ archived: false }).eq('id', id); await loadArchive(); };
+window.confirmDelete = async () => { if(confirm("Vymazať natrvalo?")) { await sb.from('issues').delete().eq('id', document.getElementById('f-stat-id').value); hideM('m-status'); await loadSections(); } };
+
+switchView('dash');
