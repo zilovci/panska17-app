@@ -10,7 +10,28 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
+<!-- MOBILNÁ LIŠTA S HARMONIKOU -->
+<div id="mobile-nav" class="md:hidden no-print bg-white border-b border-slate-200 sticky top-0 z-[100]">
+    <div class="flex items-center justify-between p-4">
+        <div class="flex items-center space-x-2 italic">
+            <i class="fa-solid fa-building text-blue-600 text-xl"></i>
+            <span class="font-black uppercase text-base tracking-tighter">Panská 17</span>
+        </div>
+        <button onclick="toggleMobileMenu()" class="bg-slate-50 p-2 rounded-xl text-slate-600 border border-slate-100">
+            <i class="fa-solid fa-bars text-xl" id="menu-icon"></i>
+        </button>
+    </div>
+    
+    <div id="mobile-accordion" class="hidden border-t border-slate-50 bg-white italic">
+        <nav class="flex flex-col p-4 space-y-2">
+            <button onclick="switchView('dash')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Dashboard</button>
+            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Obhliadka BR</button>
+            <button onclick="switchView('rep')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Report</button>
+            <button onclick="switchView('arch')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Archív</button>
+            <button onclick="handleLogout()" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-red-400 border-t border-slate-50 mt-2 italic">Odhlásiť sa</button>
+        </nav>
+    </div>
+</div>
     <!-- LOGIN VIEW -->
     <div id="login-view" class="min-h-screen flex items-center justify-center bg-slate-100 p-4">
         <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center">
