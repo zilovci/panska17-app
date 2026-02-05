@@ -35,3 +35,24 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; }
     .rep-row { page-break-inside: avoid !important; }
     .print-header-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; border-bottom: 1.5pt solid black !important; padding-bottom: 8px !important; margin-bottom: 12px !important; border-top: none !important; }
 }
+/* MOBILNÉ NASTAVENIA */
+@media (max-width: 767px) {
+    #sidebar { 
+        display: none !important; 
+    }
+    #mobile-nav { 
+        display: block !important; 
+    }
+    main { 
+        padding: 1rem !important; 
+    }
+    #mobile-accordion {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+}
+
+/* Štýl pre aktívne tlačidlo v harmonike */
+#mobile-accordion .nav-active {
+    background-color: #f1f5f9;
+    color: #2563eb;
+}
