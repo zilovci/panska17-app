@@ -60,3 +60,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; }
     background-color: #f1f5f9;
     color: #2563eb;
 }
+@media print {
+  img {
+    display: none !important;
+  }
+}
