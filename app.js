@@ -127,11 +127,13 @@ async function switchView(v) {
   document.getElementById('v-'+v).classList.remove('hidden');
   document.getElementById('n-'+v).classList.add('nav-active');
 
-  if(v === 'dash') loadDash();
-  if(v === 'insp') loadSections();
-  if(v === 'arch') loadArchive();
-  if(v === 'rep') loadReports();
+  // DÔLEŽITÉ: vráť Promise a počkaj na dáta + render
+  if (v === 'dash') return await loadDash();
+  if (v === 'insp') return await loadSections();
+  if (v === 'arch') return await loadArchive();
+  if (v === 'rep')  return await loadReports();
 }
+
 
 async function loadDash() {
   const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true })
@@ -571,16 +573,12 @@ async function waitForImages(rootSelector = '#v-rep', timeoutMs = 20000) {
 }
 
 window.printReport = async () => {
-  // uisti sa, že report je načítaný
   await switchView('rep');
+  await new Promise(r => setTimeout(r, 50)); // stačí menej
 
-  // daj prehliadaču chvíľu na layout
-  await new Promise(r => setTimeout(r, 150));
+  // čakaj na obrázky v samotnom liste
+  await waitForImages('#rep-list', 25000);
 
-  // počkaj na thumbnails
-  await waitForImages('#v-rep', 25000);
-
-  // a až potom tlač
   window.print();
 };
 
