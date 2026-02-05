@@ -238,7 +238,7 @@ async function loadReports() {
                 </div>
                 <p class="text-[9px] text-slate-700 italic leading-snug leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight italic leading-tight">${u.note || '--'}</p>
               </div>
-              ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="report-thumb cursor-pointer italic" onclick="window.open('${u.photo_url}')">` : ''}
+              ${u.photo_url ? `<img loading="eager" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="report-thumb cursor-pointer italic" onclick="window.open('${u.photo_url}')">` : ''}
             </div>
           `).join('')}
         </div>
