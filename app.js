@@ -540,5 +540,50 @@ window.migrateThumbs = async () => {
   alert("Migrácia hotová (pozri konzolu pre detaily).");
 };
 
+async function waitForImages(rootSelector = '#v-rep', timeoutMs = 20000) {
+  const root = document.querySelector(rootSelector);
+  if (!root) return;
+
+  const imgs = Array.from(root.querySelectorAll('img'))
+    .filter(img => img.offsetParent !== null); // iba viditeľné
+
+  if (imgs.length === 0) return;
+
+  const start = Date.now();
+
+  await Promise.all(imgs.map(img => new Promise((resolve) => {
+    const done = () => resolve();
+
+    // už načítané OK
+    if (img.complete && img.naturalWidth > 0) return resolve();
+
+    // load/error
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+
+    // timeout guard
+    const tick = () => {
+      if (Date.now() - start > timeoutMs) resolve();
+      else requestAnimationFrame(tick);
+    };
+    tick();
+  })));
+}
+
+window.printReport = async () => {
+  // uisti sa, že report je načítaný
+  await switchView('rep');
+
+  // daj prehliadaču chvíľu na layout
+  await new Promise(r => setTimeout(r, 150));
+
+  // počkaj na thumbnails
+  await waitForImages('#v-rep', 25000);
+
+  // a až potom tlač
+  window.print();
+};
+
+
 init();
   
