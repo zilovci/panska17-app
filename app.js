@@ -35,6 +35,37 @@ async function uploadPhoto(file) {
     if (error) return null;
     return `${S_URL}/storage/v1/object/public/photos/${name}`;
 }
+async function makeThumbnailBlobFromUrl(url, maxW = 420, quality = 0.6) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const bmp = await createImageBitmap(blob);
+
+  const scale = Math.min(1, maxW / bmp.width);
+  const w = Math.round(bmp.width * scale);
+  const h = Math.round(bmp.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.drawImage(bmp, 0, 0, w, h);
+
+  return await new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b), "image/jpeg", quality)
+  );
+}
+
+async function uploadThumbBlob(blob, baseName) {
+  const thumbName = `thumb/${baseName}.jpg`;
+  const { error } = await sb.storage.from("photos").upload(thumbName, blob, {
+    contentType: "image/jpeg",
+    cacheControl: "3600",
+    upsert: true,
+  });
+  if (error) throw error;
+  return `${S_URL}/storage/v1/object/public/photos/${thumbName}`;
+}
+
 
 async function switchView(v) {
 // ZAVRETIE MENU NA MOBILE PO KLIKNUTÍ
@@ -188,5 +219,40 @@ window.toggleMobileMenu = () => {
         accordion.classList.add('hidden');
         icon.classList.replace('fa-xmark', 'fa-bars');
     }
+};
+window.migrateThumbs = async () => {
+  // nájdi záznamy bez thumbu
+  const { data: rows, error } = await sb
+    .from("issue_updates")
+    .select("id, photo_url, photo_thumb_url")
+    .not("photo_url", "is", null)
+    .is("photo_thumb_url", null);
+
+  if (error) { console.error(error); alert("DB error"); return; }
+  if (!rows || rows.length === 0) { alert("Nič na migráciu"); return; }
+
+  console.log("Na migráciu:", rows.length);
+
+  for (const r of rows) {
+    try {
+      // sprav stabilný basename z id (neviaže sa na pôvodný názov súboru)
+      const base = `upd_${r.id}`;
+
+      const thumbBlob = await makeThumbnailBlobFromUrl(r.photo_url, 420, 0.55);
+      const thumbUrl = await uploadThumbBlob(thumbBlob, base);
+
+      const { error: upErr } = await sb
+        .from("issue_updates")
+        .update({ photo_thumb_url: thumbUrl })
+        .eq("id", r.id);
+
+      if (upErr) throw upErr;
+      console.log("OK", r.id);
+    } catch (e) {
+      console.warn("FAIL", r.id, e);
+    }
+  }
+
+  alert("Migrácia hotová (pozri konzolu pre detaily).");
 };
 init();
