@@ -37,6 +37,13 @@ async function uploadPhoto(file) {
 }
 
 async function switchView(v) {
+// ZAVRETIE MENU NA MOBILE PO KLIKNUTÍ
+    const accordion = document.getElementById('mobile-accordion');
+    if (accordion) {
+        accordion.classList.add('hidden');
+        const icon = document.getElementById('menu-icon');
+        if (icon) icon.classList.replace('fa-xmark', 'fa-bars');
+    }
     ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
     ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
     document.getElementById('v-'+v).classList.remove('hidden');
@@ -169,6 +176,17 @@ window.restoreIssue = async (id) => {
         await sb.from('issues').update({ archived: false }).eq('id', id);
         await loadArchive();
         await loadSections(); // Obnoví aj zoznam obhliadky
+    }
+};
+window.toggleMobileMenu = () => {
+    const accordion = document.getElementById('mobile-accordion');
+    const icon = document.getElementById('menu-icon');
+    if (accordion.classList.contains('hidden')) {
+        accordion.classList.remove('hidden');
+        icon.classList.replace('fa-bars', 'fa-xmark');
+    } else {
+        accordion.classList.add('hidden');
+        icon.classList.replace('fa-xmark', 'fa-bars');
     }
 };
 init();
