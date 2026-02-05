@@ -40,7 +40,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; }
     .print-header-row { display: flex !important; justify-content: space-between !important; align-items: flex-end !important; border-bottom: 1.5pt solid black !important; padding-bottom: 8px !important; margin-bottom: 12px !important; border-top: none !important; }
 }
 /* MOBILNÉ NASTAVENIA */
-@media (max-width: 767px) {
+@media screen and (max-width: 767px) {
     #sidebar { 
         display: none !important; 
     }
