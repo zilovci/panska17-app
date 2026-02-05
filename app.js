@@ -299,7 +299,8 @@ window.editHEntry = (id) => {
   document.getElementById('f-stat-update-id').value = e.id;
   document.getElementById('f-stat-note').value = e.note || "";
   document.getElementById('f-stat-date').value = e.event_date ? e.event_date.split('T')[0] : "";
-  document.getElementById('f-stat-val').value = e.status_to;
+  document.getElementById('f-stat-val').valu
+e = e.status_to;
   document.getElementById('f-stat-reported-edit').value = e.attendance || "";
 
   if(e.photo_url) {
@@ -540,3 +541,4 @@ window.migrateThumbs = async () => {
 };
 
 init();
+  
