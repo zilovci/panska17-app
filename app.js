@@ -180,7 +180,7 @@ async function loadSections() {
         .map(l => `<img loading="lazy" decoding="async" src="${l.photo_thumb_url || l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`)
         .join('');
 
-      const fLog = logs.length > 0 ? logs[logs.length-1] : null;
+      const fLog = logs.length > 0 ? logs[0] : null;
 
       return `
         <div class="flex justify-between items-start italic leading-tight mb-6 last:mb-0">
