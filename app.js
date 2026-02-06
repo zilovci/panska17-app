@@ -4,6 +4,8 @@ const sb = supabase.createClient(S_URL, S_KEY);
 
 let allLocs = [], allIssues = [], allUpdates = [];
 let currentEditingPhotoUrl = null;
+let removePhotoFlag = false;
+
 
 const fmtD = (str) => {
   if(!str) return '--';
@@ -260,6 +262,34 @@ window.prepAdd = (fN) => {
   document.getElementById('m-add').classList.remove('hidden');
 };
 
+async function syncIssueStatusFromLastEvent(issueId) {
+  // posledný event podľa dátumu, pri rovnakom dátume podľa created_at (ak existuje) a id
+  const { data: last, error } = await sb
+    .from('issue_updates')
+    .select('id, status_to, event_date, created_at')
+    .eq('issue_id', issueId)
+    .order('event_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error("syncIssueStatusFromLastEvent error:", error);
+    return;
+  }
+
+  const finalStatus = last?.[0]?.status_to || 'Zahlásené';
+
+  const { error: upErr } = await sb
+    .from('issues')
+    .update({ status: finalStatus, updated_at: new Date() })
+    .eq('id', issueId);
+
+  if (upErr) console.error("issues.status update error:", upErr);
+}
+
+
+
 window.prepStat = (id) => {
   const item = allIssues.find(i => i.id === id);
   if(!item) return;
@@ -301,17 +331,19 @@ window.editHEntry = (id) => {
   document.getElementById('f-stat-update-id').value = e.id;
   document.getElementById('f-stat-note').value = e.note || "";
   document.getElementById('f-stat-date').value = e.event_date ? e.event_date.split('T')[0] : "";
-  document.getElementById('f-stat-val').valu
-e = e.status_to;
+  document.getElementById('f-stat-val').value = e.status_to;
   document.getElementById('f-stat-reported-edit').value = e.attendance || "";
 
   if(e.photo_url) {
     document.getElementById('edit-photo-preview').classList.remove('hidden');
     document.getElementById('edit-photo-img').src = e.photo_thumb_url || e.photo_url;
     currentEditingPhotoUrl = e.photo_url;
+    removePhotoFlag = false;
+
   } else {
     document.getElementById('edit-photo-preview').classList.add('hidden');
     currentEditingPhotoUrl = null;
+    removePhotoFlag = false;
   }
 };
 
@@ -495,6 +527,16 @@ window.restoreIssue = async (id) => {
     await loadSections();
   }
 };
+
+
+window.removePhotoFromUpdate = () => {
+  removePhotoFlag = true;
+  currentEditingPhotoUrl = null;
+  const prev = document.getElementById('edit-photo-preview');
+  if (prev) prev.classList.add('hidden');
+  alert("Fotka bude odstránená po uložení.");
+};
+
 
 window.toggleMobileMenu = () => {
   const accordion = document.getElementById('mobile-accordion');
