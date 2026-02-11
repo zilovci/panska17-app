@@ -303,6 +303,14 @@ window.prepStat = (id) => {
 
   document.getElementById('f-stat-loc-id').innerHTML = allLocs.map(l => `<option value="${l.id}" ${l.id === item.location_id ? 'selected' : ''}>${l.floor}: ${l.name}</option>`).join('');
 
+  // Reset photo state when opening a new record
+  currentEditingPhotoUrl = null;
+  removePhotoFlag = false;
+  document.getElementById('edit-photo-preview').classList.add('hidden');
+  document.getElementById('f-stat-photo').value = '';
+  document.getElementById('f-stat-update-id').value = '';
+  document.getElementById('f-stat-note').value = '';
+
   const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
   document.getElementById('m-history-list').innerHTML = logs.map(u => `
     <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
