@@ -259,7 +259,21 @@ window.prepAdd = (fN) => {
   document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
   document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  document.getElementById('add-photo-preview')?.classList.add('hidden');
+  var pi = document.getElementById('f-add-photo'); if (pi) pi.value = '';
   document.getElementById('m-add').classList.remove('hidden');
+};
+
+// --- Add modal: photo preview ---
+var _api = document.getElementById('f-add-photo');
+if (_api) _api.addEventListener('change', function() {
+  var f = this.files[0], p = document.getElementById('add-photo-preview'), im = document.getElementById('add-photo-img');
+  if (f && p && im) { var r = new FileReader(); r.onload = function(e){ im.src = e.target.result; p.classList.remove('hidden'); }; r.readAsDataURL(f); }
+  else if (p) p.classList.add('hidden');
+});
+window.clearAddPhoto = function() {
+  var i = document.getElementById('f-add-photo'); if (i) i.value = '';
+  document.getElementById('add-photo-preview')?.classList.add('hidden');
 };
 
 async function syncIssueStatusFromLastEvent(issueId) {
@@ -388,6 +402,7 @@ document.getElementById('f-add').onsubmit = async (e) => {
 
       hideM('m-add');
       e.target.reset();
+      document.getElementById('add-photo-preview')?.classList.add('hidden');
       await loadSections();
     }
   } catch (err) {
@@ -532,10 +547,16 @@ window.restoreIssue = async (id) => {
 window.removePhotoFromUpdate = () => {
   removePhotoFlag = true;
   currentEditingPhotoUrl = null;
-  const prev = document.getElementById('edit-photo-preview');
-  if (prev) prev.classList.add('hidden');
-  alert("Fotka bude odstránená po uložení.");
+  var i = document.getElementById('f-stat-photo'); if (i) i.value = '';
+  document.getElementById('edit-photo-preview')?.classList.add('hidden');
 };
+
+// --- Edit modal: photo preview on new file select ---
+var _epi = document.getElementById('f-stat-photo');
+if (_epi) _epi.addEventListener('change', function() {
+  var f = this.files[0], p = document.getElementById('edit-photo-preview'), im = document.getElementById('edit-photo-img');
+  if (f && p && im) { var r = new FileReader(); r.onload = function(e){ im.src = e.target.result; p.classList.remove('hidden'); }; r.readAsDataURL(f); removePhotoFlag = false; }
+});
 
 
 window.toggleMobileMenu = () => {
