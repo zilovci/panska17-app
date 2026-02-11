@@ -257,6 +257,7 @@ async function loadReports() {
 }
 
 window.prepAdd = (fN) => {
+  document.getElementById('f-add').reset();
   document.getElementById('m-add-floor-label').innerText = fN;
   document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
@@ -318,7 +319,7 @@ window.prepStat = (id) => {
 
   const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
   document.getElementById('m-history-list').innerHTML = logs.map(u => `
-    <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
+    <div data-uid="${u.id}" class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
       <div class="flex justify-between items-start mb-1 leading-tight">
         <span class="font-black block text-slate-800 uppercase tracking-tighter italic leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span>
         <div class="flex space-x-2 leading-tight leading-tight">
@@ -340,6 +341,15 @@ window.prepStat = (id) => {
 window.editHEntry = (id) => {
   const e = allUpdates.find(u => u.id === id);
   if(!e) return;
+
+  // highlight edited entry orange, reset others
+  document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
+    if (el.dataset.uid === id) {
+      el.className = 'p-3 bg-orange-50 rounded-xl border border-orange-200 text-[10px] mb-2 italic leading-tight';
+    } else {
+      el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight';
+    }
+  });
 
   document.getElementById('f-stat-update-id').value = e.id;
   document.getElementById('f-stat-note').value = e.note || "";
@@ -467,8 +477,8 @@ document.getElementById('f-stat').onsubmit = async (e) => {
       if (insErr) throw insErr;
     }
 
-    hideM('m-status');
     await loadSections();
+    window.prepStat(id);
 
   } catch (err) {
     console.error(err);
@@ -536,6 +546,10 @@ window.resetToNewEntry = function() {
   var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
   currentEditingPhotoUrl = null;
   removePhotoFlag = false;
+  // reset orange highlights
+  document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
+    el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight';
+  });
 };
 
 async function init() {
