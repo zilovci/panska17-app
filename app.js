@@ -435,7 +435,7 @@ document.getElementById('f-add').onsubmit = async (e) => {
     const locId = document.getElementById('f-add-loc-id').value;
     if (!locId) { alert('Vyber miestnosť.'); btn.disabled = false; return; }
 
-    const file = document.getElementById('f-add-photo').files[0];
+    const file = document.getElementById('f-add-photo').files[0] || window.addGalleryFile;
     const up = file ? await uploadPhotoWithThumb(file, `upd_${Date.now()}`) : { photo_url: null, photo_thumb_url: null };
 
     const { data, error } = await sb.from('issues').insert([{
@@ -484,7 +484,7 @@ document.getElementById('f-stat').onsubmit = async (e) => {
     const id = document.getElementById('f-stat-id').value;
     const st = document.getElementById('f-stat-val').value;
 
-    const file = document.getElementById('f-stat-photo').files[0];
+    const file = document.getElementById('f-stat-photo').files[0] || window.editGalleryFile;
     const up = file ? await uploadPhotoWithThumb(file, `upd_${uId || Date.now()}`) : null;
 
     const { error: issErr } = await sb.from('issues').update({
@@ -578,8 +578,23 @@ window.previewAddPhoto = function(input) {
   } else if (p) { p.classList.add('hidden'); }
 };
 
+window.addGalleryFile = null;
+window.editGalleryFile = null;
+
+window.addPhotoFromGallery = function(input) {
+  window.addGalleryFile = input.files[0];
+  window.previewAddPhoto(input);
+};
+
+window.editPhotoFromGallery = function(input) {
+  window.editGalleryFile = input.files[0];
+  window.previewEditPhoto(input);
+};
+
 window.clearAddPhoto = function() {
   var i = document.getElementById('f-add-photo'); if (i) i.value = '';
+  var g = document.getElementById('f-add-photo-gallery'); if (g) g.value = '';
+  window.addGalleryFile = null;
   var p = document.getElementById('add-photo-preview'); if (p) p.classList.add('hidden');
 };
 
@@ -793,6 +808,8 @@ window.removePhotoFromUpdate = () => {
   removePhotoFlag = true;
   currentEditingPhotoUrl = null;
   var i = document.getElementById('f-stat-photo'); if (i) i.value = '';
+  var g = document.getElementById('f-stat-photo-gallery'); if (g) g.value = '';
+  window.editGalleryFile = null;
   var p = document.getElementById('edit-photo-preview'); if (p) p.classList.add('hidden');
 };
 
