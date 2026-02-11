@@ -193,7 +193,7 @@ async function loadSections() {
       const fLog = logs.length > 0 ? logs[0] : null;
 
       return `
-        <div class="flex justify-between items-start leading-tight mb-6 last:mb-0">
+        <div class="flex justify-between items-start leading-tight">
           <div class="flex-1 leading-tight">
             <p class="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">${i.locations?.name || '--'}</p>
             <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} leading-tight mb-1">${i.title}</p>
