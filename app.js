@@ -663,6 +663,13 @@ window.printReport = async () => {
   window.print();
 };
 
+window.closeStatus = function() {
+  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
+  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
+  currentEditingPhotoUrl = null;
+  removePhotoFlag = false;
+  hideM('m-status');
+};
 
 init();
   
