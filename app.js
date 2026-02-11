@@ -226,8 +226,8 @@ async function loadReports() {
     const logs = updts.filter(u => u.issue_id === i.id);
     return `<tr class="rep-row italic leading-snug leading-tight italic">
       <td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight leading-tight leading-tight leading-tight italic">
-        <span class="block font-black text-slate-400 uppercase text-[7px] italic">${i.locations.floor}</span>
-        <span class="text-[10px] font-bold italic italic leading-tight leading-tight leading-tight leading-tight italic">${i.locations.name}</span>
+        <span class="block font-black text-slate-400 uppercase text-[7px] italic">${i.locations ? i.locations.floor : '--'}</span>
+<span class="text-[10px] font-bold italic italic leading-tight leading-tight leading-tight leading-tight italic">${i.locations ? i.locations.name : '--'}</span>
         <p class="text-[7px] font-bold text-slate-400 uppercase mt-2 italic italic leading-tight leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p>
       </td>
       <td class="py-5 px-3 align-top italic leading-snug leading-tight leading-tight italic">
