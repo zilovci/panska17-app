@@ -209,6 +209,30 @@ async function loadSections() {
     `;
     container.appendChild(div);
   });
+
+  // Show orphaned issues (no valid location)
+  const orphans = allIssues.filter(i => !allLocs.some(l => l.id === i.location_id));
+  if (orphans.length > 0) {
+    const odiv = document.createElement('div');
+    odiv.className = 'bg-red-50 p-6 md:p-8 rounded-[2rem] shadow-sm italic leading-tight mb-6 border border-red-200';
+    odiv.innerHTML = `
+      <div class="flex justify-between items-center border-b border-red-200 pb-4 mb-4 italic leading-tight">
+        <h3 class="font-black text-xl italic uppercase text-red-400 leading-tight">Bez lokácie</h3>
+      </div>
+      <div class="space-y-4 italic leading-tight">
+        ${orphans.map(i => `
+          <div class="flex justify-between items-center italic leading-tight mb-2">
+            <div>
+              <p class="text-sm font-bold text-slate-600 italic">${i.title}</p>
+              <p class="text-[8px] text-red-400 font-bold uppercase italic">Záznam nemá priradenú miestnosť</p>
+            </div>
+            <button onclick="window.deleteOrphan('${i.id}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase leading-tight">Vymazať</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    container.appendChild(odiv);
+  }
 }
 
 async function loadReports() {
@@ -222,9 +246,12 @@ async function loadReports() {
 
   if (!isss || isss.length === 0) { list.innerHTML = ''; return; }
 
-  isss.sort((a,b) => (a.locations ? a.locations.sort_order : 999) - (b.locations ? b.locations.sort_order : 999));
+  const validIssues = isss.filter(i => i.locations);
+  if (validIssues.length === 0) { list.innerHTML = ''; return; }
 
-  list.innerHTML = isss.map(i => {
+  validIssues.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
+
+  list.innerHTML = validIssues.map(i => {
     const logs = updts.filter(u => u.issue_id === i.id);
     return `<tr class="rep-row italic leading-snug leading-tight italic">
       <td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight leading-tight leading-tight leading-tight italic">
@@ -386,11 +413,14 @@ document.getElementById('f-add').onsubmit = async (e) => {
   btn.disabled = true;
 
   try {
+    const locId = document.getElementById('f-add-loc-id').value;
+    if (!locId) { alert('Vyber miestnosť.'); btn.disabled = false; return; }
+
     const file = document.getElementById('f-add-photo').files[0];
     const up = file ? await uploadPhotoWithThumb(file, `upd_${Date.now()}`) : { photo_url: null, photo_thumb_url: null };
 
     const { data, error } = await sb.from('issues').insert([{
-      location_id: document.getElementById('f-add-loc-id').value,
+      location_id: locId,
       title: document.getElementById('f-add-title').value,
       responsible_person: document.getElementById('f-add-resp').value,
       reported_by: document.getElementById('f-add-reported').value,
@@ -535,6 +565,13 @@ window.previewEditPhoto = function(input) {
     r.readAsDataURL(f);
     removePhotoFlag = false;
   }
+};
+
+window.deleteOrphan = async (id) => {
+  if (!confirm('Vymazať tento záznam bez lokácie? Vymaže sa aj celá história.')) return;
+  await sb.from('issue_updates').delete().eq('issue_id', id);
+  await sb.from('issues').delete().eq('id', id);
+  await loadSections();
 };
 
 window.resetToNewEntry = function() {
