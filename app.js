@@ -1,6 +1,5 @@
 const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
 const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
-const S_SERVICE_KEY = 'sb_secret_zSNJ-_6rv5eKd18XsxsYYA_7dTOc9RP'; // VLOŽ SEM service_role key zo Supabase Settings > API
 const sb = supabase.createClient(S_URL, S_KEY);
 
 let allLocs = [], allIssues = [], allUpdates = [];
@@ -13,14 +12,6 @@ let currentUserId = null;
 const sbCreate = supabase.createClient(S_URL, S_KEY, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
-
-// Admin client for password changes (needs service_role key)
-function getAdminClient() {
-  if (!S_SERVICE_KEY) { alert('Service role key nie je nastavený v app.js'); return null; }
-  return supabase.createClient(S_URL, S_SERVICE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false }
-  });
-}
 
 
 const fmtD = (str) => {
@@ -641,7 +632,7 @@ async function loadAdmin() {
   document.getElementById('admin-user-list').innerHTML = users.length === 0
     ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadni používatelia</p>'
     : users.map(u => `
-      <div class="p-4 bg-slate-50 rounded-xl space-y-3">
+      <div class="p-4 bg-slate-50 rounded-xl">
         <div class="flex items-center justify-between">
           <div class="flex-1">
             <p class="text-xs font-bold text-slate-800">${u.display_name || '--'}</p>
@@ -651,14 +642,9 @@ async function loadAdmin() {
             <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
               ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
             </select>
-            ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}','${u.user_id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
+            ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
           </div>
         </div>
-        ${u.user_id !== currentUserId ? `
-        <div class="flex items-center space-x-2">
-          <input type="text" id="pw-${u.user_id}" placeholder="Nové heslo..." class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-[10px]">
-          <button onclick="window.changeUserPassword('${u.user_id}')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase">Zmeniť heslo</button>
-        </div>` : ''}
       </div>
     `).join('');
 }
@@ -668,16 +654,19 @@ window.changeUserRole = async (profileId, newRole) => {
   await loadAdmin();
 };
 
-window.changeUserPassword = async (userId) => {
-  var input = document.getElementById('pw-' + userId);
+window.deleteUser = async (profileId) => {
+  if (!confirm('Vymazať tohto používateľa?')) return;
+  await sb.from('user_profiles').delete().eq('id', profileId);
+  await loadAdmin();
+};
+
+window.changeOwnPassword = async () => {
+  var input = document.getElementById('own-new-pass');
   var newPass = input ? input.value.trim() : '';
   if (newPass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
 
-  var adminClient = getAdminClient();
-  if (!adminClient) return;
-
   try {
-    const { error } = await adminClient.auth.admin.updateUserById(userId, { password: newPass });
+    const { error } = await sb.auth.updateUser({ password: newPass });
     if (error) throw error;
     input.value = '';
     alert('Heslo zmenené.');
@@ -685,16 +674,6 @@ window.changeUserPassword = async (userId) => {
     console.error(err);
     alert('Chyba: ' + (err.message || 'Nepodarilo sa zmeniť heslo.'));
   }
-};
-
-window.deleteUser = async (profileId, userId) => {
-  if (!confirm('Vymazať tohto používateľa?')) return;
-  await sb.from('user_profiles').delete().eq('id', profileId);
-  var adminClient = getAdminClient();
-  if (adminClient) {
-    try { await adminClient.auth.admin.deleteUser(userId); } catch(e) { console.warn('Auth user delete failed:', e); }
-  }
-  await loadAdmin();
 };
 
 document.getElementById('f-add-user').onsubmit = async (e) => {
@@ -707,24 +686,13 @@ document.getElementById('f-add-user').onsubmit = async (e) => {
   if (pass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
 
   try {
-    var adminClient = getAdminClient();
-    var authData, authErr;
-
-    if (adminClient) {
-      // Admin API - user is auto-confirmed
-      var result = await adminClient.auth.admin.createUser({ email: email, password: pass, email_confirm: true });
-      authData = result.data; authErr = result.error;
-    } else {
-      // Fallback - user needs to confirm email
-      var result = await sbCreate.auth.signUp({ email: email, password: pass });
-      authData = result.data; authErr = result.error;
-    }
-    if (authErr) throw authErr;
-    if (!authData.user) throw new Error('Nepodarilo sa vytvoriť používateľa');
+    var result = await sbCreate.auth.signUp({ email: email, password: pass });
+    if (result.error) throw result.error;
+    if (!result.data.user) throw new Error('Nepodarilo sa vytvoriť používateľa');
 
     // Create profile
     const { error: profErr } = await sb.from('user_profiles').insert([{
-      user_id: authData.user.id,
+      user_id: result.data.user.id,
       email: email,
       display_name: name,
       role: role
