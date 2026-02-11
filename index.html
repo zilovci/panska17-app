@@ -117,7 +117,13 @@
                 </div>
                 <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold italic" placeholder="Názov položky" required>
                 <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24 italic" placeholder="Popis..."></textarea>
-                <div class="space-y-1 italic"><label class="text-[9px] font-black text-slate-400 uppercase italic ml-1 italic leading-tight">Pridať fotku</label><div id="add-photo-preview" class="hidden mb-2 relative w-20 h-20 border rounded-lg overflow-hidden italic shadow-sm"><img id="add-photo-img" class="w-full h-full object-cover italic"></div><input type="file" id="f-add-photo" accept="image/*" class="w-full text-[10px] text-slate-400 italic"></div>
+                <div class="space-y-1 italic">
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1 leading-tight">Pridať fotku</label>
+                    <div id="add-photo-preview" class="hidden mb-2 relative w-20 h-20 border rounded-lg overflow-hidden shadow-sm">
+                        <img id="add-photo-img" class="w-full h-full object-cover">
+                    </div>
+                    <input type="file" id="f-add-photo" accept="image/*" class="w-full text-[10px] text-slate-400">
+                </div>
                 <div class="flex space-x-3 pt-4 italic font-bold">
                     <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-300 italic">Zrušiť</button>
                     <button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs shadow-lg leading-tight italic">Uložiť</button>
