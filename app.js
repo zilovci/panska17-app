@@ -298,10 +298,12 @@ window.prepStat = (id) => {
   const item = allIssues.find(i => i.id === id);
   if(!item) return;
 
-// reset photo state
+  // reset to new-entry mode
   var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
   var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
+  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
   document.getElementById('f-stat-update-id').value = '';
+  document.getElementById('f-stat-note').value = '';
   currentEditingPhotoUrl = null;
   removePhotoFlag = false;
 
@@ -356,6 +358,8 @@ window.editHEntry = (id) => {
     currentEditingPhotoUrl = null;
     removePhotoFlag = false;
   }
+
+  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.remove('hidden');
 };
 
 window.delHEntry = async (id) => {
@@ -523,6 +527,17 @@ window.previewEditPhoto = function(input) {
   }
 };
 
+window.resetToNewEntry = function() {
+  document.getElementById('f-stat-update-id').value = '';
+  document.getElementById('f-stat-note').value = '';
+  document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
+  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
+  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
+  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
+  currentEditingPhotoUrl = null;
+  removePhotoFlag = false;
+};
+
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
@@ -663,13 +678,6 @@ window.printReport = async () => {
   window.print();
 };
 
-window.closeStatus = function() {
-  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
-  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
-  currentEditingPhotoUrl = null;
-  removePhotoFlag = false;
-  hideM('m-status');
-};
 
 init();
   
