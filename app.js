@@ -298,6 +298,13 @@ window.prepStat = (id) => {
   const item = allIssues.find(i => i.id === id);
   if(!item) return;
 
+// reset photo state
+  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
+  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
+  document.getElementById('f-stat-update-id').value = '';
+  currentEditingPhotoUrl = null;
+  removePhotoFlag = false;
+
   document.getElementById('f-stat-id').value = id;
   document.getElementById('f-stat-val').value = item.status;
   document.getElementById('f-stat-title-edit').value = item.title;
