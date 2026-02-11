@@ -1,6 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,700;0,800;1,400;1,700;1,800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
 
-body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: italic; }
+body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
+* { font-style: normal !important; }
 
 /* OBHLIADKA BEZ ČIAR */
 #section-container .bg-white { border: none !important; box-shadow: none !important; margin-bottom: 24px; }
