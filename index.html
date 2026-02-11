@@ -13,7 +13,7 @@
 <!-- MOBILNÁ LIŠTA S HARMONIKOU -->
 <div id="mobile-nav" class="md:hidden no-print bg-white border-b border-slate-200 sticky top-0 z-[100]">
     <div class="flex items-center justify-between p-4">
-        <div class="flex items-center space-x-2 italic">
+        <div class="flex items-center space-x-2">
             <i class="fa-solid fa-building text-blue-600 text-xl"></i>
             <span class="font-black uppercase text-base tracking-tighter">Panská 17</span>
         </div>
@@ -22,14 +22,14 @@
         </button>
     </div>
     
-    <div id="mobile-accordion" class="hidden border-t border-slate-50 bg-white italic">
+    <div id="mobile-accordion" class="hidden border-t border-slate-50 bg-white">
         <nav class="flex flex-col p-4 space-y-2">
-            <button onclick="switchView('dash')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Dashboard</button>
-            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Obhliadka BR</button>
-            <button onclick="switchView('rep')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Report</button>
-            <button onclick="switchView('arch')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Archív</button>
-            <button onclick="switchView('admin')" id="n-admin-mob" class="hidden text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400 italic">Admin</button>
-            <button onclick="handleLogout()" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-red-400 border-t border-slate-50 mt-2 italic">Odhlásiť sa</button>
+            <button onclick="switchView('dash')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Dashboard</button>
+            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Obhliadka BR</button>
+            <button onclick="switchView('rep')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Report</button>
+            <button onclick="switchView('arch')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Archív</button>
+            <button onclick="switchView('admin')" id="n-admin-mob" class="hidden text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Admin</button>
+            <button onclick="handleLogout()" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-red-400 border-t border-slate-50 mt-2">Odhlásiť sa</button>
         </nav>
     </div>
 </div>
@@ -39,16 +39,16 @@
             <i class="fa-solid fa-building text-blue-600 text-5xl mb-6"></i>
             <h1 class="font-black text-3xl uppercase tracking-tighter mb-8">Panská 17</h1>
             <form id="f-login" class="space-y-4">
-                <input type="email" id="log-email" placeholder="Email" class="w-full border p-4 rounded-2xl outline-none font-bold italic" required>
-                <input type="password" id="log-pass" placeholder="Heslo" class="w-full border p-4 rounded-2xl outline-none font-bold italic" required>
-                <button type="submit" id="btn-login" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg mt-4 italic">Prihlásiť sa</button>
+                <input type="email" id="log-email" placeholder="Email" class="w-full border p-4 rounded-2xl outline-none font-bold" required>
+                <input type="password" id="log-pass" placeholder="Heslo" class="w-full border p-4 rounded-2xl outline-none font-bold" required>
+                <button type="submit" id="btn-login" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg mt-4">Prihlásiť sa</button>
                 <p id="log-error" class="hidden text-red-500 text-xs font-bold mt-4">Chyba prihlásenia</p>
             </form>
         </div>
     </div>
 
     <!-- APP VIEW -->
-    <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row italic leading-tight">
+    <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row leading-tight">
         <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col fixed md:relative h-screen no-print z-50">
             <div class="p-8">
                 <div class="flex items-center space-x-3"><i class="fa-solid fa-building text-blue-600 text-2xl"></i><h1 class="font-black text-2xl tracking-tighter uppercase text-slate-900">Panská 17</h1></div>
@@ -61,24 +61,30 @@
                 <button onclick="switchView('admin')" id="n-admin" class="hidden w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Admin</button>
             </nav>
             <div class="p-8 mt-auto space-y-4">
+                <div id="own-pass-section" class="hidden space-y-2 pb-4 border-b border-slate-100">
+                    <input type="password" id="own-new-pass" placeholder="Nové heslo..." class="w-full border border-slate-200 rounded-lg px-3 py-2 text-[10px]">
+                    <button onclick="window.changeOwnPassword()" class="w-full bg-slate-900 text-white px-3 py-2 rounded-lg text-[9px] font-bold uppercase">Uložiť heslo</button>
+                    <button onclick="document.getElementById('own-pass-section').classList.add('hidden')" class="w-full text-[9px] font-bold text-slate-400 uppercase">Zrušiť</button>
+                </div>
+                <button onclick="document.getElementById('own-pass-section').classList.toggle('hidden')" class="flex items-center space-x-3 text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-key mr-2"></i>Zmeniť heslo</button>
                 <button onclick="location.reload()" class="flex items-center space-x-3 text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-rotate mr-2"></i>Obnoviť</button>
                 <button onclick="handleLogout()" class="flex items-center space-x-3 text-slate-300 hover:text-red-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-power-off mr-2"></i>Odhlásiť sa</button>
             </div>
         </aside>
 
-        <main class="flex-1 p-4 md:p-12 overflow-y-auto bg-slate-50 italic">
+        <main class="flex-1 p-4 md:p-12 overflow-y-auto bg-slate-50">
             <div id="v-dash" class="max-w-4xl space-y-10">
                 <h2 class="text-2xl font-black uppercase tracking-tighter">Dashboard</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aktívne</p><p id="s-open" class="text-5xl font-semibold mt-2 tracking-tight italic">--</p></div>
-                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené</p><p id="s-done" class="text-5xl font-semibold mt-2 text-green-500 tracking-tight italic">--</p></div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aktívne</p><p id="s-open" class="text-5xl font-semibold mt-2 tracking-tight">--</p></div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené</p><p id="s-done" class="text-5xl font-semibold mt-2 text-green-500 tracking-tight">--</p></div>
                 </div>
             </div>
 
             <div id="v-insp" class="hidden max-w-4xl space-y-6">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4">
                     <h2 class="text-2xl font-black uppercase tracking-tighter">Obhliadka   BR</h2>
-                    <div class="mt-4 sm:mt-0 w-full sm:w-80"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white font-bold outline-none italic leading-tight"></div>
+                    <div class="mt-4 sm:mt-0 w-full sm:w-80"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white font-bold outline-none leading-tight"></div>
                 </div>
                 <div id="section-container" class="space-y-6 pb-32"></div>
             </div>
@@ -89,34 +95,34 @@
                     <button onclick="printReport()" class="bg-slate-900 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-lg">Tlačiť / PDF</button>
                 </header>
                 <div class="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm print-card">
-                    <div class="mb-4 flex justify-between items-end italic">
+                    <div class="mb-4 flex justify-between items-end">
                         <h3 class="text-xl font-black text-slate-900">Správa o údržbe a opravách</h3>
                         <span class="text-[12px] font-bold text-slate-400" id="rep-date-screen"></span>
                     </div>
                     <table class="report-table">
-                        <thead><tr class="italic"><th>Podlažie / Miestnosť</th><th>Timeline & Fotodokumentácia</th><th class="text-center">Stav</th></tr></thead>
+                        <thead><tr class=""><th>Podlažie / Miestnosť</th><th>Timeline & Fotodokumentácia</th><th class="text-center">Stav</th></tr></thead>
                         <tbody id="rep-list"></tbody>
                     </table>
                 </div>
             </div>
-            <div id="v-arch" class="hidden max-w-4xl space-y-6 italic leading-tight"><h2 class="text-xl font-bold italic text-slate-300 uppercase tracking-tighter">Archív</h2><div id="archive-container" class="space-y-2"></div></div>
+            <div id="v-arch" class="hidden max-w-4xl space-y-6 leading-tight"><h2 class="text-xl font-bold text-slate-300 uppercase tracking-tighter">Archív</h2><div id="archive-container" class="space-y-2"></div></div>
 
             <!-- ADMIN VIEW -->
-            <div id="v-admin" class="hidden max-w-4xl space-y-8 italic leading-tight">
+            <div id="v-admin" class="hidden max-w-4xl space-y-8 leading-tight">
                 <h2 class="text-2xl font-black uppercase tracking-tighter">Admin</h2>
 
                 <!-- PRIDAŤ POUŽÍVATEĽA -->
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <h3 class="font-black text-lg uppercase italic mb-6 border-b border-slate-100 pb-4">Nový používateľ</h3>
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Nový používateľ</h3>
                     <form id="f-add-user" class="space-y-4">
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Email</label><input type="email" id="f-user-email" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="email@..." required></div>
-                            <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Meno</label><input type="text" id="f-user-name" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Meno..."></div>
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Email</label><input type="email" id="f-user-email" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="email@..." required></div>
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Meno</label><input type="text" id="f-user-name" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
-                            <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Heslo</label><input type="text" id="f-user-pass" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Min. 6 znakov" required></div>
-                            <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Rola</label>
-                                <select id="f-user-role" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold italic">
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Heslo</label><input type="text" id="f-user-pass" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Min. 6 znakov" required></div>
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Rola</label>
+                                <select id="f-user-role" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold">
                                     <option value="pozorovatel">Pozorovateľ</option>
                                     <option value="pracovnik">Pracovník</option>
                                     <option value="spravca">Správca</option>
@@ -130,14 +136,14 @@
 
                 <!-- ZOZNAM POUŽÍVATEĽOV -->
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <h3 class="font-black text-lg uppercase italic mb-6 border-b border-slate-100 pb-4">Používatelia</h3>
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Používatelia</h3>
                     <div id="admin-user-list" class="space-y-3"></div>
                 </div>
 
                 <!-- PREHĽAD ROLÍ -->
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <h3 class="font-black text-lg uppercase italic mb-6 border-b border-slate-100 pb-4">Profily a oprávnenia</h3>
-                    <div class="space-y-4 text-xs italic">
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Profily a oprávnenia</h3>
+                    <div class="space-y-4 text-xs">
                         <div class="p-4 bg-slate-50 rounded-xl">
                             <p class="font-black text-slate-800 uppercase text-[10px] mb-1">Admin</p>
                             <p class="text-slate-500">Plný prístup. Správa používateľov, všetky operácie.</p>
@@ -162,28 +168,28 @@
 
     <!-- MODAL: ADD -->
     <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
-        <div class="bg-white rounded-[2rem] p-10 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto italic text-left leading-tight">
-            <h3 class="font-black text-2xl mb-1 uppercase italic">Nový záznam</h3>
-            <p id="m-add-floor-label" class="text-blue-600 text-[10px] font-bold uppercase mb-6 border-b border-slate-100 pb-2 italic"></p>
+        <div class="bg-white rounded-[2rem] p-10 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-left leading-tight">
+            <h3 class="font-black text-2xl mb-1 uppercase">Nový záznam</h3>
+            <p id="m-add-floor-label" class="text-blue-600 text-[10px] font-bold uppercase mb-6 border-b border-slate-100 pb-2"></p>
             <form id="f-add" class="space-y-4">
-                <div class="grid grid-cols-2 gap-3 italic">
-                    <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Dátum</label><input type="date" id="f-add-date" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold bg-slate-50 italic"></div>
-                    <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Miestnosť</label><select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic font-bold"></select></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Dátum</label><input type="date" id="f-add-date" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold bg-slate-50"></div>
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Miestnosť</label><select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold"></select></div>
                 </div>
-                <div class="grid grid-cols-2 gap-3 italic">
-                    <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Nahlásil</label><input type="text" id="f-add-reported" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Meno..."></div>
-                    <div><label class="text-[9px] font-bold text-slate-400 uppercase italic">Zodpovedný</label><input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Meno..."></div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Nahlásil</label><input type="text" id="f-add-reported" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Zodpovedný</label><input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
                 </div>
-                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs italic" placeholder="Názov položky" required>
-                <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24 italic" placeholder="Popis..."></textarea>
+                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Názov položky" required>
+                <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24" placeholder="Popis..."></textarea>
                 <div id="add-photo-preview" class="hidden relative inline-block">
                     <img id="add-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                     <button type="button" onclick="window.clearAddPhoto()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                 </div>
-                <input type="file" id="f-add-photo" accept="image/*" onchange="window.previewAddPhoto(this)" class="text-xs text-slate-400 italic">
-                <div class="flex space-x-3 pt-4 italic font-bold">
-                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-400 italic">Zrušiť</button>
-                    <button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs shadow-lg leading-tight italic">Uložiť</button>
+                <input type="file" id="f-add-photo" accept="image/*" onchange="window.previewAddPhoto(this)" class="text-xs text-slate-400">
+                <div class="flex space-x-3 pt-4 font-bold">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-400">Zrušiť</button>
+                    <button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs shadow-lg leading-tight">Uložiť</button>
                 </div>
             </form>
         </div>
@@ -191,28 +197,28 @@
 
     <!-- MODAL: STATUS -->
     <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
-        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto italic text-left leading-tight">
-            <div class="flex justify-between items-center mb-6 border-b pb-4 italic leading-tight"><h3 class="font-black text-xl uppercase italic">Aktualizácia</h3><button id="btn-del-issue" onclick="confirmDelete()" class="text-red-300 hover:text-red-600 italic leading-tight"><i class="fa-solid fa-trash italic"></i></button></div>
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto text-left leading-tight">
+            <div class="flex justify-between items-center mb-6 border-b pb-4 leading-tight"><h3 class="font-black text-xl uppercase">Aktualizácia</h3><button id="btn-del-issue" onclick="confirmDelete()" class="text-red-300 hover:text-red-600 leading-tight"><i class="fa-solid fa-trash"></i></button></div>
             <form id="f-stat" class="space-y-4">
                 <input type="hidden" id="f-stat-id"><input type="hidden" id="f-stat-update-id">
-                <div class="grid grid-cols-2 gap-3 italic leading-tight"><input type="text" id="f-stat-title-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs bg-slate-50 italic"><select id="f-stat-loc-id" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50 italic"></select></div>
-                <div class="grid grid-cols-2 gap-3 italic leading-tight"><input type="date" id="f-stat-date" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic"><select id="f-stat-val" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold italic"><option value="Zahlásené">Zahlásené</option><option value="V riešení">V riešení</option><option value="Vybavené">Vybavené</option><option value="Opravené">Opravené</option></select></div>
-                <div class="grid grid-cols-2 gap-3 italic leading-tight">
-                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase italic">Nahlásil</label><input type="text" id="f-stat-reported-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white italic" placeholder="Meno..."></div>
-                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase italic">Zodpovedný</label><input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white italic" placeholder="Meno..."></div>
+                <div class="grid grid-cols-2 gap-3 leading-tight"><input type="text" id="f-stat-title-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs bg-slate-50"><select id="f-stat-loc-id" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50"></select></div>
+                <div class="grid grid-cols-2 gap-3 leading-tight"><input type="date" id="f-stat-date" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold"><select id="f-stat-val" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold"><option value="Zahlásené">Zahlásené</option><option value="V riešení">V riešení</option><option value="Vybavené">Vybavené</option><option value="Opravené">Opravené</option></select></div>
+                <div class="grid grid-cols-2 gap-3 leading-tight">
+                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase">Nahlásil</label><input type="text" id="f-stat-reported-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white" placeholder="Meno..."></div>
+                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase">Zodpovedný</label><input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white" placeholder="Meno..."></div>
                 </div>
-                <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 italic outline-none focus:ring-1 ring-blue-500 italic" placeholder="Poznámka k zmene..."></textarea>
-                <div class="space-y-1 italic"><label class="text-[9px] font-black text-slate-400 uppercase italic ml-1 italic leading-tight">Pridať fotku</label><div id="edit-photo-preview" class="hidden mb-2 relative inline-block"><img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm"><button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button></div><input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="w-full text-[10px] text-slate-400 italic"></div>
+                <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 outline-none focus:ring-1 ring-blue-500" placeholder="Poznámka k zmene..."></textarea>
+                <div class="space-y-1"><label class="text-[9px] font-black text-slate-400 uppercase ml-1 leading-tight">Pridať fotku</label><div id="edit-photo-preview" class="hidden mb-2 relative inline-block"><img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm"><button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button></div><input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="w-full text-[10px] text-slate-400"></div>
                 <div id="edit-mode-bar" class="hidden flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl">
-                    <span class="text-[9px] font-black text-blue-600 uppercase italic">Editujete existujúci záznam</span>
-                    <button type="button" onclick="window.resetToNewEntry()" class="text-[9px] font-black text-blue-600 uppercase underline italic">+ Nová návšteva</button>
+                    <span class="text-[9px] font-black text-blue-600 uppercase">Editujete existujúci záznam</span>
+                    <button type="button" onclick="window.resetToNewEntry()" class="text-[9px] font-black text-blue-600 uppercase underline">+ Nová návšteva</button>
                 </div>
-                <div id="m-history-list" class="space-y-3 pt-4 border-t italic"></div>
-                <div id="saving-indicator" class="hidden text-center text-blue-600 font-bold animate-pulse text-[10px] uppercase italic">Sync...</div>
-                <div class="flex flex-col space-y-2 pt-4 italic font-bold">
+                <div id="m-history-list" class="space-y-3 pt-4 border-t"></div>
+                <div id="saving-indicator" class="hidden text-center text-blue-600 font-bold animate-pulse text-[10px] uppercase">Sync...</div>
+                <div class="flex flex-col space-y-2 pt-4 font-bold">
                     <button type="submit" id="btn-save-stat" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-[10px]">Uložiť zmeny</button>
-                    <button type="button" id="btn-archive-issue" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-xl font-bold text-[9px] text-slate-500 uppercase italic leading-tight">Archivovať</button>
-                    <button type="button" onclick="hideM('m-status')" class="w-full py-1 text-[9px] font-bold text-slate-400 uppercase italic">Zavrieť</button>
+                    <button type="button" id="btn-archive-issue" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-xl font-bold text-[9px] text-slate-500 uppercase leading-tight">Archivovať</button>
+                    <button type="button" onclick="hideM('m-status')" class="w-full py-1 text-[9px] font-bold text-slate-400 uppercase">Zavrieť</button>
                 </div>
             </form>
         </div>
