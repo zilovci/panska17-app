@@ -586,9 +586,8 @@ async function loadArchive() {
     return `
     <div class="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center italic mb-4">
       <div>
-        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">${i.locations?.floor || '--'} • ${i.locations?.name || '--'}</p>
+        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">${i.locations?.floor || '--'} • ${i.locations?.name || '--'} • ${firstDate}</p>
         <p class="text-[13px] font-bold text-slate-600 italic">${i.title}</p>
-        <p class="text-[8px] text-slate-400 italic mt-1">Zahlásené: ${firstDate}</p>
       </div>
       <button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline italic leading-tight">Vrátiť</button>
     </div>`;
