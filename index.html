@@ -182,14 +182,14 @@
                 </div>
                 <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Názov položky" required>
                 <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24" placeholder="Popis..."></textarea>
-                <div class="space-y-1">
-                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1 leading-tight">Pridať fotku</label>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
                     <div id="add-photo-preview" class="hidden relative inline-block">
                         <img id="add-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                         <button type="button" onclick="window.clearAddPhoto()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                     <input type="file" id="f-add-photo" accept="image/*" onchange="window.previewAddPhoto(this)" class="hidden">
-                    <button type="button" onclick="document.getElementById('f-add-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-2"></i>Pridať</button>
+                    <div><button type="button" onclick="document.getElementById('f-add-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-2"></i>Pridať</button></div>
                 </div>
                 <div class="flex space-x-3 pt-4 font-bold">
                     <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-400">Zrušiť</button>
@@ -212,7 +212,15 @@
                     <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase">Zodpovedný</label><input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white" placeholder="Meno..."></div>
                 </div>
                 <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 outline-none focus:ring-1 ring-blue-500" placeholder="Poznámka k zmene..."></textarea>
-                <div class="space-y-1"><label class="text-[9px] font-black text-slate-400 uppercase ml-1 leading-tight">Pridať fotku</label><div id="edit-photo-preview" class="hidden mb-2 relative inline-block"><img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm"><button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button></div><input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="hidden"><button type="button" onclick="document.getElementById('f-stat-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-2"></i>Pridať</button></div>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
+                    <div id="edit-photo-preview" class="hidden relative inline-block">
+                        <img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
+                        <button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="hidden">
+                    <div><button type="button" onclick="document.getElementById('f-stat-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-2"></i>Pridať</button></div>
+                </div>
                 <div id="edit-mode-bar" class="hidden flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl">
                     <span class="text-[9px] font-black text-blue-600 uppercase">Editujete existujúci záznam</span>
                     <button type="button" onclick="window.resetToNewEntry()" class="text-[9px] font-black text-blue-600 uppercase underline">+ Nová návšteva</button>
