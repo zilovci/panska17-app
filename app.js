@@ -557,7 +557,9 @@ window.restoreIssue = async (id) => {
 
 window.confirmDelete = async () => {
   if(confirm("Vymazať natrvalo?")) {
-    await sb.from('issues').delete().eq('id', document.getElementById('f-stat-id').value);
+    var issueId = document.getElementById('f-stat-id').value;
+    await sb.from('issue_updates').delete().eq('issue_id', issueId);
+    await sb.from('issues').delete().eq('id', issueId);
     hideM('m-status');
     await loadSections();
   }
