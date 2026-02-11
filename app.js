@@ -259,6 +259,11 @@ window.prepAdd = (fN) => {
   document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
   document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  
+  // Clear previous photo preview
+  document.getElementById('add-photo-preview').classList.add('hidden');
+  document.getElementById('f-add-photo').value = '';
+  
   document.getElementById('m-add').classList.remove('hidden');
 };
 
@@ -623,6 +628,21 @@ window.printReport = async () => {
 
   window.print();
 };
+
+// Event listener for photo preview in new record modal
+document.getElementById('f-add-photo').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      document.getElementById('add-photo-img').src = event.target.result;
+      document.getElementById('add-photo-preview').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+  } else {
+    document.getElementById('add-photo-preview').classList.add('hidden');
+  }
+});
 
 
 init();
