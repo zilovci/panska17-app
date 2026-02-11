@@ -1,5 +1,6 @@
 const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
 const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
+const S_SERVICE_KEY = 'sb_secret_zSNJ-_6rv5eKd18XsxsYYA_7dTOc9RP'; // VLOŽ SEM service_role key zo Supabase Settings > API
 const sb = supabase.createClient(S_URL, S_KEY);
 
 let allLocs = [], allIssues = [], allUpdates = [];
@@ -12,6 +13,14 @@ let currentUserId = null;
 const sbCreate = supabase.createClient(S_URL, S_KEY, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
+
+// Admin client for password changes (needs service_role key)
+function getAdminClient() {
+  if (!S_SERVICE_KEY) { alert('Service role key nie je nastavený v app.js'); return null; }
+  return supabase.createClient(S_URL, S_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
+  });
+}
 
 
 const fmtD = (str) => {
@@ -160,7 +169,7 @@ async function loadDash() {
 
 async function loadSections() {
   const container = document.getElementById('section-container');
-  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Synchronizujem...</div>';
+  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Synchronizujem...</div>';
 
   const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
   allLocs = locs || [];
@@ -179,7 +188,7 @@ async function loadSections() {
     const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
 
     const div = document.createElement('div');
-    div.className = 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm italic leading-tight mb-6';
+    div.className = 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6';
 
     let issuesHtml = floorIssues.map(i => {
       const logs = allUpdates.filter(u => u.issue_id === i.id)
@@ -193,26 +202,26 @@ async function loadSections() {
       const fLog = logs.length > 0 ? logs[0] : null;
 
       return `
-        <div class="flex justify-between items-start italic leading-tight mb-6 last:mb-0">
-          <div class="flex-1 italic leading-tight">
-            <p class="text-[8px] font-black text-slate-400 uppercase italic leading-none mb-1">${i.locations?.name || '--'}</p>
-            <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} italic italic leading-tight mb-1">${i.title}</p>
-            <p class="text-[8px] text-slate-400 font-bold uppercase italic italic leading-tight italic">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
+        <div class="flex justify-between items-start leading-tight mb-6 last:mb-0">
+          <div class="flex-1 leading-tight">
+            <p class="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">${i.locations?.name || '--'}</p>
+            <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} leading-tight mb-1">${i.title}</p>
+            <p class="text-[8px] text-slate-400 font-bold uppercase leading-tight">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
           </div>
           <div class="flex items-center space-x-3 ml-4 leading-tight leading-tight">
             <div class="flex items-center leading-none">${photos}</div>
-            ${currentRole !== 'pozorovatel' ? `<button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline italic leading-tight">Upraviť</button>` : ''}
+            ${currentRole !== 'pozorovatel' ? `<button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline leading-tight">Upraviť</button>` : ''}
           </div>
         </div>`;
     }).join('');
 
     div.innerHTML = `
-      <div class="flex justify-between items-center border-b pb-4 mb-4 italic leading-tight">
-        <h3 class="font-black text-xl italic uppercase text-slate-900 leading-tight">${floor}</h3>
+      <div class="flex justify-between items-center border-b pb-4 mb-4 leading-tight">
+        <h3 class="font-black text-xl uppercase text-slate-900 leading-tight">${floor}</h3>
         ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>` : ''}
       </div>
-      <div class="space-y-4 italic leading-tight leading-tight leading-tight">
-        ${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase italic tracking-widest">OK</p>'}
+      <div class="space-y-4 leading-tight leading-tight leading-tight">
+        ${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase tracking-widest">OK</p>'}
       </div>
     `;
     container.appendChild(div);
@@ -222,17 +231,17 @@ async function loadSections() {
   const orphans = allIssues.filter(i => !allLocs.some(l => l.id === i.location_id));
   if (orphans.length > 0) {
     const odiv = document.createElement('div');
-    odiv.className = 'bg-red-50 p-6 md:p-8 rounded-[2rem] shadow-sm italic leading-tight mb-6 border border-red-200';
+    odiv.className = 'bg-red-50 p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6 border border-red-200';
     odiv.innerHTML = `
-      <div class="flex justify-between items-center border-b border-red-200 pb-4 mb-4 italic leading-tight">
-        <h3 class="font-black text-xl italic uppercase text-red-400 leading-tight">Bez lokácie</h3>
+      <div class="flex justify-between items-center border-b border-red-200 pb-4 mb-4 leading-tight">
+        <h3 class="font-black text-xl uppercase text-red-400 leading-tight">Bez lokácie</h3>
       </div>
-      <div class="space-y-4 italic leading-tight">
+      <div class="space-y-4 leading-tight">
         ${orphans.map(i => `
-          <div class="flex justify-between items-center italic leading-tight mb-2">
+          <div class="flex justify-between items-center leading-tight mb-2">
             <div>
-              <p class="text-sm font-bold text-slate-600 italic">${i.title}</p>
-              <p class="text-[8px] text-red-400 font-bold uppercase italic">Záznam nemá priradenú miestnosť</p>
+              <p class="text-sm font-bold text-slate-600">${i.title}</p>
+              <p class="text-[8px] text-red-400 font-bold uppercase">Záznam nemá priradenú miestnosť</p>
             </div>
             ${canEdit() ? `<button onclick="window.deleteOrphan('${i.id}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase leading-tight">Vymazať</button>` : ''}
           </div>
@@ -261,31 +270,31 @@ async function loadReports() {
 
   list.innerHTML = validIssues.map(i => {
     const logs = updts.filter(u => u.issue_id === i.id);
-    return `<tr class="rep-row italic leading-snug leading-tight italic">
-      <td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight leading-tight leading-tight leading-tight italic">
-        <span class="block font-black text-slate-400 uppercase text-[7px] italic">${i.locations ? i.locations.floor : '--'}</span>
-        <span class="text-[10px] font-bold italic italic leading-tight leading-tight leading-tight leading-tight italic">${i.locations ? i.locations.name : '--'}</span>
-        <p class="text-[7px] font-bold text-slate-400 uppercase mt-2 italic italic leading-tight leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p>
+    return `<tr class="rep-row leading-snug leading-tight">
+      <td class="py-5 px-2 align-top border-r border-slate-50 leading-tight leading-tight leading-tight leading-tight">
+        <span class="block font-black text-slate-400 uppercase text-[7px]">${i.locations ? i.locations.floor : '--'}</span>
+        <span class="text-[10px] font-bold leading-tight leading-tight leading-tight leading-tight">${i.locations ? i.locations.name : '--'}</span>
+        <p class="text-[7px] font-bold text-slate-400 uppercase mt-2 leading-tight leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p>
       </td>
-      <td class="py-5 px-3 align-top italic leading-snug leading-tight leading-tight italic">
-        <p class="font-bold text-slate-900 italic mb-3 leading-tight italic leading-tight leading-tight leading-tight italic">${i.title}</p>
-        <div class="space-y-4 italic leading-tight leading-tight italic leading-tight leading-tight italic">
+      <td class="py-5 px-3 align-top leading-snug leading-tight leading-tight">
+        <p class="font-bold text-slate-900 mb-3 leading-tight leading-tight leading-tight leading-tight">${i.title}</p>
+        <div class="space-y-4 leading-tight leading-tight leading-tight leading-tight">
           ${logs.map(u => `
-            <div class="flex justify-between items-start space-x-2 pb-1 italic leading-tight leading-tight leading-tight italic">
-              <div class="flex-1 italic leading-tight leading-tight leading-tight italic">
-                <div class="flex items-center space-x-2 mb-1 italic leading-tight leading-tight leading-tight leading-tight italic">
-                  <span class="font-black text-[7px] text-slate-400 uppercase italic leading-tight italic leading-tight leading-tight leading-tight italic">${fmtD(u.event_date)}</span>
-                  <span class="text-[6px] font-black px-1 border rounded uppercase italic leading-tight italic leading-tight leading-tight ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span>
+            <div class="flex justify-between items-start space-x-2 pb-1 leading-tight leading-tight leading-tight">
+              <div class="flex-1 leading-tight leading-tight leading-tight">
+                <div class="flex items-center space-x-2 mb-1 leading-tight leading-tight leading-tight leading-tight">
+                  <span class="font-black text-[7px] text-slate-400 uppercase leading-tight leading-tight leading-tight leading-tight">${fmtD(u.event_date)}</span>
+                  <span class="text-[6px] font-black px-1 border rounded uppercase leading-tight leading-tight leading-tight ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span>
                 </div>
-                <p class="text-[9px] text-slate-700 italic leading-snug leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight italic leading-tight">${u.note || '--'}</p>
+                <p class="text-[9px] text-slate-700 leading-snug leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">${u.note || '--'}</p>
               </div>
-              ${u.photo_url ? `<img loading="eager" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="report-thumb cursor-pointer italic" onclick="window.open('${u.photo_url}')">` : ''}
+              ${u.photo_url ? `<img loading="eager" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="report-thumb cursor-pointer" onclick="window.open('${u.photo_url}')">` : ''}
             </div>
           `).join('')}
         </div>
       </td>
-      <td class="py-5 px-1 align-top text-center italic leading-tight leading-tight italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight italic leading-tight">
-        <span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase italic leading-tight italic leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight italic ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span>
+      <td class="py-5 px-1 align-top text-center leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
+        <span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span>
       </td>
     </tr>`;
   }).join('');
@@ -356,19 +365,19 @@ window.prepStat = (id) => {
   document.getElementById('m-history-list').innerHTML = logs.map(u => {
     var showActions = canEditEntry(u);
     return `
-    <div data-uid="${u.id}" class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
+    <div data-uid="${u.id}" class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight">
       <div class="flex justify-between items-start mb-1 leading-tight">
-        <span class="font-black block text-slate-800 uppercase tracking-tighter italic leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span>
+        <span class="font-black block text-slate-800 uppercase tracking-tighter leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span>
         ${showActions ? `<div class="flex space-x-2 leading-tight leading-tight">
-          <button type="button" onclick="window.editHEntry('${u.id}')" class="text-blue-500 italic leading-none italic leading-tight"><i class="fa-solid fa-pencil italic leading-tight"></i></button>
-          <button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 italic leading-none leading-tight"><i class="fa-solid fa-trash-can italic leading-tight"></i></button>
+          <button type="button" onclick="window.editHEntry('${u.id}')" class="text-blue-500 leading-none leading-tight"><i class="fa-solid fa-pencil leading-tight"></i></button>
+          <button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 leading-none leading-tight"><i class="fa-solid fa-trash-can leading-tight"></i></button>
         </div>` : ''}
       </div>
-      <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 italic mb-2 leading-tight leading-tight">
+      <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 mb-2 leading-tight leading-tight">
         <p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p>
       </div>
-      <p class="text-slate-500 leading-snug italic">${u.note || '--'}</p>
-      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="app-thumb mt-2 italic" onclick="window.open('${u.photo_url}')">` : ''}
+      <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
+      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="app-thumb mt-2" onclick="window.open('${u.photo_url}')">` : ''}
     </div>`;
   }).join('');
 
@@ -387,9 +396,9 @@ window.editHEntry = (id) => {
   // highlight edited entry orange, reset others
   document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
     if (el.dataset.uid === id) {
-      el.className = 'p-3 bg-orange-50 rounded-xl border border-orange-200 text-[10px] mb-2 italic leading-tight';
+      el.className = 'p-3 bg-orange-50 rounded-xl border border-orange-200 text-[10px] mb-2 leading-tight';
     } else {
-      el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight';
+      el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight';
     }
   });
 
@@ -604,7 +613,7 @@ window.resetToNewEntry = function() {
   removePhotoFlag = false;
   // reset orange highlights
   document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
-    el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight';
+    el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight';
   });
 };
 
@@ -630,19 +639,26 @@ async function loadAdmin() {
   var roleLabels = { admin: 'Admin', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
 
   document.getElementById('admin-user-list').innerHTML = users.length === 0
-    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase italic py-6">Žiadni používatelia</p>'
+    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadni používatelia</p>'
     : users.map(u => `
-      <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-        <div class="flex-1">
-          <p class="text-xs font-bold text-slate-800 italic">${u.display_name || '--'}</p>
-          <p class="text-[9px] text-slate-400 italic">${u.email}</p>
+      <div class="p-4 bg-slate-50 rounded-xl space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <p class="text-xs font-bold text-slate-800">${u.display_name || '--'}</p>
+            <p class="text-[9px] text-slate-400">${u.email}</p>
+          </div>
+          <div class="flex items-center space-x-3">
+            <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
+              ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
+            </select>
+            ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}','${u.user_id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
+          </div>
         </div>
-        <div class="flex items-center space-x-3">
-          <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 italic ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
-            ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
-          </select>
-          ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}','${u.user_id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
-        </div>
+        ${u.user_id !== currentUserId ? `
+        <div class="flex items-center space-x-2">
+          <input type="text" id="pw-${u.user_id}" placeholder="Nové heslo..." class="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-[10px]">
+          <button onclick="window.changeUserPassword('${u.user_id}')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase">Zmeniť heslo</button>
+        </div>` : ''}
       </div>
     `).join('');
 }
@@ -652,10 +668,32 @@ window.changeUserRole = async (profileId, newRole) => {
   await loadAdmin();
 };
 
+window.changeUserPassword = async (userId) => {
+  var input = document.getElementById('pw-' + userId);
+  var newPass = input ? input.value.trim() : '';
+  if (newPass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
+
+  var adminClient = getAdminClient();
+  if (!adminClient) return;
+
+  try {
+    const { error } = await adminClient.auth.admin.updateUserById(userId, { password: newPass });
+    if (error) throw error;
+    input.value = '';
+    alert('Heslo zmenené.');
+  } catch (err) {
+    console.error(err);
+    alert('Chyba: ' + (err.message || 'Nepodarilo sa zmeniť heslo.'));
+  }
+};
+
 window.deleteUser = async (profileId, userId) => {
   if (!confirm('Vymazať tohto používateľa?')) return;
   await sb.from('user_profiles').delete().eq('id', profileId);
-  // Note: auth user stays in Supabase Auth, delete manually if needed
+  var adminClient = getAdminClient();
+  if (adminClient) {
+    try { await adminClient.auth.admin.deleteUser(userId); } catch(e) { console.warn('Auth user delete failed:', e); }
+  }
   await loadAdmin();
 };
 
@@ -669,8 +707,18 @@ document.getElementById('f-add-user').onsubmit = async (e) => {
   if (pass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
 
   try {
-    // Create auth user via separate client (won't log out admin)
-    const { data: authData, error: authErr } = await sbCreate.auth.signUp({ email: email, password: pass });
+    var adminClient = getAdminClient();
+    var authData, authErr;
+
+    if (adminClient) {
+      // Admin API - user is auto-confirmed
+      var result = await adminClient.auth.admin.createUser({ email: email, password: pass, email_confirm: true });
+      authData = result.data; authErr = result.error;
+    } else {
+      // Fallback - user needs to confirm email
+      var result = await sbCreate.auth.signUp({ email: email, password: pass });
+      authData = result.data; authErr = result.error;
+    }
     if (authErr) throw authErr;
     if (!authData.user) throw new Error('Nepodarilo sa vytvoriť používateľa');
 
@@ -727,7 +775,7 @@ function applyPermissions() {
 
 async function loadArchive() {
   const container = document.getElementById('archive-container');
-  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase italic">Sync...</div>';
+  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Sync...</div>';
 
   const { data: arch } = await sb.from('issues')
     .select('*, locations(*)')
@@ -735,7 +783,7 @@ async function loadArchive() {
     .order('updated_at', { ascending: false });
 
   if (!arch || arch.length === 0) {
-    container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px] italic">Archív je prázdny</div>';
+    container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px]">Archív je prázdny</div>';
     return;
   }
 
@@ -745,12 +793,12 @@ async function loadArchive() {
     const firstUpdate = updts.find(u => u.issue_id === i.id);
     const firstDate = firstUpdate ? fmtD(firstUpdate.event_date) : '--';
     return `
-    <div class="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center italic mb-4">
+    <div class="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center mb-4">
       <div>
         <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">${i.locations?.floor || '--'} • ${i.locations?.name || '--'} • ${firstDate}</p>
-        <p class="text-[13px] font-bold text-slate-600 italic">${i.title}</p>
+        <p class="text-[13px] font-bold text-slate-600">${i.title}</p>
       </div>
-      <button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline italic leading-tight">Vrátiť</button>
+      <button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline leading-tight">Vrátiť</button>
     </div>`;
   }).join('');
 }
