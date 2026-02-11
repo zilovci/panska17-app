@@ -197,7 +197,7 @@ async function loadSections() {
           <div class="flex-1 leading-tight">
             <p class="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">${i.locations?.name || '--'}</p>
             <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} leading-tight mb-1">${i.title}</p>
-            <p class="text-[8px] text-slate-400 font-bold uppercase leading-tight">Nahlásil: ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • Zodpovedný: ${i.responsible_person || '--'}</p>
+            <p class="text-[8px] text-slate-400 font-bold leading-tight"><span class="uppercase">Nahlásil:</span> ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • <span class="uppercase">Zodpovedný:</span> ${i.responsible_person || '--'}</p>
           </div>
           <div class="flex items-center space-x-3 ml-4 leading-tight leading-tight">
             <div class="flex items-center leading-none">${photos}</div>
@@ -364,8 +364,8 @@ window.prepStat = (id) => {
           <button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 leading-none leading-tight"><i class="fa-solid fa-trash-can leading-tight"></i></button>
         </div>` : ''}
       </div>
-      <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 mb-2 leading-tight leading-tight">
-        <p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p>
+      <div class="grid grid-cols-2 gap-2 text-[8px] font-bold text-slate-500 mb-2 leading-tight">
+        <p><span class="uppercase">Nahlásil:</span> ${u.attendance || '--'}</p><p><span class="uppercase">Zodpovedný:</span> ${item.responsible_person || '--'}</p>
       </div>
       <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
       ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="history-thumb" onclick="window.open('${u.photo_url}')">` : ''}
