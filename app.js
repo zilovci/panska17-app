@@ -368,7 +368,7 @@ window.prepStat = (id) => {
         <p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p>
       </div>
       <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
-      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="app-thumb mt-2" onclick="window.open('${u.photo_url}')">` : ''}
+      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="history-thumb" onclick="window.open('${u.photo_url}')">` : ''}
     </div>`;
   }).join('');
 
@@ -504,10 +504,15 @@ document.getElementById('f-stat').onsubmit = async (e) => {
         attendance: document.getElementById('f-stat-reported-edit').value
       };
 
-      if (up?.photo_url) payload.photo_url = up.photo_url;
-      else if (currentEditingPhotoUrl) payload.photo_url = currentEditingPhotoUrl;
-
-      if (up?.photo_thumb_url) payload.photo_thumb_url = up.photo_thumb_url;
+      if (removePhotoFlag) {
+        payload.photo_url = null;
+        payload.photo_thumb_url = null;
+      } else if (up?.photo_url) {
+        payload.photo_url = up.photo_url;
+        if (up?.photo_thumb_url) payload.photo_thumb_url = up.photo_thumb_url;
+      } else if (currentEditingPhotoUrl) {
+        payload.photo_url = currentEditingPhotoUrl;
+      }
 
       const { error: updErr } = await sb.from('issue_updates').update(payload).eq('id', uId);
       if (updErr) throw updErr;
