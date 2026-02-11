@@ -419,7 +419,9 @@ window.delHEntry = async (id) => {
   if (entry && !canEditEntry(entry)) { alert('Nemáte oprávnenie mazať tento záznam.'); return; }
   if(confirm("Zmazať?")) {
     await sb.from('issue_updates').delete().eq('id', id);
-    window.prepStat(document.getElementById('f-stat-id').value);
+    var issueId = document.getElementById('f-stat-id').value;
+    await loadSections();
+    window.prepStat(issueId);
   }
 };
 
@@ -883,4 +885,3 @@ window.printReport = async () => {
 
 
 init();
-  
