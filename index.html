@@ -188,8 +188,10 @@
                         <img id="add-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                         <button type="button" onclick="window.clearAddPhoto()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <input type="file" id="f-add-photo" accept="image/*" onchange="window.previewAddPhoto(this)" class="sr-only">
-                    <div><label for="f-add-photo" class="inline-block border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50 cursor-pointer"><i class="fa-solid fa-camera mr-2"></i>Pridať</label></div>
+                    <div class="relative inline-block border border-slate-200 rounded-xl px-4 py-2 hover:bg-slate-50 cursor-pointer overflow-hidden">
+                        <span class="text-[10px] font-bold text-slate-500"><i class="fa-solid fa-camera mr-2"></i>Pridať</span>
+                        <input type="file" id="f-add-photo" accept="image/*" onchange="window.previewAddPhoto(this)" class="absolute inset-0 opacity-0 cursor-pointer" style="font-size:0">
+                    </div>
                 </div>
                 <div class="flex space-x-3 pt-4 font-bold">
                     <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-400">Zrušiť</button>
@@ -218,8 +220,10 @@
                         <img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                         <button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="sr-only">
-                    <div><label for="f-stat-photo" class="inline-block border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50 cursor-pointer"><i class="fa-solid fa-camera mr-2"></i>Pridať</label></div>
+                    <div class="relative inline-block border border-slate-200 rounded-xl px-4 py-2 hover:bg-slate-50 cursor-pointer overflow-hidden">
+                        <span class="text-[10px] font-bold text-slate-500"><i class="fa-solid fa-camera mr-2"></i>Pridať</span>
+                        <input type="file" id="f-stat-photo" accept="image/*" onchange="window.previewEditPhoto(this)" class="absolute inset-0 opacity-0 cursor-pointer" style="font-size:0">
+                    </div>
                 </div>
                 <div id="edit-mode-bar" class="hidden flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl">
                     <span class="text-[9px] font-black text-blue-600 uppercase">Editujete existujúci záznam</span>
