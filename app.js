@@ -220,7 +220,7 @@ async function loadReports() {
   const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
-  isss.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
+  isss.sort((a,b) => (a.locations ? a.locations.sort_order : 999) - (b.locations ? b.locations.sort_order : 999));
 
   list.innerHTML = isss.map(i => {
     const logs = updts.filter(u => u.issue_id === i.id);
