@@ -5,6 +5,13 @@ const sb = supabase.createClient(S_URL, S_KEY);
 let allLocs = [], allIssues = [], allUpdates = [];
 let currentEditingPhotoUrl = null;
 let removePhotoFlag = false;
+let currentRole = null;
+let currentUserId = null;
+
+// Second client for creating users (won't disrupt admin session)
+const sbCreate = supabase.createClient(S_URL, S_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false }
+});
 
 
 const fmtD = (str) => {
@@ -123,17 +130,18 @@ async function switchView(v) {
     if (icon) icon.classList.replace('fa-xmark', 'fa-bars');
   }
 
-  ['v-dash', 'v-insp', 'v-arch', 'v-rep'].forEach(id => document.getElementById(id).classList.add('hidden'));
-  ['n-dash', 'n-insp', 'n-arch', 'n-rep'].forEach(id => document.getElementById(id).classList.remove('nav-active'));
+  ['v-dash', 'v-insp', 'v-arch', 'v-rep', 'v-admin'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  ['n-dash', 'n-insp', 'n-arch', 'n-rep', 'n-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.remove('nav-active'); });
 
   document.getElementById('v-'+v).classList.remove('hidden');
-  document.getElementById('n-'+v).classList.add('nav-active');
+  var nav = document.getElementById('n-'+v); if (nav) nav.classList.add('nav-active');
 
   // DÔLEŽITÉ: vráť Promise a počkaj na dáta + render
   if (v === 'dash') return await loadDash();
   if (v === 'insp') return await loadSections();
   if (v === 'arch') return await loadArchive();
   if (v === 'rep')  return await loadReports();
+  if (v === 'admin') return await loadAdmin();
 }
 
 
@@ -193,7 +201,7 @@ async function loadSections() {
           </div>
           <div class="flex items-center space-x-3 ml-4 leading-tight leading-tight">
             <div class="flex items-center leading-none">${photos}</div>
-            <button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline italic leading-tight">Upraviť</button>
+            ${currentRole !== 'pozorovatel' ? `<button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline italic leading-tight">Upraviť</button>` : ''}
           </div>
         </div>`;
     }).join('');
@@ -201,7 +209,7 @@ async function loadSections() {
     div.innerHTML = `
       <div class="flex justify-between items-center border-b pb-4 mb-4 italic leading-tight">
         <h3 class="font-black text-xl italic uppercase text-slate-900 leading-tight">${floor}</h3>
-        <button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>
+        ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>` : ''}
       </div>
       <div class="space-y-4 italic leading-tight leading-tight leading-tight">
         ${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase italic tracking-widest">OK</p>'}
@@ -226,7 +234,7 @@ async function loadSections() {
               <p class="text-sm font-bold text-slate-600 italic">${i.title}</p>
               <p class="text-[8px] text-red-400 font-bold uppercase italic">Záznam nemá priradenú miestnosť</p>
             </div>
-            <button onclick="window.deleteOrphan('${i.id}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase leading-tight">Vymazať</button>
+            ${canEdit() ? `<button onclick="window.deleteOrphan('${i.id}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase leading-tight">Vymazať</button>` : ''}
           </div>
         `).join('')}
       </div>
@@ -345,24 +353,31 @@ window.prepStat = (id) => {
   document.getElementById('f-stat-loc-id').innerHTML = allLocs.map(l => `<option value="${l.id}" ${l.id === item.location_id ? 'selected' : ''}>${l.floor}: ${l.name}</option>`).join('');
 
   const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
-  document.getElementById('m-history-list').innerHTML = logs.map(u => `
+  document.getElementById('m-history-list').innerHTML = logs.map(u => {
+    var showActions = canEditEntry(u);
+    return `
     <div data-uid="${u.id}" class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 italic leading-tight">
       <div class="flex justify-between items-start mb-1 leading-tight">
         <span class="font-black block text-slate-800 uppercase tracking-tighter italic leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span>
-        <div class="flex space-x-2 leading-tight leading-tight">
+        ${showActions ? `<div class="flex space-x-2 leading-tight leading-tight">
           <button type="button" onclick="window.editHEntry('${u.id}')" class="text-blue-500 italic leading-none italic leading-tight"><i class="fa-solid fa-pencil italic leading-tight"></i></button>
           <button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 italic leading-none leading-tight"><i class="fa-solid fa-trash-can italic leading-tight"></i></button>
-        </div>
+        </div>` : ''}
       </div>
       <div class="grid grid-cols-2 gap-2 text-[8px] font-bold uppercase text-slate-500 italic mb-2 leading-tight leading-tight">
         <p>Nahlásil: ${u.attendance || '--'}</p><p>Zodpovedný: ${item.responsible_person || '--'}</p>
       </div>
       <p class="text-slate-500 leading-snug italic">${u.note || '--'}</p>
       ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="app-thumb mt-2 italic" onclick="window.open('${u.photo_url}')">` : ''}
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   document.getElementById('m-status').classList.remove('hidden');
+
+  // Permission-based button visibility
+  var delBtn = document.getElementById('btn-del-issue'); if (delBtn) delBtn.classList.toggle('hidden', !canEdit());
+  var archBtn = document.getElementById('btn-archive-issue'); if (archBtn) archBtn.classList.toggle('hidden', !canEdit());
+  var saveBtn = document.getElementById('btn-save-stat'); if (saveBtn) saveBtn.classList.toggle('hidden', currentRole === 'pozorovatel');
 };
 
 window.editHEntry = (id) => {
@@ -400,6 +415,8 @@ window.editHEntry = (id) => {
 };
 
 window.delHEntry = async (id) => {
+  var entry = allUpdates.find(u => u.id === id);
+  if (entry && !canEditEntry(entry)) { alert('Nemáte oprávnenie mazať tento záznam.'); return; }
   if(confirm("Zmazať?")) {
     await sb.from('issue_updates').delete().eq('id', id);
     window.prepStat(document.getElementById('f-stat-id').value);
@@ -437,7 +454,8 @@ document.getElementById('f-add').onsubmit = async (e) => {
         event_date: document.getElementById('f-add-date').value,
         photo_url: up.photo_url,
         photo_thumb_url: up.photo_thumb_url,
-        attendance: document.getElementById('f-add-reported').value
+        attendance: document.getElementById('f-add-reported').value,
+        created_by: currentUserId
       }]);
       if (upErr) throw upErr;
 
@@ -502,7 +520,8 @@ document.getElementById('f-stat').onsubmit = async (e) => {
         event_date: document.getElementById('f-stat-date').value,
         photo_url: up?.photo_url || null,
         photo_thumb_url: up?.photo_thumb_url || null,
-        attendance: document.getElementById('f-stat-reported-edit').value
+        attendance: document.getElementById('f-stat-reported-edit').value,
+        created_by: currentUserId
       }]);
       if (insErr) throw insErr;
     }
@@ -589,15 +608,120 @@ window.resetToNewEntry = function() {
   });
 };
 
+// -------- Permission helpers --------
+function canEdit() { return ['admin', 'spravca'].includes(currentRole); }
+function canAdd() { return ['admin', 'spravca', 'pracovnik'].includes(currentRole); }
+
+function canEditEntry(entry) {
+  if (['admin', 'spravca'].includes(currentRole)) return true;
+  if (currentRole === 'pracovnik') {
+    var today = new Date().toISOString().split('T')[0];
+    var entryDate = entry.event_date ? entry.event_date.split('T')[0] : '';
+    return entry.created_by === currentUserId && entryDate === today;
+  }
+  return false;
+}
+
+// -------- Admin panel --------
+async function loadAdmin() {
+  if (currentRole !== 'admin') return;
+  const { data: users = [] } = await sb.from('user_profiles').select('*').order('created_at', { ascending: true });
+
+  var roleLabels = { admin: 'Admin', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
+
+  document.getElementById('admin-user-list').innerHTML = users.length === 0
+    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase italic py-6">Žiadni používatelia</p>'
+    : users.map(u => `
+      <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+        <div class="flex-1">
+          <p class="text-xs font-bold text-slate-800 italic">${u.display_name || '--'}</p>
+          <p class="text-[9px] text-slate-400 italic">${u.email}</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 italic ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
+            ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
+          </select>
+          ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}','${u.user_id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
+        </div>
+      </div>
+    `).join('');
+}
+
+window.changeUserRole = async (profileId, newRole) => {
+  await sb.from('user_profiles').update({ role: newRole }).eq('id', profileId);
+  await loadAdmin();
+};
+
+window.deleteUser = async (profileId, userId) => {
+  if (!confirm('Vymazať tohto používateľa?')) return;
+  await sb.from('user_profiles').delete().eq('id', profileId);
+  // Note: auth user stays in Supabase Auth, delete manually if needed
+  await loadAdmin();
+};
+
+document.getElementById('f-add-user').onsubmit = async (e) => {
+  e.preventDefault();
+  var email = document.getElementById('f-user-email').value;
+  var pass = document.getElementById('f-user-pass').value;
+  var name = document.getElementById('f-user-name').value;
+  var role = document.getElementById('f-user-role').value;
+
+  if (pass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
+
+  try {
+    // Create auth user via separate client (won't log out admin)
+    const { data: authData, error: authErr } = await sbCreate.auth.signUp({ email: email, password: pass });
+    if (authErr) throw authErr;
+    if (!authData.user) throw new Error('Nepodarilo sa vytvoriť používateľa');
+
+    // Create profile
+    const { error: profErr } = await sb.from('user_profiles').insert([{
+      user_id: authData.user.id,
+      email: email,
+      display_name: name,
+      role: role
+    }]);
+    if (profErr) throw profErr;
+
+    e.target.reset();
+    await loadAdmin();
+    alert('Používateľ vytvorený.');
+
+  } catch (err) {
+    console.error(err);
+    alert('Chyba: ' + (err.message || 'Nepodarilo sa.'));
+  }
+};
+
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
+    currentUserId = session.user.id;
+
+    // Fetch user role
+    const { data: profile } = await sb.from('user_profiles').select('role, display_name').eq('user_id', currentUserId).single();
+    currentRole = profile ? profile.role : 'spravca'; // default spravca if no profile yet
+
     document.getElementById('login-view').classList.add('hidden');
     document.getElementById('app-view').classList.remove('hidden');
+    applyPermissions();
     switchView('dash');
   } else {
     document.getElementById('login-view').classList.remove('hidden');
     document.getElementById('app-view').classList.add('hidden');
+  }
+}
+
+function applyPermissions() {
+  // Admin nav - only for admin
+  var na = document.getElementById('n-admin'); if (na) na.classList.toggle('hidden', currentRole !== 'admin');
+  var nam = document.getElementById('n-admin-mob'); if (nam) nam.classList.toggle('hidden', currentRole !== 'admin');
+
+  // Pozorovateľ: hide add buttons, edit buttons etc via CSS class on body
+  if (currentRole === 'pozorovatel') {
+    document.body.classList.add('role-readonly');
+  } else {
+    document.body.classList.remove('role-readonly');
   }
 }
 
