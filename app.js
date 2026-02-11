@@ -220,6 +220,8 @@ async function loadReports() {
   const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
+  if (!isss || isss.length === 0) { list.innerHTML = ''; return; }
+
   isss.sort((a,b) => (a.locations ? a.locations.sort_order : 999) - (b.locations ? b.locations.sort_order : 999));
 
   list.innerHTML = isss.map(i => {
@@ -227,7 +229,7 @@ async function loadReports() {
     return `<tr class="rep-row italic leading-snug leading-tight italic">
       <td class="py-5 px-2 align-top border-r border-slate-50 italic leading-tight leading-tight leading-tight leading-tight italic">
         <span class="block font-black text-slate-400 uppercase text-[7px] italic">${i.locations ? i.locations.floor : '--'}</span>
-<span class="text-[10px] font-bold italic italic leading-tight leading-tight leading-tight leading-tight italic">${i.locations ? i.locations.name : '--'}</span>
+        <span class="text-[10px] font-bold italic italic leading-tight leading-tight leading-tight leading-tight italic">${i.locations ? i.locations.name : '--'}</span>
         <p class="text-[7px] font-bold text-slate-400 uppercase mt-2 italic italic leading-tight leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p>
       </td>
       <td class="py-5 px-3 align-top italic leading-snug leading-tight leading-tight italic">
@@ -259,6 +261,8 @@ window.prepAdd = (fN) => {
   document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
   document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
+  var fi = document.getElementById('f-add-photo'); if (fi) fi.value = '';
   document.getElementById('m-add').classList.remove('hidden');
 };
 
@@ -388,6 +392,7 @@ document.getElementById('f-add').onsubmit = async (e) => {
 
       hideM('m-add');
       e.target.reset();
+      var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
       await loadSections();
     }
   } catch (err) {
@@ -483,6 +488,34 @@ window.confirmDelete = async () => {
   }
 };
 
+window.previewAddPhoto = function(input) {
+  var f = input.files[0];
+  var p = document.getElementById('add-photo-preview');
+  var im = document.getElementById('add-photo-img');
+  if (f && p && im) {
+    var r = new FileReader();
+    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
+    r.readAsDataURL(f);
+  } else if (p) { p.classList.add('hidden'); }
+};
+
+window.clearAddPhoto = function() {
+  var i = document.getElementById('f-add-photo'); if (i) i.value = '';
+  var p = document.getElementById('add-photo-preview'); if (p) p.classList.add('hidden');
+};
+
+window.previewEditPhoto = function(input) {
+  var f = input.files[0];
+  var p = document.getElementById('edit-photo-preview');
+  var im = document.getElementById('edit-photo-img');
+  if (f && p && im) {
+    var r = new FileReader();
+    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
+    r.readAsDataURL(f);
+    removePhotoFlag = false;
+  }
+};
+
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
@@ -532,9 +565,8 @@ window.restoreIssue = async (id) => {
 window.removePhotoFromUpdate = () => {
   removePhotoFlag = true;
   currentEditingPhotoUrl = null;
-  const prev = document.getElementById('edit-photo-preview');
-  if (prev) prev.classList.add('hidden');
-  alert("Fotka bude odstránená po uložení.");
+  var i = document.getElementById('f-stat-photo'); if (i) i.value = '';
+  var p = document.getElementById('edit-photo-preview'); if (p) p.classList.add('hidden');
 };
 
 
