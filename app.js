@@ -260,31 +260,36 @@ window.prepAdd = (fN) => {
   document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
   document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
   // reset photo preview
-  document.getElementById('add-photo-preview').classList.add('hidden');
-  document.getElementById('f-add-photo').value = '';
+  document.getElementById('add-photo-preview')?.classList.add('hidden');
+  const addPhotoInput = document.getElementById('f-add-photo');
+  if (addPhotoInput) addPhotoInput.value = '';
   document.getElementById('m-add').classList.remove('hidden');
 };
 
 // --- Add modal photo preview ---
-document.getElementById('f-add-photo').addEventListener('change', function() {
-  const file = this.files[0];
-  const preview = document.getElementById('add-photo-preview');
-  const img = document.getElementById('add-photo-img');
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      img.src = e.target.result;
-      preview.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
-  } else {
-    preview.classList.add('hidden');
-  }
-});
+const _addPhotoInput = document.getElementById('f-add-photo');
+if (_addPhotoInput) {
+  _addPhotoInput.addEventListener('change', function() {
+    const file = this.files[0];
+    const preview = document.getElementById('add-photo-preview');
+    const img = document.getElementById('add-photo-img');
+    if (file && preview && img) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target.result;
+        preview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    } else if (preview) {
+      preview.classList.add('hidden');
+    }
+  });
+}
 
 window.clearAddPhoto = () => {
-  document.getElementById('f-add-photo').value = '';
-  document.getElementById('add-photo-preview').classList.add('hidden');
+  const input = document.getElementById('f-add-photo');
+  if (input) input.value = '';
+  document.getElementById('add-photo-preview')?.classList.add('hidden');
 };
 
 async function syncIssueStatusFromLastEvent(issueId) {
@@ -413,7 +418,7 @@ document.getElementById('f-add').onsubmit = async (e) => {
 
       hideM('m-add');
       e.target.reset();
-      document.getElementById('add-photo-preview').classList.add('hidden');
+      document.getElementById('add-photo-preview')?.classList.add('hidden');
       await loadSections();
     }
   } catch (err) {
@@ -558,26 +563,29 @@ window.restoreIssue = async (id) => {
 window.removePhotoFromUpdate = () => {
   removePhotoFlag = true;
   currentEditingPhotoUrl = null;
-  document.getElementById('f-stat-photo').value = '';
-  const prev = document.getElementById('edit-photo-preview');
-  if (prev) prev.classList.add('hidden');
+  const input = document.getElementById('f-stat-photo');
+  if (input) input.value = '';
+  document.getElementById('edit-photo-preview')?.classList.add('hidden');
 };
 
 // --- Edit modal photo preview on new file select ---
-document.getElementById('f-stat-photo').addEventListener('change', function() {
-  const file = this.files[0];
-  const preview = document.getElementById('edit-photo-preview');
-  const img = document.getElementById('edit-photo-img');
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      img.src = e.target.result;
-      preview.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
-    removePhotoFlag = false;
-  }
-});
+const _editPhotoInput = document.getElementById('f-stat-photo');
+if (_editPhotoInput) {
+  _editPhotoInput.addEventListener('change', function() {
+    const file = this.files[0];
+    const preview = document.getElementById('edit-photo-preview');
+    const img = document.getElementById('edit-photo-img');
+    if (file && preview && img) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target.result;
+        preview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+      removePhotoFlag = false;
+    }
+  });
+}
 
 
 window.toggleMobileMenu = () => {
