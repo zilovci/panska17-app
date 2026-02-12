@@ -73,11 +73,39 @@
         </aside>
 
         <main class="flex-1 p-4 md:p-12 overflow-y-auto bg-slate-50">
-            <div id="v-dash" class="max-w-4xl space-y-10">
-                <h2 class="text-2xl font-black uppercase tracking-tighter">Dashboard</h2>
+            <div id="v-dash" class="max-w-4xl space-y-8">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter">Dashboard</h2>
+                    <button onclick="window.printDashboard()" class="no-print bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg">Tlačiť</button>
+                </div>
+
+                <!-- VEĽKÉ ČÍSLA -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aktívne</p><p id="s-open" class="text-5xl font-semibold mt-2 tracking-tight">--</p></div>
-                    <div class="bg-white p-10 rounded-[2rem] shadow-sm border-none"><p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené</p><p id="s-done" class="text-5xl font-semibold mt-2 text-green-500 tracking-tight">--</p></div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm">
+                        <p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené v roku <span id="s-year">2025</span></p>
+                        <p id="s-done-year" class="text-6xl font-black mt-2 text-green-500 tracking-tight">--</p>
+                    </div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Celkom záznamov</p>
+                        <p id="s-total" class="text-6xl font-black mt-2 tracking-tight">--</p>
+                        <p class="text-[9px] font-bold text-slate-300 mt-1 uppercase">Od začiatku evidencie</p>
+                    </div>
+                </div>
+
+                <!-- GRAF -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Prehľad za posledných 12 mesiacov</h3>
+                    <div id="dash-chart" class="h-48 flex items-end space-x-1 sm:space-x-2"></div>
+                    <div class="flex items-center space-x-6 mt-4 text-[9px] font-bold text-slate-400">
+                        <span><span class="inline-block w-3 h-3 bg-green-400 rounded-sm mr-1 align-middle"></span> Vybavené</span>
+                        <span><span class="inline-block w-3 h-3 bg-slate-200 rounded-sm mr-1 align-middle"></span> Nové</span>
+                    </div>
+                </div>
+
+                <!-- POSLEDNÉ AKTIVITY -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Posledné aktivity</h3>
+                    <div id="dash-feed" class="space-y-3"></div>
                 </div>
             </div>
 
