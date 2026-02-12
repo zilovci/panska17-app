@@ -146,17 +146,91 @@ async function switchView(v) {
 
 
 async function loadDash() {
-  const { count: open } = await sb.from('issues').select('*', { count: 'exact', head: true })
-    .eq('archived', false)
-    .not('status', 'in', '("Opravené","Vybavené")');
+  var now = new Date();
+  var thisYear = now.getFullYear();
+  document.getElementById('s-year').innerText = thisYear;
 
-  const { count: done } = await sb.from('issues').select('*', { count: 'exact', head: true })
-    .eq('archived', false)
-    .or('status.eq.Opravené,status.eq.Vybavené');
+  // All issues + updates
+  var { data: allIss = [] } = await sb.from('issues').select('id, status, archived, created_at');
+  var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
 
-  document.getElementById('s-open').innerText = open || 0;
-  document.getElementById('s-done').innerText = done || 0;
+  // Vybavené tento rok
+  var doneThisYear = 0;
+  allUpd.forEach(function(u) {
+    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date && u.event_date.startsWith(String(thisYear))) {
+      doneThisYear++;
+    }
+  });
+  // Deduplicate - count unique issues resolved this year
+  var resolvedIds = new Set();
+  allUpd.forEach(function(u) {
+    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date && u.event_date.startsWith(String(thisYear))) {
+      resolvedIds.add(u.issue_id);
+    }
+  });
+  document.getElementById('s-done-year').innerText = resolvedIds.size;
+
+  // Celkom záznamov
+  document.getElementById('s-total').innerText = allIss.length;
+
+  // Graf - posledných 12 mesiacov
+  var months = [];
+  for (var m = 11; m >= 0; m--) {
+    var d = new Date(thisYear, now.getMonth() - m, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth() + 1, label: d.toLocaleString('sk', { month: 'short' }).replace('.','') });
+  }
+
+  var chartData = months.map(function(mo) {
+    var prefix = mo.year + '-' + String(mo.month).padStart(2, '0');
+    var newCount = 0;
+    var doneCount = 0;
+
+    allUpd.forEach(function(u) {
+      if (!u.event_date) return;
+      if (!u.event_date.startsWith(prefix)) return;
+      if (u.status_to === 'Zahlásené') newCount++;
+      if (u.status_to === 'Opravené' || u.status_to === 'Vybavené') doneCount++;
+    });
+    return { label: mo.label, newC: newCount, doneC: doneCount };
+  });
+
+  var maxVal = Math.max(1, Math.max.apply(null, chartData.map(function(c) { return Math.max(c.newC, c.doneC); })));
+
+  document.getElementById('dash-chart').innerHTML = chartData.map(function(c) {
+    var hDone = Math.round((c.doneC / maxVal) * 100);
+    var hNew = Math.round((c.newC / maxVal) * 100);
+    return '<div class="flex-1 flex flex-col items-center">' +
+      '<div class="w-full flex space-x-0.5 items-end" style="height:160px">' +
+        '<div class="flex-1 bg-green-400 rounded-t-sm transition-all" style="height:' + Math.max(hDone > 0 ? 4 : 0, hDone) + '%" title="Vybavené: ' + c.doneC + '"></div>' +
+        '<div class="flex-1 bg-slate-200 rounded-t-sm transition-all" style="height:' + Math.max(hNew > 0 ? 4 : 0, hNew) + '%" title="Nové: ' + c.newC + '"></div>' +
+      '</div>' +
+      '<p class="text-[8px] font-bold text-slate-400 mt-1 uppercase">' + c.label + '</p>' +
+      '<p class="text-[7px] text-green-500 font-bold">' + (c.doneC > 0 ? c.doneC : '') + '</p>' +
+    '</div>';
+  }).join('');
+
+  // Posledné aktivity feed
+  var recent = allUpd.slice(0, 8);
+  var issMap = {};
+  allIss.forEach(function(i) { issMap[i.id] = i; });
+
+  document.getElementById('dash-feed').innerHTML = recent.length === 0
+    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadne aktivity</p>'
+    : recent.map(function(u) {
+      var statusColor = (u.status_to === 'Opravené' || u.status_to === 'Vybavené') ? 'text-green-600' : 'text-slate-600';
+      return '<div class="flex items-start space-x-3 py-2 border-b border-slate-50 last:border-0">' +
+        '<span class="text-[9px] font-bold text-slate-300 min-w-[65px]">' + fmtD(u.event_date) + '</span>' +
+        '<span class="text-[9px] font-bold ' + statusColor + ' uppercase">' + u.status_to + '</span>' +
+        '<span class="text-[9px] text-slate-500 flex-1">' + (u.note || '--') + '</span>' +
+      '</div>';
+    }).join('');
 }
+
+window.printDashboard = async function() {
+  await switchView('dash');
+  await new Promise(function(r) { setTimeout(r, 100); });
+  window.print();
+};
 
 async function loadSections() {
   const container = document.getElementById('section-container');
