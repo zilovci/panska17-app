@@ -170,6 +170,18 @@ async function loadDash() {
   });
   document.getElementById('s-done-year').innerText = resolvedIds.size;
 
+  // V riešení (nie archivované, nie vybavené/opravené)
+  var activeCount = allIss.filter(function(i) {
+    return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
+  }).length;
+  document.getElementById('s-active').innerText = activeCount;
+
+  // V riešení
+  var activeCount = allIss.filter(function(i) {
+    return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
+  }).length;
+  document.getElementById('s-active').innerText = activeCount;
+
   // Celkom záznamov
   document.getElementById('s-total').innerText = allIss.length;
 
