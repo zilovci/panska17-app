@@ -166,8 +166,13 @@ async function loadDash() {
   });
   var resolvedThisYear = 0;
   Object.keys(firstResolved).forEach(function(id) {
-    if (firstResolved[id].startsWith(String(thisYear))) resolvedThisYear++;
+    if (firstResolved[id].startsWith(String(thisYear))) {
+      resolvedThisYear++;
+      var iss = allIss.find(function(i) { return i.id === id; });
+      console.log('Vybavené ' + thisYear + ':', firstResolved[id], id, iss ? '(existuje)' : '(nenájdené v issues)');
+    }
   });
+  console.log('CELKOM vybavené ' + thisYear + ':', resolvedThisYear);
   document.getElementById('s-done-year').innerText = resolvedThisYear;
 
   // V riešení (nie archivované, nie vybavené/opravené)
