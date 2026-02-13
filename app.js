@@ -154,21 +154,21 @@ async function loadDash() {
   var { data: allIss = [] } = await sb.from('issues').select('id, status, archived, created_at');
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
 
-  // Vybavené tento rok
-  var doneThisYear = 0;
-  allUpd.forEach(function(u) {
-    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date && u.event_date.startsWith(String(thisYear))) {
-      doneThisYear++;
+  // Vybavené tento rok - nájdi PRVÝ dátum vyriešenia pre každú úlohu
+  var sortedUpd = allUpd.slice().sort(function(a, b) { return (a.event_date || '').localeCompare(b.event_date || ''); });
+  var firstResolved = {};
+  sortedUpd.forEach(function(u) {
+    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date) {
+      if (!firstResolved[u.issue_id]) {
+        firstResolved[u.issue_id] = u.event_date;
+      }
     }
   });
-  // Deduplicate - count unique issues resolved this year
-  var resolvedIds = new Set();
-  allUpd.forEach(function(u) {
-    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date && u.event_date.startsWith(String(thisYear))) {
-      resolvedIds.add(u.issue_id);
-    }
+  var resolvedThisYear = 0;
+  Object.keys(firstResolved).forEach(function(id) {
+    if (firstResolved[id].startsWith(String(thisYear))) resolvedThisYear++;
   });
-  document.getElementById('s-done-year').innerText = resolvedIds.size;
+  document.getElementById('s-done-year').innerText = resolvedThisYear;
 
   // V riešení (nie archivované, nie vybavené/opravené)
   var activeCount = allIss.filter(function(i) {
@@ -176,14 +176,9 @@ async function loadDash() {
   }).length;
   document.getElementById('s-active').innerText = activeCount;
 
-  // V riešení
-  var activeCount = allIss.filter(function(i) {
-    return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
-  }).length;
-  document.getElementById('s-active').innerText = activeCount;
-
   // Celkom záznamov
   document.getElementById('s-total').innerText = allIss.length;
+
 
   // Graf - posledných 12 mesiacov
   var months = [];
@@ -831,7 +826,7 @@ async function init() {
     document.getElementById('login-view').classList.add('hidden');
     document.getElementById('app-view').classList.remove('hidden');
     applyPermissions();
-    switchView('dash');
+    switchView('insp');
   } else {
     document.getElementById('login-view').classList.remove('hidden');
     document.getElementById('app-view').classList.add('hidden');
