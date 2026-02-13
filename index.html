@@ -127,42 +127,47 @@
                     <button onclick="printReport()" class="bg-slate-900 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-lg">Tlačiť / PDF</button>
                 </header>
                 <!-- FILTRE -->
-                <div class="bg-white p-5 rounded-[2rem] shadow-sm no-print space-y-4">
-                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtre</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Od</label>
-                            <input type="date" id="rep-date-from" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                <div class="bg-white rounded-[2rem] shadow-sm no-print">
+                    <button type="button" onclick="var p=document.getElementById('rep-filter-panel');var a=document.getElementById('rep-filter-arrow');p.classList.toggle('hidden');a.classList.toggle('rotate-180')" class="w-full flex justify-between items-center p-5 cursor-pointer">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtre</h3>
+                        <i id="rep-filter-arrow" class="fa-solid fa-chevron-down text-slate-400 text-[10px] transition-transform"></i>
+                    </button>
+                    <div id="rep-filter-panel" class="hidden px-5 pb-5 space-y-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Od</label>
+                                <input type="date" id="rep-date-from" value="2024-01-01" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Do</label>
+                                <input type="date" id="rep-date-to" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Stav</label>
+                                <select id="rep-filter-status" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="all">Všetky</option>
+                                    <option value="done">Vybavené / Opravené</option>
+                                    <option value="active">V riešení / Zahlásené</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Typ</label>
+                                <select id="rep-filter-type" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="active" selected>Aktívne</option>
+                                    <option value="archived">Archivované</option>
+                                    <option value="all">Všetky</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Do</label>
-                            <input type="date" id="rep-date-to" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                        <div class="flex items-center space-x-3">
+                            <div class="space-y-1 flex-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Podlažie</label>
+                                <select id="rep-filter-floor" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="all">Všetky</option>
+                                </select>
+                            </div>
+                            <button onclick="loadReports()" class="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase">Zobraziť</button>
                         </div>
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Stav</label>
-                            <select id="rep-filter-status" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
-                                <option value="all">Všetky</option>
-                                <option value="done">Vybavené / Opravené</option>
-                                <option value="active">V riešení / Zahlásené</option>
-                            </select>
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Typ</label>
-                            <select id="rep-filter-type" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
-                                <option value="active">Aktívne</option>
-                                <option value="archived">Archivované</option>
-                                <option value="all">Všetky</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-3">
-                        <div class="space-y-1 flex-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Podlažie</label>
-                            <select id="rep-filter-floor" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
-                                <option value="all">Všetky</option>
-                            </select>
-                        </div>
-                        <button onclick="loadReports()" class="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase">Zobraziť</button>
                     </div>
                 </div>
                 <div class="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm print-card">
