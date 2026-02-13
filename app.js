@@ -146,6 +146,9 @@ async function switchView(v) {
 
 
 async function loadDash() {
+  // Najprv prepočítaj statusy podľa posledných udalostí
+  await recalcAllStatuses();
+
   var now = new Date();
   var thisYear = now.getFullYear();
   document.getElementById('s-year').innerText = thisYear;
@@ -154,35 +157,35 @@ async function loadDash() {
   var { data: allIss = [] } = await sb.from('issues').select('id, status, archived, created_at');
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
 
-  // Vybavené tento rok - nájdi PRVÝ dátum vyriešenia pre každú úlohu
-  var sortedUpd = allUpd.slice().sort(function(a, b) { return (a.event_date || '').localeCompare(b.event_date || ''); });
-  var firstResolved = {};
-  sortedUpd.forEach(function(u) {
+  // Vybavené tento rok - len issues ktoré sú AKTUÁLNE vybavené
+  // Pre každú nájdi POSLEDNÝ dátum kedy dostala status Opravené/Vybavené
+  var { data: freshIss = [] } = await sb.from('issues').select('id, status, archived');
+  var lastResolved = {};
+  allUpd.forEach(function(u) {
     if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date) {
-      if (!firstResolved[u.issue_id]) {
-        firstResolved[u.issue_id] = u.event_date;
+      if (!lastResolved[u.issue_id] || u.event_date > lastResolved[u.issue_id]) {
+        lastResolved[u.issue_id] = u.event_date;
       }
     }
   });
   var resolvedThisYear = 0;
-  Object.keys(firstResolved).forEach(function(id) {
-    if (firstResolved[id].startsWith(String(thisYear))) {
+  freshIss.forEach(function(iss) {
+    if ((iss.status === 'Opravené' || iss.status === 'Vybavené') && lastResolved[iss.id] && lastResolved[iss.id].startsWith(String(thisYear))) {
       resolvedThisYear++;
-      var iss = allIss.find(function(i) { return i.id === id; });
-      console.log('Vybavené ' + thisYear + ':', firstResolved[id], id, iss ? '(existuje)' : '(nenájdené v issues)');
+      console.log('Vybavené ' + thisYear + ':', lastResolved[iss.id], iss.id);
     }
   });
   console.log('CELKOM vybavené ' + thisYear + ':', resolvedThisYear);
   document.getElementById('s-done-year').innerText = resolvedThisYear;
 
   // V riešení (nie archivované, nie vybavené/opravené)
-  var activeCount = allIss.filter(function(i) {
+  var activeCount = freshIss.filter(function(i) {
     return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
   }).length;
   document.getElementById('s-active').innerText = activeCount;
 
   // Celkom záznamov
-  document.getElementById('s-total').innerText = allIss.length;
+  document.getElementById('s-total').innerText = freshIss.length;
 
 
   // Graf - posledných 12 mesiacov
@@ -224,7 +227,7 @@ async function loadDash() {
   // Posledné aktivity feed
   var recent = allUpd.slice(0, 8);
   var issMap = {};
-  allIss.forEach(function(i) { issMap[i.id] = i; });
+  freshIss.forEach(function(i) { issMap[i.id] = i; });
 
   document.getElementById('dash-feed').innerHTML = recent.length === 0
     ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadne aktivity</p>'
@@ -243,6 +246,15 @@ window.printDashboard = async function() {
   await new Promise(function(r) { setTimeout(r, 100); });
   window.print();
 };
+
+// Prepočítaj status všetkých issues podľa posledného update
+async function recalcAllStatuses() {
+  var { data: issues = [] } = await sb.from('issues').select('id');
+  for (var i = 0; i < issues.length; i++) {
+    await syncIssueStatusFromLastEvent(issues[i].id);
+  }
+  console.log('Prepočítané statusy pre ' + issues.length + ' záznamov');
+}
 
 async function loadSections() {
   const container = document.getElementById('section-container');
@@ -574,7 +586,6 @@ document.getElementById('f-stat').onsubmit = async (e) => {
     const up = file ? await uploadPhotoWithThumb(file, `upd_${uId || Date.now()}`) : null;
 
     const { error: issErr } = await sb.from('issues').update({
-      status: st,
       title: document.getElementById('f-stat-title-edit').value,
       responsible_person: document.getElementById('f-stat-resp-edit').value,
       reported_by: document.getElementById('f-stat-reported-edit').value,
@@ -619,6 +630,7 @@ document.getElementById('f-stat').onsubmit = async (e) => {
       if (insErr) throw insErr;
     }
 
+    await syncIssueStatusFromLastEvent(id);
     await loadSections();
     window.prepStat(id);
 
