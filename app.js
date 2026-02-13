@@ -344,45 +344,87 @@ async function loadReports() {
 
   const list = document.getElementById('rep-list');
 
-  const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false);
+  // Filtre
+  var dateFrom = document.getElementById('rep-date-from').value;
+  var dateTo = document.getElementById('rep-date-to').value;
+  var filterStatus = document.getElementById('rep-filter-status').value;
+  var filterType = document.getElementById('rep-filter-type').value;
+  var filterFloor = document.getElementById('rep-filter-floor').value;
+
+  // Načítaj dáta
+  var query = sb.from('issues').select('*, locations(*)');
+  if (filterType === 'active') query = query.eq('archived', false);
+  else if (filterType === 'archived') query = query.eq('archived', true);
+
+  const { data: isss } = await query;
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
-  if (!isss || isss.length === 0) { list.innerHTML = ''; return; }
+  if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
 
-  const validIssues = isss.filter(i => i.locations);
-  if (validIssues.length === 0) { list.innerHTML = ''; return; }
+  // Naplň podlažia dropdown
+  var floors = [];
+  isss.forEach(function(i) {
+    if (i.locations && i.locations.floor && floors.indexOf(i.locations.floor) === -1) floors.push(i.locations.floor);
+  });
+  var floorSel = document.getElementById('rep-filter-floor');
+  var curFloor = floorSel.value;
+  floorSel.innerHTML = '<option value="all">Všetky</option>' + floors.map(function(f) {
+    return '<option value="' + f + '"' + (f === curFloor ? ' selected' : '') + '>' + f + '</option>';
+  }).join('');
 
-  validIssues.sort((a,b) => a.locations.sort_order - b.locations.sort_order);
+  var validIssues = isss.filter(function(i) {
+    if (!i.locations) return false;
+    // Filter podlažie
+    if (filterFloor !== 'all' && i.locations.floor !== filterFloor) return false;
+    // Filter stav
+    if (filterStatus === 'done' && i.status !== 'Opravené' && i.status !== 'Vybavené') return false;
+    if (filterStatus === 'active' && (i.status === 'Opravené' || i.status === 'Vybavené')) return false;
+    return true;
+  });
 
-  list.innerHTML = validIssues.map(i => {
-    const logs = updts.filter(u => u.issue_id === i.id);
-    return `<tr class="rep-row leading-snug leading-tight">
-      <td class="py-5 px-2 align-top border-r border-slate-50 leading-tight leading-tight leading-tight leading-tight">
-        <span class="block font-black text-slate-400 uppercase text-[7px]">${i.locations ? i.locations.floor : '--'}</span>
-        <span class="text-[10px] font-bold leading-tight leading-tight leading-tight leading-tight">${i.locations ? i.locations.name : '--'}</span>
-        <p class="text-[7px] font-bold text-slate-400 uppercase mt-2 leading-tight leading-tight">Zodpovedá: ${i.responsible_person || '--'}</p>
-      </td>
-      <td class="py-5 px-3 align-top leading-snug leading-tight leading-tight">
-        <p class="font-bold text-slate-900 mb-3 leading-tight leading-tight leading-tight leading-tight">${i.title}</p>
-        <div class="space-y-4 leading-tight leading-tight leading-tight leading-tight">
-          ${logs.map(u => `
-            <div class="flex justify-between items-start space-x-2 pb-1 leading-tight leading-tight leading-tight">
-              <div class="flex-1 leading-tight leading-tight leading-tight">
-                <div class="flex items-center space-x-2 mb-1 leading-tight leading-tight leading-tight leading-tight">
-                  <span class="font-black text-[7px] text-slate-400 uppercase leading-tight leading-tight leading-tight leading-tight">${fmtD(u.event_date)}</span>
-                  <span class="text-[6px] font-black px-1 border rounded uppercase leading-tight leading-tight leading-tight ${u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400'}">${u.status_to}</span>
-                </div>
-                <p class="text-[9px] text-slate-700 leading-snug leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">${u.note || '--'}</p>
-              </div>
-              ${u.photo_url ? `<img loading="eager" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="report-thumb cursor-pointer" onclick="window.open('${u.photo_url}')">` : ''}
-            </div>
-          `).join('')}
-        </div>
-      </td>
-      <td class="py-5 px-1 align-top text-center leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight">
-        <span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight leading-tight ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50'}">${i.status}</span>
-      </td>
-    </tr>`;
+  validIssues.sort(function(a,b) { return a.locations.sort_order - b.locations.sort_order; });
+
+  list.innerHTML = validIssues.map(function(i) {
+    var logs = updts.filter(function(u) { return u.issue_id === i.id; });
+
+    // Filter dátumový rozsah na update úrovni
+    if (dateFrom || dateTo) {
+      logs = logs.filter(function(u) {
+        if (!u.event_date) return false;
+        if (dateFrom && u.event_date < dateFrom) return false;
+        if (dateTo && u.event_date > dateTo) return false;
+        return true;
+      });
+      if (logs.length === 0) return '';
+    }
+
+    return '<tr class="rep-row leading-snug">' +
+      '<td class="py-5 px-2 align-top border-r border-slate-50">' +
+        '<span class="block font-black text-slate-400 uppercase text-[7px]">' + (i.locations ? i.locations.floor : '--') + '</span>' +
+        '<span class="text-[10px] font-bold">' + (i.locations ? i.locations.name : '--') + '</span>' +
+        '<p class="text-[7px] font-bold text-slate-400 uppercase mt-2">Zodpovedá: ' + (i.responsible_person || '--') + '</p>' +
+      '</td>' +
+      '<td class="py-5 px-3 align-top leading-snug">' +
+        '<p class="font-bold text-slate-900 mb-3">' + i.title + '</p>' +
+        '<div class="space-y-4">' +
+          logs.map(function(u) {
+            return '<div class="flex justify-between items-start space-x-2 pb-1">' +
+              '<div class="flex-1">' +
+                '<div class="flex items-center space-x-2 mb-1">' +
+                  '<span class="font-black text-[7px] text-slate-400 uppercase">' + fmtD(u.event_date) + '</span>' +
+                  '<span class="text-[6px] font-black px-1 border rounded uppercase ' + (u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400') + '">' + u.status_to + '</span>' +
+                '</div>' +
+                '<p class="text-[9px] text-slate-700 leading-snug">' + (u.note || '--') + '</p>' +
+              '</div>' +
+              (u.photo_url ? '<img loading="eager" decoding="async" src="' + (u.photo_thumb_url || u.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + u.photo_url + '\')">' : '') +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</td>' +
+      '<td class="py-5 px-1 align-top text-center">' +
+        '<span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ' + (i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50') + '">' + i.status + '</span>' +
+      '</td>' +
+    '</tr>';
   }).join('');
 }
 
