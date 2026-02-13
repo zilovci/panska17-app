@@ -151,7 +151,7 @@ async function loadDash() {
   document.getElementById('s-year').innerText = thisYear;
 
   // Načítaj všetko
-  var { data: allIss = [] } = await sb.from('issues').select('id, title, status, archived, created_at');
+  var { data: allIss = [] } = await sb.from('issues').select('id, title, status, archived, created_at, locations(floor, name)');
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
 
   // Vybavené tento rok - len NEARCHIVOVANÉ issues so statusom Opravené/Vybavené
@@ -234,7 +234,7 @@ async function loadDash() {
       return '<div class="flex items-start space-x-3 py-2 border-b border-slate-100 last:border-0">' +
         '<span class="text-[9px] font-bold text-slate-300 min-w-[65px]">' + fmtD(u.event_date) + '</span>' +
         '<span class="text-[9px] font-bold ' + statusColor + ' uppercase min-w-[70px]">' + u.status_to + '</span>' +
-        '<span class="text-[9px] font-bold text-slate-700">' + (iss ? iss.title : '') + '</span>' +
+        '<span class="text-[9px] font-bold text-slate-700">' + (iss && iss.locations ? '<span class="text-slate-400">' + iss.locations.floor + ' / ' + iss.locations.name + '</span> — ' : '') + (iss ? iss.title : '') + '</span>' +
       '</div>';
     }).join('');
 }
