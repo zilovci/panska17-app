@@ -146,20 +146,16 @@ async function switchView(v) {
 
 
 async function loadDash() {
-  // Najprv prepočítaj statusy podľa posledných udalostí
-  await recalcAllStatuses();
-
   var now = new Date();
   var thisYear = now.getFullYear();
   document.getElementById('s-year').innerText = thisYear;
 
-  // All issues + updates
-  var { data: allIss = [] } = await sb.from('issues').select('id, status, archived, created_at');
+  // Načítaj všetko
+  var { data: allIss = [] } = await sb.from('issues').select('id, title, status, archived, created_at');
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
 
-  // Vybavené tento rok - len issues ktoré sú AKTUÁLNE vybavené
-  // Pre každú nájdi POSLEDNÝ dátum kedy dostala status Opravené/Vybavené
-  var { data: freshIss = [] } = await sb.from('issues').select('id, status, archived');
+  // Vybavené tento rok - len NEARCHIVOVANÉ issues so statusom Opravené/Vybavené
+  // a posledný resolved dátum v tomto roku
   var lastResolved = {};
   allUpd.forEach(function(u) {
     if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date) {
@@ -169,24 +165,25 @@ async function loadDash() {
     }
   });
   var resolvedThisYear = 0;
-  freshIss.forEach(function(iss) {
-    if ((iss.status === 'Opravené' || iss.status === 'Vybavené') && lastResolved[iss.id] && lastResolved[iss.id].startsWith(String(thisYear))) {
+  allIss.forEach(function(iss) {
+    var isDone = iss.status === 'Opravené' || iss.status === 'Vybavené';
+    var resolvedDate = lastResolved[iss.id];
+    if (isDone && resolvedDate && resolvedDate.startsWith(String(thisYear))) {
       resolvedThisYear++;
-      console.log('Vybavené ' + thisYear + ':', lastResolved[iss.id], iss.id);
+      console.log('Vybavené ' + thisYear + ':', resolvedDate, iss.id, iss.title, iss.archived ? 'ARCHIV' : 'aktívne');
     }
   });
   console.log('CELKOM vybavené ' + thisYear + ':', resolvedThisYear);
   document.getElementById('s-done-year').innerText = resolvedThisYear;
 
   // V riešení (nie archivované, nie vybavené/opravené)
-  var activeCount = freshIss.filter(function(i) {
+  var activeCount = allIss.filter(function(i) {
     return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
   }).length;
   document.getElementById('s-active').innerText = activeCount;
 
   // Celkom záznamov
-  document.getElementById('s-total').innerText = freshIss.length;
-
+  document.getElementById('s-total').innerText = allIss.length;
 
   // Graf - posledných 12 mesiacov
   var months = [];
@@ -199,10 +196,8 @@ async function loadDash() {
     var prefix = mo.year + '-' + String(mo.month).padStart(2, '0');
     var newCount = 0;
     var doneCount = 0;
-
     allUpd.forEach(function(u) {
-      if (!u.event_date) return;
-      if (!u.event_date.startsWith(prefix)) return;
+      if (!u.event_date || !u.event_date.startsWith(prefix)) return;
       if (u.status_to === 'Zahlásené') newCount++;
       if (u.status_to === 'Opravené' || u.status_to === 'Vybavené') doneCount++;
     });
@@ -212,48 +207,50 @@ async function loadDash() {
   var maxVal = Math.max(1, Math.max.apply(null, chartData.map(function(c) { return Math.max(c.newC, c.doneC); })));
 
   document.getElementById('dash-chart').innerHTML = chartData.map(function(c) {
-    var hDone = Math.round((c.doneC / maxVal) * 100);
-    var hNew = Math.round((c.newC / maxVal) * 100);
+    var hDone = c.doneC > 0 ? Math.max(6, Math.round((c.doneC / maxVal) * 100)) : 0;
+    var hNew = c.newC > 0 ? Math.max(6, Math.round((c.newC / maxVal) * 100)) : 0;
     return '<div class="flex-1 flex flex-col items-center">' +
       '<div class="w-full flex space-x-0.5 items-end" style="height:160px">' +
-        '<div class="flex-1 bg-green-400 rounded-t-sm transition-all" style="height:' + Math.max(hDone > 0 ? 4 : 0, hDone) + '%" title="Vybavené: ' + c.doneC + '"></div>' +
-        '<div class="flex-1 bg-slate-200 rounded-t-sm transition-all" style="height:' + Math.max(hNew > 0 ? 4 : 0, hNew) + '%" title="Nové: ' + c.newC + '"></div>' +
+        '<div class="flex-1 rounded-t-sm" style="height:' + hDone + '%;background:#4ade80;-webkit-print-color-adjust:exact;print-color-adjust:exact"></div>' +
+        '<div class="flex-1 rounded-t-sm" style="height:' + hNew + '%;background:#e2e8f0;-webkit-print-color-adjust:exact;print-color-adjust:exact"></div>' +
       '</div>' +
       '<p class="text-[8px] font-bold text-slate-400 mt-1 uppercase">' + c.label + '</p>' +
       '<p class="text-[7px] text-green-500 font-bold">' + (c.doneC > 0 ? c.doneC : '') + '</p>' +
     '</div>';
   }).join('');
 
-  // Posledné aktivity feed
-  var recent = allUpd.slice(0, 8);
+  // Posledné aktivity feed - s názvom úlohy
   var issMap = {};
-  freshIss.forEach(function(i) { issMap[i.id] = i; });
+  allIss.forEach(function(i) { issMap[i.id] = i; });
+  // Len updaty pre existujúce issues
+  var validUpd = allUpd.filter(function(u) { return issMap[u.issue_id]; });
+  var recent = validUpd.slice(0, 8);
 
   document.getElementById('dash-feed').innerHTML = recent.length === 0
     ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadne aktivity</p>'
     : recent.map(function(u) {
+      var iss = issMap[u.issue_id];
       var statusColor = (u.status_to === 'Opravené' || u.status_to === 'Vybavené') ? 'text-green-600' : 'text-slate-600';
-      return '<div class="flex items-start space-x-3 py-2 border-b border-slate-50 last:border-0">' +
+      return '<div class="flex items-start space-x-3 py-2 border-b border-slate-100 last:border-0">' +
         '<span class="text-[9px] font-bold text-slate-300 min-w-[65px]">' + fmtD(u.event_date) + '</span>' +
-        '<span class="text-[9px] font-bold ' + statusColor + ' uppercase">' + u.status_to + '</span>' +
-        '<span class="text-[9px] text-slate-500 flex-1">' + (u.note || '--') + '</span>' +
+        '<span class="text-[9px] font-bold ' + statusColor + ' uppercase min-w-[70px]">' + u.status_to + '</span>' +
+        '<span class="text-[9px] font-bold text-slate-700">' + (iss ? iss.title : '') + '</span>' +
       '</div>';
     }).join('');
 }
 
 window.printDashboard = async function() {
-  await switchView('dash');
-  await new Promise(function(r) { setTimeout(r, 100); });
   window.print();
 };
 
-// Prepočítaj status všetkých issues podľa posledného update
+// Prepočítaj status všetkých issues podľa posledného update (manuálne cez konzolu)
 async function recalcAllStatuses() {
   var { data: issues = [] } = await sb.from('issues').select('id');
   for (var i = 0; i < issues.length; i++) {
     await syncIssueStatusFromLastEvent(issues[i].id);
   }
   console.log('Prepočítané statusy pre ' + issues.length + ' záznamov');
+  alert('Statusy prepočítané pre ' + issues.length + ' záznamov. Obnov stránku.');
 }
 
 async function loadSections() {
