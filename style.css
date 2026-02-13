@@ -34,7 +34,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
   #mobile-nav,
   #sidebar {
     display: none !important; }
-    aside, nav, button, .no-print { display: none !important; }
+    aside, nav, .no-print { display: none !important; }
     main { margin: 0 !important; padding: 0 !important; width: 100% !important; background: white !important; }
     .print-card { border: none !important; box-shadow: none !important; padding: 0 !important; }
     .report-table th { border-top: none !important; border-bottom: 1px solid #cbd5e1 !important; background-color: #f8fafc !important; color: #0f172a !important; -webkit-print-color-adjust: exact; }
