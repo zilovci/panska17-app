@@ -342,6 +342,10 @@ async function loadReports() {
   const todayStr = new Date().toLocaleDateString();
   document.getElementById('rep-date-screen').innerText = todayStr;
 
+  // Set default Do dátum ak je prázdny
+  var dateTo = document.getElementById('rep-date-to');
+  if (!dateTo.value) dateTo.value = new Date().toISOString().split('T')[0];
+
   const list = document.getElementById('rep-list');
 
   // Filtre
@@ -362,10 +366,18 @@ async function loadReports() {
   if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
 
   // Naplň podlažia dropdown
+  // Naplň podlažia dropdown - zoradené podľa sort_order
+  var floorOrder = {};
+  allLocs.forEach(function(l) {
+    if (floorOrder[l.floor] === undefined || l.sort_order < floorOrder[l.floor]) {
+      floorOrder[l.floor] = l.sort_order;
+    }
+  });
   var floors = [];
   isss.forEach(function(i) {
     if (i.locations && i.locations.floor && floors.indexOf(i.locations.floor) === -1) floors.push(i.locations.floor);
   });
+  floors.sort(function(a, b) { return (floorOrder[a] || 0) - (floorOrder[b] || 0); });
   var floorSel = document.getElementById('rep-filter-floor');
   var curFloor = floorSel.value;
   floorSel.innerHTML = '<option value="all">Všetky</option>' + floors.map(function(f) {
