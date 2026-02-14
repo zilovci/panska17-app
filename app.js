@@ -318,7 +318,10 @@ async function loadSections() {
     const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
 
     const div = document.createElement('div');
-    div.className = 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6';
+    var isEmpty = floorIssues.length === 0;
+    div.className = isEmpty
+      ? 'bg-white px-6 py-3 md:px-8 md:py-3 rounded-2xl shadow-sm leading-tight mb-3'
+      : 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6';
 
     let issuesHtml = floorIssues.map(i => {
       const logs = allUpdates.filter(u => u.issue_id === i.id)
@@ -345,15 +348,27 @@ async function loadSections() {
         </div>`;
     }).join('');
 
-    div.innerHTML = `
-      <div class="flex justify-between items-center border-b pb-4 mb-4 leading-tight">
-        <h3 class="font-black text-xl uppercase text-slate-900 leading-tight">${floor}</h3>
-        ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>` : ''}
-      </div>
-      <div class="space-y-4 leading-tight leading-tight leading-tight">
-        ${issuesHtml || '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase tracking-widest">OK</p>'}
-      </div>
-    `;
+    if (isEmpty) {
+      div.innerHTML = `
+        <div class="flex justify-between items-center leading-tight">
+          <div class="flex items-center space-x-3">
+            <h3 class="font-black text-sm uppercase text-slate-300 leading-tight">${floor}</h3>
+            <span class="text-[9px] text-slate-200 font-bold uppercase">OK</span>
+          </div>
+          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="text-[9px] font-black uppercase text-slate-300 leading-tight">+ Pridať</button>` : ''}
+        </div>
+      `;
+    } else {
+      div.innerHTML = `
+        <div class="flex justify-between items-center border-b pb-4 mb-4 leading-tight">
+          <h3 class="font-black text-xl uppercase text-slate-900 leading-tight">${floor}</h3>
+          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>` : ''}
+        </div>
+        <div class="space-y-4 leading-tight">
+          ${issuesHtml}
+        </div>
+      `;
+    }
     container.appendChild(div);
   });
 
@@ -867,11 +882,11 @@ async function loadAdmin() {
         ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
         : '<div class="mt-3">' +
           '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zóny:</p>' +
-          '<div class="flex flex-wrap gap-x-4 gap-y-1">' +
+          '<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-1">' +
           allZones.map(function(z) {
             var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
             var label = z.tenant_name ? z.tenant_name : z.name;
-            return '<label class="flex items-center space-x-1 text-[9px] text-slate-600 whitespace-nowrap">' +
+            return '<label class="flex items-center space-x-1 text-[9px] text-slate-600">' +
               '<input type="checkbox" ' + checked + ' onchange="window.toggleUserZone(\'' + u.user_id + '\', \'' + z.id + '\', this.checked)" class="rounded">' +
               '<span>' + label + '</span></label>';
           }).join('') +
