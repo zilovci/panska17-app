@@ -163,6 +163,15 @@ window.switchZone = function(zoneId) {
   }
 };
 
+// Filter funkcia - admin vidí všetko, ostatní len svoje zóny
+function matchesZone(zoneId) {
+  if (currentZoneId) return zoneId === currentZoneId;
+  // "Všetko" - admin vidí všetko, ostatní len pridelené
+  var isAdmin = currentRole === 'admin' || currentRole === 'spravca';
+  if (isAdmin) return true;
+  return userZoneIds.indexOf(zoneId) !== -1;
+}
+
 function getZoneName() {
   if (!currentZoneId) return 'Panská 17';
   var z = allZones.find(function(z) { return z.id === currentZoneId; });
@@ -184,9 +193,9 @@ async function loadDash() {
   var { data: rawIss = [] } = await issQuery;
 
   // Filter podľa zóny
-  var allIss = currentZoneId ? rawIss.filter(function(i) {
-    return i.locations && i.locations.zone_id === currentZoneId;
-  }) : rawIss;
+  var allIss = rawIss.filter(function(i) {
+    return i.locations && matchesZone(i.locations.zone_id);
+  });
 
   var issIds = allIss.map(function(i) { return i.id; });
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
@@ -301,7 +310,7 @@ async function loadSections() {
   if (inspTitle) inspTitle.innerText = getZoneName();
 
   const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
-  allLocs = currentZoneId ? (locs || []).filter(function(l) { return l.zone_id === currentZoneId; }) : (locs || []);
+  allLocs = (locs || []).filter(function(l) { return matchesZone(l.zone_id); });
 
   const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false });
   var locIds = allLocs.map(function(l) { return l.id; });
@@ -425,9 +434,9 @@ async function loadReports() {
 
   const { data: rawIsss } = await query;
   // Filter podľa zóny
-  var isss = currentZoneId ? (rawIsss || []).filter(function(i) {
-    return i.locations && i.locations.zone_id === currentZoneId;
-  }) : (rawIsss || []);
+  var isss = (rawIsss || []).filter(function(i) {
+    return i.locations && matchesZone(i.locations.zone_id);
+  });
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
   if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
@@ -1013,20 +1022,22 @@ async function init() {
     // If user has no zone access and is not admin, show first zone as fallback
     if (availableZones.length === 0) availableZones = allZones.slice(0, 1);
 
-    // Populate zone selectors
-    var allOpt = isAdmin ? '<option value="all">— Všetky zóny —</option>' : '';
-    var opts = allOpt + availableZones.map(function(z) {
+    // Populate zone selectors - "Všetko" pre kohokoľvek s 2+ zónami
+    var allOpt = (isAdmin || availableZones.length > 1) ? '<option value="all">— Všetko —</option>' : '';
+    var opts = availableZones.map(function(z) {
       var label = z.tenant_name || z.name;
       return '<option value="' + z.id + '">' + label + '</option>';
-    }).join('');
+    }).join('') + allOpt;
 
     var sel = document.getElementById('zone-select');
     var selM = document.getElementById('zone-select-mob');
     if (sel) sel.innerHTML = opts;
     if (selM) selM.innerHTML = opts;
 
-    // Set current zone - admin starts with all, others with first
-    currentZoneId = isAdmin ? null : (availableZones.length > 0 ? availableZones[0].id : null);
+    // Default: prvá zóna (nie "Všetko")
+    currentZoneId = availableZones.length > 0 ? availableZones[0].id : null;
+    if (sel) sel.value = currentZoneId || 'all';
+    if (selM) selM.value = currentZoneId || 'all';
 
     // Hide zone selector if only one zone and not admin
     if (availableZones.length <= 1 && !isAdmin) {
@@ -1070,9 +1081,9 @@ async function loadArchive() {
     .order('updated_at', { ascending: false });
 
   // Filter podľa zóny
-  var arch = currentZoneId ? (rawArch || []).filter(function(i) {
-    return i.locations && i.locations.zone_id === currentZoneId;
-  }) : (rawArch || []);
+  var arch = (rawArch || []).filter(function(i) {
+    return i.locations && matchesZone(i.locations.zone_id);
+  });
 
   if (!arch || arch.length === 0) {
     container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px]">Archív je prázdny</div>';
