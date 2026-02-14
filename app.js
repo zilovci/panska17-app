@@ -1,1410 +1,416 @@
-const S_URL = 'https://tyimhlqtncjynutxihrf.supabase.co';
-const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
-const sb = supabase.createClient(S_URL, S_KEY);
-
-let allLocs = [], allIssues = [], allUpdates = [];
-let allZones = [], currentZoneId = null, userZoneIds = [];
-let currentEditingPhotoUrl = null;
-let removePhotoFlag = false;
-let currentRole = null;
-let currentUserId = null;
-
-// Second client for creating users (won't disrupt admin session)
-const sbCreate = supabase.createClient(S_URL, S_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false }
-});
-
-
-const fmtD = (str) => {
-  if(!str) return '--';
-  const d = str.split('T')[0].split('-');
-  return `${d[2]}.${d[1]}.${d[0]}`;
-};
-window.hideM = (id) => document.getElementById(id).classList.add('hidden');
-
-// LOGOUT FIX
-window.handleLogout = async () => {
-  await sb.auth.signOut();
-  localStorage.clear();
-  sessionStorage.clear();
-  window.location.reload(true);
-};
-
-// LOGIN FIX
-document.getElementById('f-login').onsubmit = async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('btn-login');
-  btn.innerText = "Sync...";
-
-  const { error } = await sb.auth.signInWithPassword({
-    email: document.getElementById('log-email').value,
-    password: document.getElementById('log-pass').value
-  });
-
-  if (error) {
-    document.getElementById('log-error').classList.remove('hidden');
-    btn.innerText = "Prihlásiť sa";
-  } else {
-    init();
-  }
-};
-
-// -------- Photos (orig + thumb) --------
-async function uploadPhoto(file) {
-  if (!file) return null;
-  const name = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-  const { error } = await sb.storage.from('photos').upload(name, file, { upsert: false });
-  if (error) return null;
-  return `${S_URL}/storage/v1/object/public/photos/${name}`;
-}
-
-async function makeThumbnailBlobFromFile(file, maxW = 420, quality = 0.55) {
-  const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, maxW / bmp.width);
-  const w = Math.round(bmp.width * scale);
-  const h = Math.round(bmp.height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-
-  const ctx = canvas.getContext("2d", { alpha: false });
-  ctx.drawImage(bmp, 0, 0, w, h);
-
-  return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-}
-
-// Used only for one-off migration of existing images
-async function makeThumbnailBlobFromUrl(url, maxW = 420, quality = 0.6) {
-  const res = await fetch(url);
-  const blob = await res.blob();
-  const bmp = await createImageBitmap(blob);
-
-  const scale = Math.min(1, maxW / bmp.width);
-  const w = Math.round(bmp.width * scale);
-  const h = Math.round(bmp.height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d", { alpha: false });
-  ctx.drawImage(bmp, 0, 0, w, h);
-
-  return await new Promise((resolve) =>
-    canvas.toBlob((b) => resolve(b), "image/jpeg", quality)
-  );
-}
-
-async function uploadThumbBlob(blob, baseName) {
-  const thumbName = `thumb/${baseName}.jpg`;
-  const { error } = await sb.storage.from("photos").upload(thumbName, blob, {
-    contentType: "image/jpeg",
-    cacheControl: "3600",
-    upsert: true,
-  });
-  if (error) throw error;
-  return `${S_URL}/storage/v1/object/public/photos/${thumbName}`;
-}
-
-async function uploadPhotoWithThumb(file, baseName) {
-  if (!file) return { photo_url: null, photo_thumb_url: null };
-
-  const photo_url = await uploadPhoto(file);
-  if (!photo_url) return { photo_url: null, photo_thumb_url: null };
-
-  try {
-    const thumbBlob = await makeThumbnailBlobFromFile(file, 420, 0.55);
-    const photo_thumb_url = await uploadThumbBlob(thumbBlob, baseName);
-    return { photo_url, photo_thumb_url };
-  } catch (e) {
-    console.warn("Thumbnail failed:", e);
-    return { photo_url, photo_thumb_url: null };
-  }
-}
-
-async function switchView(v) {
-  // ZAVRETIE MENU NA MOBILE PO KLIKNUTÍ
-  const accordion = document.getElementById('mobile-accordion');
-  if (accordion) {
-    accordion.classList.add('hidden');
-    const icon = document.getElementById('menu-icon');
-    if (icon) icon.classList.replace('fa-xmark', 'fa-bars');
-  }
-
-  ['v-dash', 'v-insp', 'v-arch', 'v-rep', 'v-fin', 'v-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.add('hidden'); });
-  ['n-dash', 'n-insp', 'n-arch', 'n-rep', 'n-fin', 'n-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.remove('nav-active'); });
-
-  document.getElementById('v-'+v).classList.remove('hidden');
-  var nav = document.getElementById('n-'+v); if (nav) nav.classList.add('nav-active');
-
-  // DÔLEŽITÉ: vráť Promise a počkaj na dáta + render
-  if (v === 'dash') return await loadDash();
-  if (v === 'insp') return await loadSections();
-  if (v === 'arch') return await loadArchive();
-  if (v === 'rep')  return await loadReports();
-  if (v === 'fin')  return await loadFinance();
-  if (v === 'admin') return await loadAdmin();
-}
-
-window.switchZone = function(zoneId) {
-  currentZoneId = zoneId === 'all' ? null : zoneId;
-  // Sync both selectors
-  var sel = document.getElementById('zone-select');
-  var selM = document.getElementById('zone-select-mob');
-  if (sel) sel.value = zoneId;
-  if (selM) selM.value = zoneId;
-  // Reload current view
-  var activeView = document.querySelector('[id^="v-"]:not(.hidden)');
-  if (activeView) {
-    var v = activeView.id.replace('v-', '');
-    if (v === 'dash') loadDash();
-    else if (v === 'insp') loadSections();
-    else if (v === 'arch') loadArchive();
-    else if (v === 'rep') loadReports();
-  }
-};
-
-// Filter funkcia - admin vidí všetko, ostatní len svoje zóny
-function matchesZone(zoneId) {
-  if (currentZoneId) return zoneId === currentZoneId;
-  // "Všetko" - admin vidí všetko, ostatní len pridelené
-  var isAdmin = currentRole === 'admin' || currentRole === 'spravca';
-  if (isAdmin) return true;
-  return userZoneIds.indexOf(zoneId) !== -1;
-}
-
-function getZoneName() {
-  if (!currentZoneId) return 'Panská 17';
-  var z = allZones.find(function(z) { return z.id === currentZoneId; });
-  if (!z) return 'Panská 17';
-  return z.tenant_name || z.name;
-}
-
-
-async function loadDash() {
-  var now = new Date();
-  var thisYear = now.getFullYear();
-  document.getElementById('s-year').innerText = thisYear;
-
-  var dashTitle = document.getElementById('dash-zone-title');
-  if (dashTitle) dashTitle.innerText = getZoneName();
-
-  // Načítaj issues s locations filtrované podľa zóny
-  var issQuery = sb.from('issues').select('id, title, status, archived, created_at, location_id, locations(floor, name, zone_id)');
-  var { data: rawIss = [] } = await issQuery;
-
-  // Filter podľa zóny
-  var allIss = rawIss.filter(function(i) {
-    return i.locations && matchesZone(i.locations.zone_id);
-  });
-
-  var issIds = allIss.map(function(i) { return i.id; });
-  var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
-  // Filter updaty len pre naše issues
-  allUpd = allUpd.filter(function(u) { return issIds.indexOf(u.issue_id) !== -1; });
-
-  // Vybavené tento rok - len NEARCHIVOVANÉ issues so statusom Opravené/Vybavené
-  // a posledný resolved dátum v tomto roku
-  var lastResolved = {};
-  allUpd.forEach(function(u) {
-    if ((u.status_to === 'Opravené' || u.status_to === 'Vybavené') && u.event_date) {
-      if (!lastResolved[u.issue_id] || u.event_date > lastResolved[u.issue_id]) {
-        lastResolved[u.issue_id] = u.event_date;
-      }
-    }
-  });
-  var resolvedThisYear = 0;
-  allIss.forEach(function(iss) {
-    var isDone = iss.status === 'Opravené' || iss.status === 'Vybavené';
-    var resolvedDate = lastResolved[iss.id];
-    if (isDone && resolvedDate && resolvedDate.startsWith(String(thisYear))) {
-      resolvedThisYear++;
-      console.log('Vybavené ' + thisYear + ':', resolvedDate, iss.id, iss.title, iss.archived ? 'ARCHIV' : 'aktívne');
-    }
-  });
-  console.log('CELKOM vybavené ' + thisYear + ':', resolvedThisYear);
-  document.getElementById('s-done-year').innerText = resolvedThisYear;
-
-  // V riešení (nie archivované, nie vybavené/opravené)
-  var activeCount = allIss.filter(function(i) {
-    return !i.archived && i.status !== 'Opravené' && i.status !== 'Vybavené';
-  }).length;
-  document.getElementById('s-active').innerText = activeCount;
-
-  // Celkom záznamov
-  document.getElementById('s-total').innerText = allIss.length;
-
-  // Graf - posledných 12 mesiacov
-  var months = [];
-  for (var m = 11; m >= 0; m--) {
-    var d = new Date(thisYear, now.getMonth() - m, 1);
-    months.push({ year: d.getFullYear(), month: d.getMonth() + 1, label: d.toLocaleString('sk', { month: 'short' }).replace('.','') });
-  }
-
-  var chartData = months.map(function(mo) {
-    var prefix = mo.year + '-' + String(mo.month).padStart(2, '0');
-    var newCount = 0;
-    var doneCount = 0;
-    allUpd.forEach(function(u) {
-      if (!u.event_date || !u.event_date.startsWith(prefix)) return;
-      if (u.status_to === 'Zahlásené') newCount++;
-      if (u.status_to === 'Opravené' || u.status_to === 'Vybavené') doneCount++;
-    });
-    return { label: mo.label, newC: newCount, doneC: doneCount };
-  });
-
-  var maxVal = Math.max(1, Math.max.apply(null, chartData.map(function(c) { return Math.max(c.newC, c.doneC); })));
-
-  document.getElementById('dash-chart').innerHTML = chartData.map(function(c) {
-    var hDone = c.doneC > 0 ? Math.max(6, Math.round((c.doneC / maxVal) * 100)) : 0;
-    var hNew = c.newC > 0 ? Math.max(6, Math.round((c.newC / maxVal) * 100)) : 0;
-    return '<div class="flex-1 flex flex-col items-center">' +
-      '<div class="w-full flex space-x-0.5 items-end" style="height:160px">' +
-        '<div class="flex-1 rounded-t-sm" style="height:' + hDone + '%;background:#4ade80;-webkit-print-color-adjust:exact;print-color-adjust:exact"></div>' +
-        '<div class="flex-1 rounded-t-sm" style="height:' + hNew + '%;background:#e2e8f0;-webkit-print-color-adjust:exact;print-color-adjust:exact"></div>' +
-      '</div>' +
-      '<p class="text-[8px] font-bold text-slate-400 mt-1 uppercase">' + c.label + '</p>' +
-      '<p class="text-[7px] text-green-500 font-bold">' + (c.doneC > 0 ? c.doneC : '') + '</p>' +
-    '</div>';
-  }).join('');
-
-  // Posledné aktivity feed - s názvom úlohy
-  var issMap = {};
-  allIss.forEach(function(i) { issMap[i.id] = i; });
-  // Len updaty pre existujúce issues
-  var validUpd = allUpd.filter(function(u) { return issMap[u.issue_id]; });
-  var recent = validUpd.slice(0, 8);
-
-  document.getElementById('dash-feed').innerHTML = recent.length === 0
-    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadne aktivity</p>'
-    : recent.map(function(u) {
-      var iss = issMap[u.issue_id];
-      var statusColor = (u.status_to === 'Opravené' || u.status_to === 'Vybavené') ? 'text-green-600' : 'text-slate-600';
-      return '<div class="flex items-start space-x-3 py-2 border-b border-slate-100 last:border-0">' +
-        '<span class="text-[9px] font-bold text-slate-300 min-w-[65px]">' + fmtD(u.event_date) + '</span>' +
-        '<span class="text-[9px] font-bold ' + statusColor + ' uppercase min-w-[70px]">' + u.status_to + '</span>' +
-        '<span class="text-[9px] font-bold text-slate-700">' + (iss && iss.locations ? '<span class="text-slate-400">' + iss.locations.floor + ' / ' + iss.locations.name + '</span> — ' : '') + (iss ? iss.title : '') + '</span>' +
-      '</div>';
-    }).join('');
-}
-
-window.printDashboard = async function() {
-  window.print();
-};
-
-// Prepočítaj status všetkých issues podľa posledného update (manuálne cez konzolu)
-async function recalcAllStatuses() {
-  var { data: issues = [] } = await sb.from('issues').select('id');
-  for (var i = 0; i < issues.length; i++) {
-    await syncIssueStatusFromLastEvent(issues[i].id);
-  }
-  console.log('Prepočítané statusy pre ' + issues.length + ' záznamov');
-  alert('Statusy prepočítané pre ' + issues.length + ' záznamov. Obnov stránku.');
-}
-
-async function loadSections() {
-  const container = document.getElementById('section-container');
-  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Synchronizujem...</div>';
-
-  // Názov zóny
-  var inspTitle = document.getElementById('insp-zone-title');
-  if (inspTitle) inspTitle.innerText = getZoneName();
-
-  const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
-  allLocs = (locs || []).filter(function(l) { return matchesZone(l.zone_id); });
-
-  const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false });
-  var locIds = allLocs.map(function(l) { return l.id; });
-  allIssues = (isss || []).filter(function(i) { return locIds.indexOf(i.location_id) !== -1; });
-
-  const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false });
-  allUpdates = updts || [];
-
-  container.innerHTML = '';
-  const floors = [...new Set(allLocs.map(l => l.floor))];
-
-  floors.forEach(floor => {
-    const floorLocs = allLocs.filter(l => l.floor === floor);
-    const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
-
-    const div = document.createElement('div');
-    var isEmpty = floorIssues.length === 0;
-    div.className = isEmpty
-      ? 'bg-white px-6 py-3 md:px-8 md:py-3 rounded-2xl shadow-sm leading-tight mb-3'
-      : 'bg-white p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6';
-
-    let issuesHtml = floorIssues.map(i => {
-      const logs = allUpdates.filter(u => u.issue_id === i.id)
-        .sort((a,b) => new Date(a.event_date) - new Date(b.event_date));
-
-      const photos = allUpdates
-        .filter(u => u.issue_id === i.id && u.photo_url)
-        .map(l => `<img loading="lazy" decoding="async" src="${l.photo_thumb_url || l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`)
-        .join('');
-
-      const fLog = logs.length > 0 ? logs[0] : null;
-
-      return `
-        <div class="flex justify-between items-start leading-tight">
-          <div class="flex-1 leading-tight">
-            <p class="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">${i.locations?.name || '--'}</p>
-            <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} leading-tight mb-1">${i.title}</p>
-            <p class="text-[8px] text-slate-400 font-bold leading-tight"><span class="uppercase">Nahlásil:</span> ${fLog ? fmtD(fLog.event_date) : '--'} ${i.reported_by || '--'} • <span class="uppercase">Zodpovedný:</span> ${i.responsible_person || '--'}</p>
-          </div>
-          <div class="flex items-center space-x-3 ml-4 leading-tight leading-tight">
-            <div class="flex items-center leading-none">${photos}</div>
-            ${currentRole !== 'pozorovatel' ? `<button onclick="window.prepStat('${i.id}')" class="bg-white px-3 py-1.5 rounded-lg border border-slate-100 text-[9px] font-black uppercase text-blue-600 underline leading-tight">Upraviť</button>` : ''}
-          </div>
-        </div>`;
-    }).join('');
-
-    if (isEmpty) {
-      div.innerHTML = `
-        <div class="flex justify-between items-center leading-tight">
-          <div class="flex items-center space-x-3">
-            <h3 class="font-black text-sm uppercase text-slate-300 leading-tight">${floor}</h3>
-            <span class="text-[9px] text-slate-200 font-bold uppercase">OK</span>
-          </div>
-          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>` : ''}
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Panská 17 | Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- MOBILNÁ LIŠTA S HARMONIKOU -->
+<div id="mobile-nav" class="md:hidden no-print bg-white border-b border-slate-200 sticky top-0 z-[100]">
+    <div class="flex items-center justify-between p-4">
+        <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-building text-blue-600 text-xl"></i>
+            <span class="font-black uppercase text-base tracking-tighter">Panská 17</span>
         </div>
-      `;
-    } else {
-      div.innerHTML = `
-        <div class="flex justify-between items-center border-b pb-4 mb-4 leading-tight">
-          <h3 class="font-black text-xl uppercase text-slate-900 leading-tight">${floor}</h3>
-          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none leading-tight">+ Pridať</button>` : ''}
-        </div>
-        <div class="space-y-4 leading-tight">
-          ${issuesHtml}
-        </div>
-      `;
-    }
-    container.appendChild(div);
-  });
-
-  // Show orphaned issues (no valid location)
-  const orphans = allIssues.filter(i => !allLocs.some(l => l.id === i.location_id));
-  if (orphans.length > 0) {
-    const odiv = document.createElement('div');
-    odiv.className = 'bg-red-50 p-6 md:p-8 rounded-[2rem] shadow-sm leading-tight mb-6 border border-red-200';
-    odiv.innerHTML = `
-      <div class="flex justify-between items-center border-b border-red-200 pb-4 mb-4 leading-tight">
-        <h3 class="font-black text-xl uppercase text-red-400 leading-tight">Bez lokácie</h3>
-      </div>
-      <div class="space-y-4 leading-tight">
-        ${orphans.map(i => `
-          <div class="flex justify-between items-center leading-tight mb-2">
-            <div>
-              <p class="text-sm font-bold text-slate-600">${i.title}</p>
-              <p class="text-[8px] text-red-400 font-bold uppercase">Záznam nemá priradenú miestnosť</p>
+        <button onclick="toggleMobileMenu()" class="bg-slate-50 p-2 rounded-xl text-slate-600 border border-slate-100">
+            <i class="fa-solid fa-bars text-xl" id="menu-icon"></i>
+        </button>
+    </div>
+    
+    <div id="mobile-accordion" class="hidden border-t border-slate-50 bg-white">
+        <nav class="flex flex-col p-4 space-y-2">
+            <div class="pb-2">
+                <select id="zone-select-mob" onchange="window.switchZone(this.value)" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold"></select>
             </div>
-            ${canEdit() ? `<button onclick="window.deleteOrphan('${i.id}')" class="bg-red-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase leading-tight">Vymazať</button>` : ''}
-          </div>
-        `).join('')}
-      </div>
-    `;
-    container.appendChild(odiv);
-  }
-}
-
-async function loadReports() {
-  const todayStr = new Date().toLocaleDateString();
-  document.getElementById('rep-date-screen').innerText = todayStr;
-
-  // Názov zóny v reporte
-  var repTitle = document.getElementById('rep-zone-title');
-  if (repTitle) repTitle.innerText = getZoneName();
-
-  // Set default Do dátum ak je prázdny
-  var dateTo = document.getElementById('rep-date-to');
-  if (!dateTo.value) dateTo.value = new Date().toISOString().split('T')[0];
-
-  const list = document.getElementById('rep-list');
-
-  // Filtre
-  var dateFrom = document.getElementById('rep-date-from').value;
-  var dateTo = document.getElementById('rep-date-to').value;
-  var filterStatus = document.getElementById('rep-filter-status').value;
-  var filterType = document.getElementById('rep-filter-type').value;
-  var filterFloor = document.getElementById('rep-filter-floor').value;
-
-  // Načítaj dáta
-  var query = sb.from('issues').select('*, locations(*)');
-  if (filterType === 'active') query = query.eq('archived', false);
-  else if (filterType === 'archived') query = query.eq('archived', true);
-
-  const { data: rawIsss } = await query;
-  // Filter podľa zóny
-  var isss = (rawIsss || []).filter(function(i) {
-    return i.locations && matchesZone(i.locations.zone_id);
-  });
-  const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
-
-  if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
-
-  // Naplň podlažia dropdown - zoradené podľa sort_order
-  var floorOrder = {};
-  isss.forEach(function(i) {
-    if (i.locations && i.locations.floor) {
-      if (floorOrder[i.locations.floor] === undefined || i.locations.sort_order < floorOrder[i.locations.floor]) {
-        floorOrder[i.locations.floor] = i.locations.sort_order;
-      }
-    }
-  });
-  var floors = [];
-  isss.forEach(function(i) {
-    if (i.locations && i.locations.floor && floors.indexOf(i.locations.floor) === -1) floors.push(i.locations.floor);
-  });
-  floors.sort(function(a, b) { return (floorOrder[a] || 0) - (floorOrder[b] || 0); });
-  var floorSel = document.getElementById('rep-filter-floor');
-  var curFloor = floorSel.value;
-  floorSel.innerHTML = '<option value="all">Všetky</option>' + floors.map(function(f) {
-    return '<option value="' + f + '"' + (f === curFloor ? ' selected' : '') + '>' + f + '</option>';
-  }).join('');
-
-  var validIssues = isss.filter(function(i) {
-    if (!i.locations) return false;
-    // Filter podlažie
-    if (filterFloor !== 'all' && i.locations.floor !== filterFloor) return false;
-    // Filter stav
-    if (filterStatus === 'done' && i.status !== 'Opravené' && i.status !== 'Vybavené') return false;
-    if (filterStatus === 'active' && (i.status === 'Opravené' || i.status === 'Vybavené')) return false;
-    return true;
-  });
-
-  validIssues.sort(function(a,b) { return a.locations.sort_order - b.locations.sort_order; });
-
-  list.innerHTML = validIssues.map(function(i) {
-    var logs = updts.filter(function(u) { return u.issue_id === i.id; });
-
-    // Filter dátumový rozsah na update úrovni
-    if (dateFrom || dateTo) {
-      logs = logs.filter(function(u) {
-        if (!u.event_date) return false;
-        if (dateFrom && u.event_date < dateFrom) return false;
-        if (dateTo && u.event_date > dateTo) return false;
-        return true;
-      });
-      if (logs.length === 0) return '';
-    }
-
-    return '<tr class="rep-row leading-snug">' +
-      '<td class="py-5 px-2 align-top border-r border-slate-50">' +
-        '<span class="block font-black text-slate-400 uppercase text-[7px]">' + (i.locations ? i.locations.floor : '--') + '</span>' +
-        '<span class="text-[10px] font-bold">' + (i.locations ? i.locations.name : '--') + '</span>' +
-        '<p class="text-[7px] font-bold text-slate-400 uppercase mt-2">Zodpovedá: ' + (i.responsible_person || '--') + '</p>' +
-      '</td>' +
-      '<td class="py-5 px-3 align-top leading-snug">' +
-        '<p class="font-bold text-slate-900 mb-3">' + i.title + '</p>' +
-        '<div class="space-y-4">' +
-          logs.map(function(u) {
-            return '<div class="flex justify-between items-start space-x-2 pb-1">' +
-              '<div class="flex-1">' +
-                '<div class="flex items-center space-x-2 mb-1">' +
-                  '<span class="font-black text-[7px] text-slate-400 uppercase">' + fmtD(u.event_date) + '</span>' +
-                  '<span class="text-[6px] font-black px-1 border rounded uppercase ' + (u.status_to === 'Opravené' || u.status_to === 'Vybavené' ? 'text-green-600' : 'text-slate-400') + '">' + u.status_to + '</span>' +
-                '</div>' +
-                '<p class="text-[9px] text-slate-700 leading-snug">' + (u.note || '--') + '</p>' +
-              '</div>' +
-              (u.photo_url ? '<img loading="eager" decoding="async" src="' + (u.photo_thumb_url || u.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + u.photo_url + '\')">' : '') +
-            '</div>';
-          }).join('') +
-        '</div>' +
-      '</td>' +
-      '<td class="py-5 px-1 align-top text-center">' +
-        '<span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ' + (i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50') + '">' + i.status + '</span>' +
-      '</td>' +
-    '</tr>';
-  }).join('');
-}
-
-window.prepAdd = (fN) => {
-  document.getElementById('f-add').reset();
-  document.getElementById('m-add-floor-label').innerText = fN;
-  document.getElementById('f-add-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('f-add-reported').value = document.getElementById('att-all').value;
-  document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
-  var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
-  var fi = document.getElementById('f-add-photo'); if (fi) fi.value = '';
-  document.getElementById('m-add').classList.remove('hidden');
-};
-
-async function syncIssueStatusFromLastEvent(issueId) {
-  // posledný event podľa dátumu, pri rovnakom dátume podľa created_at (ak existuje) a id
-  const { data: last, error } = await sb
-    .from('issue_updates')
-    .select('id, status_to, event_date, created_at')
-    .eq('issue_id', issueId)
-    .order('event_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(1);
-
-  if (error) {
-    console.error("syncIssueStatusFromLastEvent error:", error);
-    return;
-  }
-
-  const finalStatus = last?.[0]?.status_to || 'Zahlásené';
-
-  const { error: upErr } = await sb
-    .from('issues')
-    .update({ status: finalStatus, updated_at: new Date() })
-    .eq('id', issueId);
-
-  if (upErr) console.error("issues.status update error:", upErr);
-}
-
-
-
-window.prepStat = (id) => {
-  const item = allIssues.find(i => i.id === id);
-  if(!item) return;
-
-  // reset to new-entry mode
-  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
-  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
-  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
-  document.getElementById('f-stat-update-id').value = '';
-  document.getElementById('f-stat-note').value = '';
-  currentEditingPhotoUrl = null;
-  removePhotoFlag = false;
-
-  document.getElementById('f-stat-id').value = id;
-  document.getElementById('f-stat-val').value = item.status;
-  document.getElementById('f-stat-title-edit').value = item.title;
-  document.getElementById('f-stat-resp-edit').value = item.responsible_person || '';
-  document.getElementById('f-stat-reported-edit').value = item.reported_by || '';
-  document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
-
-  document.getElementById('f-stat-loc-id').innerHTML = allLocs.map(l => `<option value="${l.id}" ${l.id === item.location_id ? 'selected' : ''}>${l.floor}: ${l.name}</option>`).join('');
-
-  const logs = allUpdates.filter(u => u.issue_id === id).sort((a,b) => new Date(b.event_date) - new Date(a.event_date));
-  document.getElementById('m-history-list').innerHTML = logs.map(u => {
-    var showActions = canEditEntry(u);
-    return `
-    <div data-uid="${u.id}" class="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight">
-      <div class="flex justify-between items-start mb-1 leading-tight">
-        <span class="font-black block text-slate-800 uppercase tracking-tighter leading-tight leading-tight">${fmtD(u.event_date)} • ${u.status_to}</span>
-        ${showActions ? `<div class="flex space-x-2 leading-tight leading-tight">
-          <button type="button" onclick="window.editHEntry('${u.id}')" class="text-blue-500 leading-none leading-tight"><i class="fa-solid fa-pencil leading-tight"></i></button>
-          <button type="button" onclick="window.delHEntry('${u.id}')" class="text-red-300 leading-none leading-tight"><i class="fa-solid fa-trash-can leading-tight"></i></button>
-        </div>` : ''}
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-[8px] font-bold text-slate-500 mb-2 leading-tight">
-        <p><span class="uppercase">Nahlásil:</span> ${u.attendance || '--'}</p><p><span class="uppercase">Zodpovedný:</span> ${item.responsible_person || '--'}</p>
-      </div>
-      <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
-      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="history-thumb" onclick="window.open('${u.photo_url}')">` : ''}
-    </div>`;
-  }).join('');
-
-  document.getElementById('m-status').classList.remove('hidden');
-
-  // Permission-based button visibility
-  var delBtn = document.getElementById('btn-del-issue'); if (delBtn) delBtn.classList.toggle('hidden', !canEdit());
-  var archBtn = document.getElementById('btn-archive-issue'); if (archBtn) archBtn.classList.toggle('hidden', !canEdit());
-  var saveBtn = document.getElementById('btn-save-stat'); if (saveBtn) saveBtn.classList.toggle('hidden', currentRole === 'pozorovatel');
-};
-
-window.editHEntry = (id) => {
-  const e = allUpdates.find(u => u.id === id);
-  if(!e) return;
-
-  // highlight edited entry orange, reset others
-  document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
-    if (el.dataset.uid === id) {
-      el.className = 'p-3 bg-orange-50 rounded-xl border border-orange-200 text-[10px] mb-2 leading-tight';
-    } else {
-      el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight';
-    }
-  });
-
-  document.getElementById('f-stat-update-id').value = e.id;
-  document.getElementById('f-stat-note').value = e.note || "";
-  document.getElementById('f-stat-date').value = e.event_date ? e.event_date.split('T')[0] : "";
-  document.getElementById('f-stat-val').value = e.status_to;
-  document.getElementById('f-stat-reported-edit').value = e.attendance || "";
-
-  if(e.photo_url) {
-    document.getElementById('edit-photo-preview').classList.remove('hidden');
-    document.getElementById('edit-photo-img').src = e.photo_thumb_url || e.photo_url;
-    currentEditingPhotoUrl = e.photo_url;
-    removePhotoFlag = false;
-
-  } else {
-    document.getElementById('edit-photo-preview').classList.add('hidden');
-    currentEditingPhotoUrl = null;
-    removePhotoFlag = false;
-  }
-
-  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.remove('hidden');
-};
-
-window.delHEntry = async (id) => {
-  var entry = allUpdates.find(u => u.id === id);
-  if (entry && !canEditEntry(entry)) { alert('Nemáte oprávnenie mazať tento záznam.'); return; }
-  if(confirm("Zmazať?")) {
-    await sb.from('issue_updates').delete().eq('id', id);
-    var issueId = document.getElementById('f-stat-id').value;
-    await loadSections();
-    window.prepStat(issueId);
-  }
-};
-
-// -------- Forms (save) --------
-document.getElementById('f-add').onsubmit = async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('btn-save-new');
-  btn.disabled = true;
-
-  try {
-    const locId = document.getElementById('f-add-loc-id').value;
-    if (!locId) { alert('Vyber miestnosť.'); btn.disabled = false; return; }
-
-    const file = document.getElementById('f-add-photo').files[0] || window.addGalleryFile;
-    const up = file ? await uploadPhotoWithThumb(file, `upd_${Date.now()}`) : { photo_url: null, photo_thumb_url: null };
-
-    const { data, error } = await sb.from('issues').insert([{
-      location_id: locId,
-      title: document.getElementById('f-add-title').value,
-      responsible_person: document.getElementById('f-add-resp').value,
-      reported_by: document.getElementById('f-add-reported').value,
-      status: 'Zahlásené'
-    }]).select();
-
-    if (error) throw error;
-
-    if (data?.[0]) {
-      const { error: upErr } = await sb.from('issue_updates').insert([{
-        issue_id: data[0].id,
-        status_to: 'Zahlásené',
-        note: document.getElementById('f-add-note').value,
-        event_date: document.getElementById('f-add-date').value,
-        photo_url: up.photo_url,
-        photo_thumb_url: up.photo_thumb_url,
-        attendance: document.getElementById('f-add-reported').value,
-        created_by: currentUserId
-      }]);
-      if (upErr) throw upErr;
-
-      hideM('m-add');
-      e.target.reset();
-      var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
-      await loadSections();
-    }
-  } catch (err) {
-    console.error(err);
-    alert("Nepodarilo sa uložiť. Pozri Console.");
-  } finally {
-    btn.disabled = false;
-  }
-};
-
-document.getElementById('f-stat').onsubmit = async (e) => {
-  e.preventDefault();
-  const btn = document.getElementById('btn-save-stat');
-  btn.disabled = true;
-
-  try {
-    const uId = document.getElementById('f-stat-update-id').value;
-    const id = document.getElementById('f-stat-id').value;
-    const st = document.getElementById('f-stat-val').value;
-
-    const file = document.getElementById('f-stat-photo').files[0] || window.editGalleryFile;
-    const up = file ? await uploadPhotoWithThumb(file, `upd_${uId || Date.now()}`) : null;
-
-    const { error: issErr } = await sb.from('issues').update({
-      title: document.getElementById('f-stat-title-edit').value,
-      responsible_person: document.getElementById('f-stat-resp-edit').value,
-      reported_by: document.getElementById('f-stat-reported-edit').value,
-      location_id: document.getElementById('f-stat-loc-id').value,
-      updated_at: new Date()
-    }).eq('id', id);
-
-    if (issErr) throw issErr;
-
-    if (uId) {
-      const payload = {
-        status_to: document.getElementById('f-stat-val').value,
-        note: document.getElementById('f-stat-note').value,
-        event_date: document.getElementById('f-stat-date').value,
-        attendance: document.getElementById('f-stat-reported-edit').value
-      };
-
-      if (removePhotoFlag) {
-        payload.photo_url = null;
-        payload.photo_thumb_url = null;
-      } else if (up?.photo_url) {
-        payload.photo_url = up.photo_url;
-        if (up?.photo_thumb_url) payload.photo_thumb_url = up.photo_thumb_url;
-      } else if (currentEditingPhotoUrl) {
-        payload.photo_url = currentEditingPhotoUrl;
-      }
-
-      const { error: updErr } = await sb.from('issue_updates').update(payload).eq('id', uId);
-      if (updErr) throw updErr;
-
-    } else {
-      const { error: insErr } = await sb.from('issue_updates').insert([{
-        issue_id: id,
-        status_to: document.getElementById('f-stat-val').value,
-        note: document.getElementById('f-stat-note').value,
-        event_date: document.getElementById('f-stat-date').value,
-        photo_url: up?.photo_url || null,
-        photo_thumb_url: up?.photo_thumb_url || null,
-        attendance: document.getElementById('f-stat-reported-edit').value,
-        created_by: currentUserId
-      }]);
-      if (insErr) throw insErr;
-    }
-
-    await syncIssueStatusFromLastEvent(id);
-    await loadSections();
-    window.prepStat(id);
-
-  } catch (err) {
-    console.error(err);
-    alert("Nepodarilo sa uložiť. Pozri Console.");
-  } finally {
-    btn.disabled = false;
-  }
-};
-
-window.archiveIssue = async () => {
-  if(confirm("Archivovať?")) {
-    await sb.from('issues').update({ archived: true }).eq('id', document.getElementById('f-stat-id').value);
-    hideM('m-status');
-    await loadSections();
-  }
-};
-
-window.restoreIssue = async (id) => {
-  await sb.from('issues').update({ archived: false }).eq('id', id);
-  await loadArchive();
-};
-
-window.confirmDelete = async () => {
-  if(confirm("Vymazať natrvalo?")) {
-    var issueId = document.getElementById('f-stat-id').value;
-    await sb.from('issue_updates').delete().eq('issue_id', issueId);
-    await sb.from('issues').delete().eq('id', issueId);
-    hideM('m-status');
-    await loadSections();
-  }
-};
-
-window.previewAddPhoto = function(input) {
-  var f = input.files[0];
-  var p = document.getElementById('add-photo-preview');
-  var im = document.getElementById('add-photo-img');
-  if (f && p && im) {
-    var r = new FileReader();
-    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
-    r.readAsDataURL(f);
-  } else if (p) { p.classList.add('hidden'); }
-};
-
-window.addGalleryFile = null;
-window.editGalleryFile = null;
-
-window.addPhotoFromGallery = function(input) {
-  window.addGalleryFile = input.files[0];
-  window.previewAddPhoto(input);
-};
-
-window.editPhotoFromGallery = function(input) {
-  window.editGalleryFile = input.files[0];
-  window.previewEditPhoto(input);
-};
-
-window.clearAddPhoto = function() {
-  var i = document.getElementById('f-add-photo'); if (i) i.value = '';
-  var g = document.getElementById('f-add-photo-gallery'); if (g) g.value = '';
-  window.addGalleryFile = null;
-  var p = document.getElementById('add-photo-preview'); if (p) p.classList.add('hidden');
-};
-
-window.previewEditPhoto = function(input) {
-  var f = input.files[0];
-  var p = document.getElementById('edit-photo-preview');
-  var im = document.getElementById('edit-photo-img');
-  if (f && p && im) {
-    var r = new FileReader();
-    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
-    r.readAsDataURL(f);
-    removePhotoFlag = false;
-  }
-};
-
-window.deleteOrphan = async (id) => {
-  if (!confirm('Vymazať tento záznam bez lokácie? Vymaže sa aj celá história.')) return;
-  await sb.from('issue_updates').delete().eq('issue_id', id);
-  await sb.from('issues').delete().eq('id', id);
-  await loadSections();
-};
-
-window.resetToNewEntry = function() {
-  document.getElementById('f-stat-update-id').value = '';
-  document.getElementById('f-stat-note').value = '';
-  document.getElementById('f-stat-date').value = new Date().toISOString().split('T')[0];
-  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
-  var ef = document.getElementById('f-stat-photo'); if (ef) ef.value = '';
-  var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
-  currentEditingPhotoUrl = null;
-  removePhotoFlag = false;
-  // reset orange highlights
-  document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
-    el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight';
-  });
-};
-
-// -------- Permission helpers --------
-function canEdit() { return ['admin', 'spravca'].includes(currentRole); }
-function canAdd() { return ['admin', 'spravca', 'pracovnik'].includes(currentRole); }
-
-function canEditEntry(entry) {
-  if (['admin', 'spravca'].includes(currentRole)) return true;
-  if (currentRole === 'pracovnik') {
-    var today = new Date().toISOString().split('T')[0];
-    var entryDate = entry.event_date ? entry.event_date.split('T')[0] : '';
-    return entry.created_by === currentUserId && entryDate === today;
-  }
-  return false;
-}
-
-// -------- Admin panel --------
-// ============ FINANCE MODULE ============
-
-var allCategories = [];
-var editingExpenseId = null;
-
-async function loadFinance() {
-  // Load categories
-  var { data: cats = [] } = await sb.from('cost_categories').select('*').order('sort_order', { ascending: true });
-  allCategories = cats;
-
-  // Zones grid - metraže
-  var zonesGrid = document.getElementById('fin-zones-grid');
-  if (zonesGrid) {
-    zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
-      var label = z.tenant_name || z.name;
-      return '<div class="flex items-center space-x-2 bg-slate-50 rounded-xl px-3 py-2">' +
-        '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
-        '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-20 text-right border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">' +
-        '<span class="text-[8px] text-slate-400">m²</span>' +
-        '</div>';
-    }).join('');
-  }
-
-  // Category filter dropdown
-  var catFilter = document.getElementById('fin-cat-filter');
-  if (catFilter) {
-    catFilter.innerHTML = '<option value="all">Všetky</option>' + cats.map(function(c) {
-      return '<option value="' + c.id + '">' + c.name + '</option>';
-    }).join('');
-  }
-
-  // Category dropdown in modal
-  var expCat = document.getElementById('exp-category');
-  if (expCat) {
-    expCat.innerHTML = cats.map(function(c) {
-      return '<option value="' + c.id + '">' + c.name + '</option>';
-    }).join('');
-  }
-
-  // Zone dropdown in modal
-  var expZone = document.getElementById('exp-zone');
-  if (expZone) {
-    expZone.innerHTML = '<option value="">— Celá budova —</option>' + allZones.map(function(z) {
-      var label = z.tenant_name || z.name;
-      return '<option value="' + z.id + '">' + label + '</option>';
-    }).join('');
-  }
-
-  // Year dropdown
-  var yearSel = document.getElementById('fin-year');
-  if (yearSel && yearSel.options.length === 0) {
-    var curYear = new Date().getFullYear();
-    for (var y = curYear; y >= 2020; y--) {
-      yearSel.innerHTML += '<option value="' + y + '">' + y + '</option>';
-    }
-  }
-
-  // Set default date
-  var expDate = document.getElementById('exp-date');
-  if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
-
-  await loadExpenses();
-}
-
-window.loadExpenses = async function() {
-  var year = document.getElementById('fin-year').value || new Date().getFullYear();
-  var catFilter = document.getElementById('fin-cat-filter').value;
-
-  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)')
-    .gte('date', year + '-01-01').lte('date', year + '-12-31')
-    .order('date', { ascending: false });
-
-  if (catFilter !== 'all') query = query.eq('category_id', catFilter);
-
-  var { data: expenses = [] } = await query;
-
-  var list = document.getElementById('fin-expenses-list');
-  if (expenses.length === 0) {
-    list.innerHTML = '<p class="text-center py-8 text-[10px] text-slate-200 font-bold uppercase">Žiadne náklady</p>';
-    document.getElementById('fin-total-amount').innerText = '0 €';
-    return;
-  }
-
-  var total = 0;
-  list.innerHTML = '<div class="space-y-2">' + expenses.map(function(e) {
-    total += parseFloat(e.amount) || 0;
-    var zoneName = e.zones ? (e.zones.tenant_name || e.zones.name) : 'Celá budova';
-    var catName = e.cost_categories ? e.cost_categories.name : '--';
-    return '<div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">' +
-      '<div class="flex-1 min-w-0">' +
-        '<div class="flex items-center space-x-2">' +
-          '<span class="text-[8px] font-black text-slate-400 uppercase">' + fmtD(e.date) + '</span>' +
-          '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
-          '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
-        '</div>' +
-        '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
-        (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + '</p>' : '') +
-      '</div>' +
-      '<div class="flex items-center space-x-3 ml-3">' +
-        '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
-        '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
-        '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
-      '</div>' +
-    '</div>';
-  }).join('') + '</div>';
-
-  document.getElementById('fin-total-amount').innerText = total.toFixed(2) + ' €';
-};
-
-window.saveZoneAreas = async function() {
-  var inputs = document.querySelectorAll('.zone-area-input');
-  for (var i = 0; i < inputs.length; i++) {
-    var zoneId = inputs[i].getAttribute('data-zone-id');
-    var area = parseFloat(inputs[i].value) || 0;
-    await sb.from('zones').update({ area_m2: area }).eq('id', zoneId);
-  }
-  // Update local
-  for (var j = 0; j < allZones.length; j++) {
-    var inp = document.querySelector('[data-zone-id="' + allZones[j].id + '"]');
-    if (inp) allZones[j].area_m2 = parseFloat(inp.value) || 0;
-  }
-  alert('Metraže uložené.');
-};
-
-window.showAddExpense = function() {
-  editingExpenseId = null;
-  document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('exp-desc').value = '';
-  document.getElementById('exp-supplier').value = '';
-  document.getElementById('exp-amount').value = '';
-  document.getElementById('exp-zone').value = '';
-  document.getElementById('exp-invoice').value = '';
-  document.getElementById('exp-note').value = '';
-  document.getElementById('modal-expense').classList.remove('hidden');
-};
-
-window.closeExpenseModal = function() {
-  document.getElementById('modal-expense').classList.add('hidden');
-};
-
-window.saveExpense = async function() {
-  var data = {
-    date: document.getElementById('exp-date').value,
-    category_id: document.getElementById('exp-category').value,
-    description: document.getElementById('exp-desc').value.trim(),
-    supplier: document.getElementById('exp-supplier').value.trim() || null,
-    amount: parseFloat(document.getElementById('exp-amount').value) || 0,
-    zone_id: document.getElementById('exp-zone').value || null,
-    invoice_number: document.getElementById('exp-invoice').value.trim() || null,
-    note: document.getElementById('exp-note').value.trim() || null,
-    created_by: currentUserId
-  };
-
-  if (!data.description || !data.amount) {
-    alert('Vyplňte popis a sumu.');
-    return;
-  }
-
-  if (editingExpenseId) {
-    await sb.from('expenses').update(data).eq('id', editingExpenseId);
-  } else {
-    await sb.from('expenses').insert(data);
-  }
-
-  window.closeExpenseModal();
-  await loadExpenses();
-};
-
-window.editExpense = async function(id) {
-  var { data: e } = await sb.from('expenses').select('*').eq('id', id).single();
-  if (!e) return;
-
-  editingExpenseId = id;
-  document.getElementById('exp-date').value = e.date;
-  document.getElementById('exp-category').value = e.category_id;
-  document.getElementById('exp-desc').value = e.description;
-  document.getElementById('exp-supplier').value = e.supplier || '';
-  document.getElementById('exp-amount').value = e.amount;
-  document.getElementById('exp-zone').value = e.zone_id || '';
-  document.getElementById('exp-invoice').value = e.invoice_number || '';
-  document.getElementById('exp-note').value = e.note || '';
-  document.getElementById('modal-expense').classList.remove('hidden');
-};
-
-window.deleteExpense = async function(id) {
-  if (!confirm('Vymazať tento náklad?')) return;
-  await sb.from('expenses').delete().eq('id', id);
-  await loadExpenses();
-};
-
-// ============ END FINANCE MODULE ============
-
-async function loadAdmin() {
-  if (currentRole !== 'admin') return;
-  const { data: users = [] } = await sb.from('user_profiles').select('*').order('created_at', { ascending: true });
-  const { data: allAccess = [] } = await sb.from('user_zone_access').select('*');
-
-  var roleLabels = { admin: 'Admin', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
-
-  document.getElementById('admin-user-list').innerHTML = users.length === 0
-    ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadni používatelia</p>'
-    : users.map(u => {
-      var userAccess = allAccess.filter(function(a) { return a.user_id === u.user_id; });
-      var userZoneIds = userAccess.map(function(a) { return a.zone_id; });
-      var isAdminOrSpravca = u.role === 'admin' || u.role === 'spravca';
-
-      var zoneCheckboxes = isAdminOrSpravca
-        ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
-        : '<div class="mt-3">' +
-          '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zóny:</p>' +
-          '<div class="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-2 gap-y-1">' +
-          allZones.map(function(z) {
-            var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
-            var label = z.tenant_name ? z.tenant_name : z.name;
-            return '<label class="flex items-center space-x-1 text-[9px] text-slate-600">' +
-              '<input type="checkbox" ' + checked + ' onchange="window.toggleUserZone(\'' + u.user_id + '\', \'' + z.id + '\', this.checked)" class="rounded">' +
-              '<span>' + label + '</span></label>';
-          }).join('') +
-          '</div></div>';
-
-      return `
-      <div class="p-4 bg-slate-50 rounded-xl">
-        <div class="flex items-center justify-between">
-          <div class="flex-1">
-            <p class="text-xs font-bold text-slate-800">${u.display_name || '--'}</p>
-            <p class="text-[9px] text-slate-400">${u.email}</p>
-          </div>
-          <div class="flex items-center space-x-3">
-            <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
-              ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
-            </select>
-            ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
-          </div>
+            <button onclick="switchView('dash')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Dashboard</button>
+            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Obhliadka</button>
+            <button onclick="switchView('rep')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Report</button>
+            <button onclick="switchView('arch')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Archív</button>
+            <button onclick="switchView('fin')" id="n-fin-mob" class="hidden text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Financie</button>
+            <button onclick="switchView('admin')" id="n-admin-mob" class="hidden text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Admin</button>
+            <button onclick="handleLogout()" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-red-400 border-t border-slate-50 mt-2">Odhlásiť sa</button>
+        </nav>
+    </div>
+</div>
+    <!-- LOGIN VIEW -->
+    <div id="login-view" class="min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div class="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md text-center">
+            <i class="fa-solid fa-building text-blue-600 text-5xl mb-6"></i>
+            <h1 class="font-black text-3xl uppercase tracking-tighter mb-8">Panská 17</h1>
+            <form id="f-login" class="space-y-4">
+                <input type="email" id="log-email" placeholder="Email" class="w-full border p-4 rounded-2xl outline-none font-bold" required>
+                <input type="password" id="log-pass" placeholder="Heslo" class="w-full border p-4 rounded-2xl outline-none font-bold" required>
+                <button type="submit" id="btn-login" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg mt-4">Prihlásiť sa</button>
+                <p id="log-error" class="hidden text-red-500 text-xs font-bold mt-4">Chyba prihlásenia</p>
+            </form>
         </div>
-        ${zoneCheckboxes}
-      </div>`;
-    }).join('');
-}
+    </div>
 
-window.changeUserRole = async (profileId, newRole) => {
-  await sb.from('user_profiles').update({ role: newRole }).eq('id', profileId);
-  await loadAdmin();
-};
+    <!-- APP VIEW -->
+    <div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row leading-tight">
+        <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col fixed md:relative h-screen no-print z-50">
+            <div class="p-8">
+                <div class="flex items-center space-x-3"><i class="fa-solid fa-building text-blue-600 text-2xl"></i><h1 class="font-black text-2xl tracking-tighter uppercase text-slate-900">Panská 17</h1></div>
+            </div>
+            <nav class="flex-1 py-4">
+                <div class="px-8 pb-4">
+                    <label class="text-[8px] font-black text-slate-300 uppercase tracking-widest">Zóna</label>
+                    <select id="zone-select" onchange="window.switchZone(this.value)" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold mt-1"></select>
+                </div>
+                <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Dashboard</button>
+                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Obhliadka</button>
+                <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Report</button>
+                <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Archív</button>
+                <button onclick="switchView('fin')" id="n-fin" class="hidden w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Financie</button>
+                <button onclick="switchView('admin')" id="n-admin" class="hidden w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Admin</button>
+            </nav>
+            <div class="p-8 mt-auto space-y-4">
+                <div id="own-pass-section" class="hidden space-y-2 pb-4 border-b border-slate-100">
+                    <input type="password" id="own-new-pass" placeholder="Nové heslo..." class="w-full border border-slate-200 rounded-lg px-3 py-2 text-[10px]">
+                    <button onclick="window.changeOwnPassword()" class="w-full bg-slate-900 text-white px-3 py-2 rounded-lg text-[9px] font-bold uppercase">Uložiť heslo</button>
+                    <button onclick="document.getElementById('own-pass-section').classList.add('hidden')" class="w-full text-[9px] font-bold text-slate-400 uppercase">Zrušiť</button>
+                </div>
+                <button onclick="document.getElementById('own-pass-section').classList.toggle('hidden')" class="flex items-center space-x-3 text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-key mr-2"></i>Zmeniť heslo</button>
+                <button onclick="location.reload()" class="flex items-center space-x-3 text-slate-300 hover:text-blue-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-rotate mr-2"></i>Obnoviť</button>
+                <button onclick="handleLogout()" class="flex items-center space-x-3 text-slate-300 hover:text-red-600 transition-all text-[10px] font-bold uppercase"><i class="fa-solid fa-power-off mr-2"></i>Odhlásiť sa</button>
+            </div>
+        </aside>
 
-window.toggleUserZone = async (userId, zoneId, checked) => {
-  if (checked) {
-    await sb.from('user_zone_access').insert({ user_id: userId, zone_id: zoneId });
-  } else {
-    await sb.from('user_zone_access').delete().eq('user_id', userId).eq('zone_id', zoneId);
-  }
-};
+        <main class="flex-1 p-4 md:p-12 overflow-y-auto bg-slate-50">
+            <div id="v-dash" class="max-w-4xl space-y-8">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="dash-zone-title">Dashboard</h2>
+                    <button onclick="window.printDashboard()" class="no-print bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg">Tlačiť</button>
+                </div>
 
-window.deleteUser = async (profileId) => {
-  if (!confirm('Vymazať tohto používateľa?')) return;
-  await sb.from('user_profiles').delete().eq('id', profileId);
-  await loadAdmin();
-};
+                <!-- VEĽKÉ ČÍSLA -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm">
+                        <p class="text-[10px] font-black text-green-500 uppercase tracking-widest">Vybavené v roku <span id="s-year">2025</span></p>
+                        <p id="s-done-year" class="text-6xl font-black mt-2 text-green-500 tracking-tight">--</p>
+                    </div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm">
+                        <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest">V riešení</p>
+                        <p id="s-active" class="text-6xl font-black mt-2 text-blue-500 tracking-tight">--</p>
+                    </div>
+                    <div class="bg-white p-10 rounded-[2rem] shadow-sm">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Celkom záznamov</p>
+                        <p id="s-total" class="text-6xl font-black mt-2 tracking-tight">--</p>
+                        <p class="text-[9px] font-bold text-slate-300 mt-1 uppercase">Od začiatku evidencie</p>
+                    </div>
+                </div>
 
-window.changeOwnPassword = async () => {
-  var input = document.getElementById('own-new-pass');
-  var newPass = input ? input.value.trim() : '';
-  if (newPass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
+                <!-- GRAF -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Prehľad za posledných 12 mesiacov</h3>
+                    <div id="dash-chart" class="h-48 flex items-end space-x-1 sm:space-x-2"></div>
+                    <div class="flex items-center space-x-6 mt-4 text-[9px] font-bold text-slate-400">
+                        <span><span class="inline-block w-3 h-3 rounded-sm mr-1 align-middle" style="background:#4ade80;-webkit-print-color-adjust:exact;print-color-adjust:exact"></span> Vybavené</span>
+                        <span><span class="inline-block w-3 h-3 rounded-sm mr-1 align-middle" style="background:#e2e8f0;-webkit-print-color-adjust:exact;print-color-adjust:exact"></span> Nové</span>
+                    </div>
+                </div>
 
-  try {
-    const { error } = await sb.auth.updateUser({ password: newPass });
-    if (error) throw error;
-    input.value = '';
-    alert('Heslo zmenené.');
-  } catch (err) {
-    console.error(err);
-    alert('Chyba: ' + (err.message || 'Nepodarilo sa zmeniť heslo.'));
-  }
-};
+                <!-- POSLEDNÉ AKTIVITY -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Posledné aktivity</h3>
+                    <div id="dash-feed" class="space-y-3"></div>
+                </div>
+            </div>
 
-document.getElementById('f-add-user').onsubmit = async (e) => {
-  e.preventDefault();
-  var email = document.getElementById('f-user-email').value;
-  var pass = document.getElementById('f-user-pass').value;
-  var name = document.getElementById('f-user-name').value;
-  var role = document.getElementById('f-user-role').value;
+            <div id="v-insp" class="hidden max-w-4xl space-y-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="insp-zone-title">Obhliadka</h2>
+                    <div class="mt-4 sm:mt-0 w-full sm:w-80"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white font-bold outline-none leading-tight"></div>
+                </div>
+                <div id="section-container" class="space-y-6 pb-32"></div>
+            </div>
 
-  if (pass.length < 6) { alert('Heslo musí mať aspoň 6 znakov.'); return; }
+            <div id="v-rep" class="hidden max-w-6xl space-y-6">
+                <header class="flex justify-between items-center no-print pb-4">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="rep-zone-title">Report</h2>
+                    <button onclick="printReport()" class="bg-slate-900 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-lg">Tlačiť / PDF</button>
+                </header>
+                <!-- FILTRE -->
+                <div class="bg-white rounded-[2rem] shadow-sm no-print">
+                    <button type="button" onclick="var p=document.getElementById('rep-filter-panel');var a=document.getElementById('rep-filter-arrow');p.classList.toggle('hidden');a.classList.toggle('rotate-180')" class="w-full flex justify-between items-center p-5 cursor-pointer">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Filtre</h3>
+                        <i id="rep-filter-arrow" class="fa-solid fa-chevron-down text-slate-400 text-[10px] transition-transform"></i>
+                    </button>
+                    <div id="rep-filter-panel" class="hidden px-5 pb-5 space-y-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Od</label>
+                                <input type="date" id="rep-date-from" value="2024-01-01" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Do</label>
+                                <input type="date" id="rep-date-to" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Stav</label>
+                                <select id="rep-filter-status" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="all">Všetky</option>
+                                    <option value="done">Vybavené / Opravené</option>
+                                    <option value="active">V riešení / Zahlásené</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Typ</label>
+                                <select id="rep-filter-type" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="active" selected>Aktívne</option>
+                                    <option value="archived">Archivované</option>
+                                    <option value="all">Všetky</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <div class="space-y-1 flex-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase">Podlažie</label>
+                                <select id="rep-filter-floor" class="w-full border border-slate-200 rounded-xl p-2 text-xs font-bold">
+                                    <option value="all">Všetky</option>
+                                </select>
+                            </div>
+                            <button onclick="loadReports()" class="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase">Zobraziť</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm print-card">
+                    <div class="mb-4 flex justify-between items-end">
+                        <h3 class="text-xl font-black text-slate-900">Správa o údržbe a opravách</h3>
+                        <span class="text-[12px] font-bold text-slate-400" id="rep-date-screen"></span>
+                    </div>
+                    <table class="report-table">
+                        <thead><tr class=""><th>Podlažie / Miestnosť</th><th>Timeline & Fotodokumentácia</th><th class="text-center">Stav</th></tr></thead>
+                        <tbody id="rep-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="v-arch" class="hidden max-w-4xl space-y-6 leading-tight"><h2 class="text-xl font-bold text-slate-300 uppercase tracking-tighter" id="arch-zone-title">Archív</h2><div id="archive-container" class="space-y-2"></div></div>
 
-  try {
-    var result = await sbCreate.auth.signUp({ email: email, password: pass });
-    if (result.error) throw result.error;
-    if (!result.data.user) throw new Error('Nepodarilo sa vytvoriť používateľa');
+            <!-- FINANCE VIEW -->
+            <div id="v-fin" class="hidden max-w-6xl space-y-8 leading-tight">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="fin-title">Financie</h2>
+                </div>
 
-    // Create profile
-    const { error: profErr } = await sb.from('user_profiles').insert([{
-      user_id: result.data.user.id,
-      email: email,
-      display_name: name,
-      role: role
-    }]);
-    if (profErr) throw profErr;
+                <!-- ZÓNY - METRAŽE -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Zóny – Metraže</h3>
+                        <button onclick="window.saveZoneAreas()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Uložiť</button>
+                    </div>
+                    <div id="fin-zones-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+                </div>
 
-    e.target.reset();
-    await loadAdmin();
-    alert('Používateľ vytvorený.');
+                <!-- NÁKLADY -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Náklady / Faktúry</h3>
+                        <button onclick="window.showAddExpense()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
+                    </div>
 
-  } catch (err) {
-    console.error(err);
-    alert('Chyba: ' + (err.message || 'Nepodarilo sa.'));
-  }
-};
+                    <!-- Filter rok -->
+                    <div class="flex items-center space-x-3 mb-4">
+                        <label class="text-[9px] font-black text-slate-400 uppercase">Rok:</label>
+                        <select id="fin-year" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                        <label class="text-[9px] font-black text-slate-400 uppercase ml-4">Kategória:</label>
+                        <select id="fin-cat-filter" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                            <option value="all">Všetky</option>
+                        </select>
+                    </div>
 
-async function init() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    currentUserId = session.user.id;
+                    <div id="fin-expenses-list"></div>
 
-    // Fetch user role
-    const { data: profile } = await sb.from('user_profiles').select('role, display_name').eq('user_id', currentUserId).single();
-    currentRole = profile ? profile.role : 'spravca';
+                    <div id="fin-total" class="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                        <span class="text-[10px] font-black text-slate-400 uppercase">Spolu</span>
+                        <span id="fin-total-amount" class="text-lg font-black text-slate-900">0 €</span>
+                    </div>
+                </div>
 
-    // Load zones
-    var zonesResult = await sb.from('zones').select('*').order('sort_order', { ascending: true });
-    allZones = zonesResult.data || [];
+                <!-- MODAL - Pridať náklad -->
+                <div id="modal-expense" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
+                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <h3 class="font-black text-lg uppercase tracking-tighter mb-6">Nový náklad</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Dátum</label>
+                                <input type="date" id="exp-date" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Kategória</label>
+                                <select id="exp-category" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1"></select>
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Popis</label>
+                                <input type="text" id="exp-desc" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="Napr. Faktúra za plyn 01/2025">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Dodávateľ</label>
+                                <input type="text" id="exp-supplier" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="Napr. SPP, BVS...">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Suma (€)</label>
+                                <input type="number" step="0.01" id="exp-amount" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="0.00">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Zóna (ak sa týka konkrétnej)</label>
+                                <select id="exp-zone" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                                    <option value="">— Celá budova —</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Číslo faktúry</label>
+                                <input type="text" id="exp-invoice" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Poznámka</label>
+                                <textarea id="exp-note" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" rows="2"></textarea>
+                            </div>
+                        </div>
+                        <div class="flex space-x-3 mt-6">
+                            <button onclick="window.saveExpense()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase">Uložiť</button>
+                            <button onclick="window.closeExpenseModal()" class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl text-[10px] font-black uppercase">Zrušiť</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-    // Load user zone access
-    var accessResult = await sb.from('user_zone_access').select('zone_id').eq('user_id', currentUserId);
-    userZoneIds = (accessResult.data || []).map(function(a) { return a.zone_id; });
+            <!-- ADMIN VIEW -->
+            <div id="v-admin" class="hidden max-w-4xl space-y-8 leading-tight">
+                <h2 class="text-2xl font-black uppercase tracking-tighter">Admin</h2>
 
-    // Ak zóny ešte neexistujú, pokračuj bez nich
-    if (allZones.length === 0) {
-      currentZoneId = null;
-      document.getElementById('login-view').classList.add('hidden');
-      document.getElementById('app-view').classList.remove('hidden');
-      applyPermissions();
-      switchView('insp');
-      return;
-    }
+                <!-- PRIDAŤ POUŽÍVATEĽA -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Nový používateľ</h3>
+                    <form id="f-add-user" class="space-y-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Email</label><input type="email" id="f-user-email" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="email@..." required></div>
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Meno</label><input type="text" id="f-user-name" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Heslo</label><input type="text" id="f-user-pass" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Min. 6 znakov" required></div>
+                            <div><label class="text-[9px] font-bold text-slate-400 uppercase">Rola</label>
+                                <select id="f-user-role" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold">
+                                    <option value="pozorovatel">Pozorovateľ</option>
+                                    <option value="pracovnik">Pracovník</option>
+                                    <option value="spravca">Správca</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold uppercase text-[10px]">Pridať používateľa</button>
+                    </form>
+                </div>
 
-    // Admin/spravca sees all zones
-    var isAdmin = currentRole === 'admin' || currentRole === 'spravca';
-    var availableZones = isAdmin ? allZones : allZones.filter(function(z) { return userZoneIds.indexOf(z.id) !== -1; });
+                <!-- ZOZNAM POUŽÍVATEĽOV -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Používatelia</h3>
+                    <div id="admin-user-list" class="space-y-3"></div>
+                </div>
 
-    // If user has no zone access and is not admin, show first zone as fallback
-    if (availableZones.length === 0) availableZones = allZones.slice(0, 1);
+                <!-- PREHĽAD ROLÍ -->
+                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
+                    <h3 class="font-black text-lg uppercase mb-6 border-b border-slate-100 pb-4">Profily a oprávnenia</h3>
+                    <div class="space-y-4 text-xs">
+                        <div class="p-4 bg-slate-50 rounded-xl">
+                            <p class="font-black text-slate-800 uppercase text-[10px] mb-1">Admin</p>
+                            <p class="text-slate-500">Plný prístup. Správa používateľov, všetky operácie.</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-xl">
+                            <p class="font-black text-slate-800 uppercase text-[10px] mb-1">Správca</p>
+                            <p class="text-slate-500">Pridáva, edituje, maže, archivuje záznamy. Nemá prístup do Adminu.</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-xl">
+                            <p class="font-black text-slate-800 uppercase text-[10px] mb-1">Pracovník</p>
+                            <p class="text-slate-500">Pridáva nové záznamy a návštevy. Edituje a maže len vlastné záznamy z dnešného dňa.</p>
+                        </div>
+                        <div class="p-4 bg-slate-50 rounded-xl">
+                            <p class="font-black text-slate-800 uppercase text-[10px] mb-1">Pozorovateľ</p>
+                            <p class="text-slate-500">Len prezeranie a tlač reportu. Žiadne úpravy.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 
-    // Populate zone selectors - "Všetko" pre kohokoľvek s 2+ zónami
-    var allOpt = (isAdmin || availableZones.length > 1) ? '<option value="all">— Všetko —</option>' : '';
-    var opts = availableZones.map(function(z) {
-      var label = z.tenant_name || z.name;
-      return '<option value="' + z.id + '">' + label + '</option>';
-    }).join('') + allOpt;
+    <!-- MODAL: ADD -->
+    <div id="m-add" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
+        <div class="bg-white rounded-[2rem] p-10 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto text-left leading-tight">
+            <h3 class="font-black text-2xl mb-1 uppercase">Nový záznam</h3>
+            <p id="m-add-floor-label" class="text-blue-600 text-[10px] font-bold uppercase mb-6 border-b border-slate-100 pb-2"></p>
+            <form id="f-add" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Dátum</label><input type="date" id="f-add-date" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold bg-slate-50"></div>
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Miestnosť</label><select id="f-add-loc-id" class="w-full border border-slate-200 rounded-xl p-3 text-xs font-bold"></select></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Nahlásil</label><input type="text" id="f-add-reported" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
+                    <div><label class="text-[9px] font-bold text-slate-400 uppercase">Zodpovedný</label><input type="text" id="f-add-resp" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Meno..."></div>
+                </div>
+                <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Názov položky" required>
+                <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24" placeholder="Popis..."></textarea>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
+                    <div id="add-photo-preview" class="hidden relative inline-block">
+                        <img id="add-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
+                        <button type="button" onclick="window.clearAddPhoto()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <input type="file" id="f-add-photo" accept="image/*" capture="environment" onchange="window.previewAddPhoto(this)" class="hidden">
+                    <input type="file" id="f-add-photo-gallery" accept="image/*" onchange="window.addPhotoFromGallery(this)" class="hidden">
+                    <div class="flex space-x-2"><button type="button" onclick="document.getElementById('f-add-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-1"></i> Odfotiť</button><button type="button" onclick="document.getElementById('f-add-photo-gallery').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-image mr-1"></i> Galéria</button></div>
+                </div>
+                <div class="flex space-x-3 pt-4 font-bold">
+                    <button type="button" onclick="hideM('m-add')" class="flex-1 py-3 text-xs uppercase text-slate-400">Zrušiť</button>
+                    <button type="submit" id="btn-save-new" class="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-xs shadow-lg leading-tight">Uložiť</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-    var sel = document.getElementById('zone-select');
-    var selM = document.getElementById('zone-select-mob');
-    if (sel) sel.innerHTML = opts;
-    if (selM) selM.innerHTML = opts;
+    <!-- MODAL: STATUS -->
+    <div id="m-status" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4 modal-bg">
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-xl shadow-2xl max-h-[90vh] overflow-y-auto text-left leading-tight">
+            <div class="flex justify-between items-center mb-6 border-b pb-4 leading-tight"><h3 class="font-black text-xl uppercase">Aktualizácia</h3><button id="btn-del-issue" onclick="confirmDelete()" class="text-red-300 hover:text-red-600 leading-tight"><i class="fa-solid fa-trash"></i></button></div>
+            <form id="f-stat" class="space-y-4">
+                <input type="hidden" id="f-stat-id"><input type="hidden" id="f-stat-update-id">
+                <div class="grid grid-cols-2 gap-3 leading-tight"><input type="text" id="f-stat-title-edit" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50"><select id="f-stat-loc-id" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold bg-slate-50"></select></div>
+                <div class="grid grid-cols-2 gap-3 leading-tight"><input type="date" id="f-stat-date" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold"><select id="f-stat-val" class="border border-slate-200 rounded-xl p-2.5 text-xs font-bold"><option value="Zahlásené">Zahlásené</option><option value="V riešení">V riešení</option><option value="Vybavené">Vybavené</option><option value="Opravené">Opravené</option></select></div>
+                <div class="grid grid-cols-2 gap-3 leading-tight">
+                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase">Nahlásil</label><input type="text" id="f-stat-reported-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white" placeholder="Meno..."></div>
+                    <div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 uppercase">Zodpovedný</label><input type="text" id="f-stat-resp-edit" class="border border-slate-200 rounded-xl w-full p-2.5 text-xs bg-white" placeholder="Meno..."></div>
+                </div>
+                <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 outline-none focus:ring-1 ring-blue-500" placeholder="Poznámka k zmene..."></textarea>
+                <div class="space-y-2">
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
+                    <div id="edit-photo-preview" class="hidden relative inline-block">
+                        <img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
+                        <button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <input type="file" id="f-stat-photo" accept="image/*" capture="environment" onchange="window.previewEditPhoto(this)" class="hidden">
+                    <input type="file" id="f-stat-photo-gallery" accept="image/*" onchange="window.editPhotoFromGallery(this)" class="hidden">
+                    <div class="flex space-x-2"><button type="button" onclick="document.getElementById('f-stat-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-1"></i> Odfotiť</button><button type="button" onclick="document.getElementById('f-stat-photo-gallery').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-image mr-1"></i> Galéria</button></div>
+                </div>
+                <div id="edit-mode-bar" class="hidden flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl">
+                    <span class="text-[9px] font-black text-blue-600 uppercase">Editujete existujúci záznam</span>
+                    <button type="button" onclick="window.resetToNewEntry()" class="text-[9px] font-black text-blue-600 uppercase underline">+ Nová návšteva</button>
+                </div>
+                <div id="m-history-list" class="space-y-3 pt-4 border-t"></div>
+                <div id="saving-indicator" class="hidden text-center text-blue-600 font-bold animate-pulse text-[10px] uppercase">Sync...</div>
+                <div class="flex flex-col space-y-2 pt-4 font-bold">
+                    <button type="submit" id="btn-save-stat" class="w-full bg-slate-900 text-white py-3 rounded-xl font-bold uppercase text-[10px]">Uložiť zmeny</button>
+                    <button type="button" id="btn-archive-issue" onclick="archiveIssue()" class="w-full border border-slate-200 py-2.5 rounded-xl font-bold text-[9px] text-slate-500 uppercase leading-tight">Archivovať</button>
+                    <button type="button" onclick="hideM('m-status')" class="w-full py-1 text-[9px] font-bold text-slate-400 uppercase">Zavrieť</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-    // Default: prvá zóna (nie "Všetko")
-    currentZoneId = availableZones.length > 0 ? availableZones[0].id : null;
-    if (sel) sel.value = currentZoneId || 'all';
-    if (selM) selM.value = currentZoneId || 'all';
-
-    // Hide zone selector if only one zone and not admin
-    if (availableZones.length <= 1 && !isAdmin) {
-      if (sel) sel.parentElement.classList.add('hidden');
-      if (selM) selM.parentElement.classList.add('hidden');
-    }
-
-    document.getElementById('login-view').classList.add('hidden');
-    document.getElementById('app-view').classList.remove('hidden');
-    applyPermissions();
-    switchView('insp');
-  } else {
-    document.getElementById('login-view').classList.remove('hidden');
-    document.getElementById('app-view').classList.add('hidden');
-  }
-}
-
-function applyPermissions() {
-  // Admin nav - only for admin
-  var na = document.getElementById('n-admin'); if (na) na.classList.toggle('hidden', currentRole !== 'admin');
-  var nam = document.getElementById('n-admin-mob'); if (nam) nam.classList.toggle('hidden', currentRole !== 'admin');
-  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
-  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
-
-  // Pozorovateľ: hide add buttons, edit buttons etc via CSS class on body
-  if (currentRole === 'pozorovatel') {
-    document.body.classList.add('role-readonly');
-  } else {
-    document.body.classList.remove('role-readonly');
-  }
-}
-
-async function loadArchive() {
-  const container = document.getElementById('archive-container');
-  container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Sync...</div>';
-
-  var archTitle = document.getElementById('arch-zone-title');
-  if (archTitle) archTitle.innerText = 'Archív – ' + getZoneName();
-
-  const { data: rawArch } = await sb.from('issues')
-    .select('*, locations(*)')
-    .eq('archived', true)
-    .order('updated_at', { ascending: false });
-
-  // Filter podľa zóny
-  var arch = (rawArch || []).filter(function(i) {
-    return i.locations && matchesZone(i.locations.zone_id);
-  });
-
-  if (!arch || arch.length === 0) {
-    container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px]">Archív je prázdny</div>';
-    return;
-  }
-
-  const { data: updts = [] } = await sb.from('issue_updates').select('issue_id, event_date').order('event_date', { ascending: true });
-
-  container.innerHTML = arch.map(i => {
-    const firstUpdate = updts.find(u => u.issue_id === i.id);
-    const firstDate = firstUpdate ? fmtD(firstUpdate.event_date) : '--';
-    return `
-    <div class="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center mb-4">
-      <div>
-        <p class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">${i.locations?.floor || '--'} • ${i.locations?.name || '--'} • ${firstDate}</p>
-        <p class="text-[13px] font-bold text-slate-600">${i.title}</p>
-      </div>
-      <button onclick="restoreIssue('${i.id}')" class="text-[10px] font-black uppercase text-blue-600 underline leading-tight">Vrátiť</button>
-    </div>`;
-  }).join('');
-}
-
-window.restoreIssue = async (id) => {
-  if(confirm("Vrátiť tento záznam z archívu?")) {
-    await sb.from('issues').update({ archived: false }).eq('id', id);
-    await loadArchive();
-    await loadSections();
-  }
-};
-
-
-window.removePhotoFromUpdate = () => {
-  removePhotoFlag = true;
-  currentEditingPhotoUrl = null;
-  var i = document.getElementById('f-stat-photo'); if (i) i.value = '';
-  var g = document.getElementById('f-stat-photo-gallery'); if (g) g.value = '';
-  window.editGalleryFile = null;
-  var p = document.getElementById('edit-photo-preview'); if (p) p.classList.add('hidden');
-};
-
-
-window.toggleMobileMenu = () => {
-  const accordion = document.getElementById('mobile-accordion');
-  const icon = document.getElementById('menu-icon');
-  if (accordion.classList.contains('hidden')) {
-    accordion.classList.remove('hidden');
-    icon.classList.replace('fa-bars', 'fa-xmark');
-  } else {
-    accordion.classList.add('hidden');
-    icon.classList.replace('fa-xmark', 'fa-bars');
-  }
-};
-
-// One-off migration helper (optional)
-window.migrateThumbs = async () => {
-  const { data: rows, error } = await sb
-    .from("issue_updates")
-    .select("id, photo_url, photo_thumb_url")
-    .not("photo_url", "is", null)
-    .is("photo_thumb_url", null);
-
-  if (error) { console.error(error); alert("DB error"); return; }
-  if (!rows || rows.length === 0) { alert("Nič na migráciu"); return; }
-
-  console.log("Na migráciu:", rows.length);
-
-  for (const r of rows) {
-    try {
-      const base = `upd_${r.id}`;
-      const thumbBlob = await makeThumbnailBlobFromUrl(r.photo_url, 420, 0.55);
-      const thumbUrl = await uploadThumbBlob(thumbBlob, base);
-
-      const { error: upErr } = await sb
-        .from("issue_updates")
-        .update({ photo_thumb_url: thumbUrl })
-        .eq("id", r.id);
-
-      if (upErr) throw upErr;
-      console.log("OK", r.id);
-    } catch (e) {
-      console.warn("FAIL", r.id, e);
-    }
-  }
-
-  alert("Migrácia hotová (pozri konzolu pre detaily).");
-};
-
-async function waitForImages(rootSelector = '#v-rep', timeoutMs = 20000) {
-  const root = document.querySelector(rootSelector);
-  if (!root) return;
-
-  const imgs = Array.from(root.querySelectorAll('img'))
-    .filter(img => img.offsetParent !== null); // iba viditeľné
-
-  if (imgs.length === 0) return;
-
-  const start = Date.now();
-
-  await Promise.all(imgs.map(img => new Promise((resolve) => {
-    const done = () => resolve();
-
-    // už načítané OK
-    if (img.complete && img.naturalWidth > 0) return resolve();
-
-    // load/error
-    img.addEventListener('load', done, { once: true });
-    img.addEventListener('error', done, { once: true });
-
-    // timeout guard
-    const tick = () => {
-      if (Date.now() - start > timeoutMs) resolve();
-      else requestAnimationFrame(tick);
-    };
-    tick();
-  })));
-}
-
-window.printReport = async () => {
-  await switchView('rep');
-  await new Promise(r => setTimeout(r, 50)); // stačí menej
-
-  // čakaj na obrázky v samotnom liste
-  await waitForImages('#rep-list', 25000);
-
-  window.print();
-};
-
-
-init();
+    <script src="app.js"></script>
+</body>
+</html>
