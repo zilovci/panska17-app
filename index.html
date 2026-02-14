@@ -24,8 +24,11 @@
     
     <div id="mobile-accordion" class="hidden border-t border-slate-50 bg-white">
         <nav class="flex flex-col p-4 space-y-2">
+            <div class="pb-2">
+                <select id="zone-select-mob" onchange="window.switchZone(this.value)" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold"></select>
+            </div>
             <button onclick="switchView('dash')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Dashboard</button>
-            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Obhliadka BR</button>
+            <button onclick="switchView('insp')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Obhliadka</button>
             <button onclick="switchView('rep')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Report</button>
             <button onclick="switchView('arch')" class="text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Archív</button>
             <button onclick="switchView('admin')" id="n-admin-mob" class="hidden text-left py-3 px-4 rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-400">Admin</button>
@@ -54,8 +57,12 @@
                 <div class="flex items-center space-x-3"><i class="fa-solid fa-building text-blue-600 text-2xl"></i><h1 class="font-black text-2xl tracking-tighter uppercase text-slate-900">Panská 17</h1></div>
             </div>
             <nav class="flex-1 py-4">
+                <div class="px-8 pb-4">
+                    <label class="text-[8px] font-black text-slate-300 uppercase tracking-widest">Zóna</label>
+                    <select id="zone-select" onchange="window.switchZone(this.value)" class="w-full border border-slate-200 rounded-xl p-2.5 text-xs font-bold mt-1"></select>
+                </div>
                 <button onclick="switchView('dash')" id="n-dash" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Dashboard</button>
-                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Obhliadka BR</button>
+                <button onclick="switchView('insp')" id="n-insp" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Obhliadka</button>
                 <button onclick="switchView('rep')" id="n-rep" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Report</button>
                 <button onclick="switchView('arch')" id="n-arch" class="w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Archív</button>
                 <button onclick="switchView('admin')" id="n-admin" class="hidden w-full text-left px-8 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Admin</button>
@@ -75,7 +82,7 @@
         <main class="flex-1 p-4 md:p-12 overflow-y-auto bg-slate-50">
             <div id="v-dash" class="max-w-4xl space-y-8">
                 <div class="flex justify-between items-center">
-                    <h2 class="text-2xl font-black uppercase tracking-tighter">Dashboard</h2>
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="dash-zone-title">Dashboard</h2>
                     <button onclick="window.printDashboard()" class="no-print bg-slate-900 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg">Tlačiť</button>
                 </div>
 
@@ -115,7 +122,7 @@
 
             <div id="v-insp" class="hidden max-w-4xl space-y-6">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4">
-                    <h2 class="text-2xl font-black uppercase tracking-tighter">Obhliadka   BR</h2>
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="insp-zone-title">Obhliadka</h2>
                     <div class="mt-4 sm:mt-0 w-full sm:w-80"><input type="text" id="att-all" placeholder="Prítomní..." class="w-full text-xs border border-slate-200 rounded-xl px-4 py-2 bg-white font-bold outline-none leading-tight"></div>
                 </div>
                 <div id="section-container" class="space-y-6 pb-32"></div>
@@ -123,7 +130,7 @@
 
             <div id="v-rep" class="hidden max-w-6xl space-y-6">
                 <header class="flex justify-between items-center no-print pb-4">
-                    <h2 class="text-2xl font-black uppercase tracking-tighter">Britská rada</h2>
+                    <h2 class="text-2xl font-black uppercase tracking-tighter" id="rep-zone-title">Report</h2>
                     <button onclick="printReport()" class="bg-slate-900 text-white px-8 py-2.5 rounded-xl text-[11px] font-black uppercase shadow-lg">Tlačiť / PDF</button>
                 </header>
                 <!-- FILTRE -->
@@ -181,7 +188,7 @@
                     </table>
                 </div>
             </div>
-            <div id="v-arch" class="hidden max-w-4xl space-y-6 leading-tight"><h2 class="text-xl font-bold text-slate-300 uppercase tracking-tighter">Archív</h2><div id="archive-container" class="space-y-2"></div></div>
+            <div id="v-arch" class="hidden max-w-4xl space-y-6 leading-tight"><h2 class="text-xl font-bold text-slate-300 uppercase tracking-tighter" id="arch-zone-title">Archív</h2><div id="archive-container" class="space-y-2"></div></div>
 
             <!-- ADMIN VIEW -->
             <div id="v-admin" class="hidden max-w-4xl space-y-8 leading-tight">
