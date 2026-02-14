@@ -131,8 +131,8 @@ async function switchView(v) {
     if (icon) icon.classList.replace('fa-xmark', 'fa-bars');
   }
 
-  ['v-dash', 'v-insp', 'v-arch', 'v-rep', 'v-admin'].forEach(id => document.getElementById(id).classList.add('hidden'));
-  ['n-dash', 'n-insp', 'n-arch', 'n-rep', 'n-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.remove('nav-active'); });
+  ['v-dash', 'v-insp', 'v-arch', 'v-rep', 'v-fin', 'v-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+  ['n-dash', 'n-insp', 'n-arch', 'n-rep', 'n-fin', 'n-admin'].forEach(id => { var el = document.getElementById(id); if (el) el.classList.remove('nav-active'); });
 
   document.getElementById('v-'+v).classList.remove('hidden');
   var nav = document.getElementById('n-'+v); if (nav) nav.classList.add('nav-active');
@@ -142,6 +142,7 @@ async function switchView(v) {
   if (v === 'insp') return await loadSections();
   if (v === 'arch') return await loadArchive();
   if (v === 'rep')  return await loadReports();
+  if (v === 'fin')  return await loadFinance();
   if (v === 'admin') return await loadAdmin();
 }
 
@@ -873,6 +874,198 @@ function canEditEntry(entry) {
 }
 
 // -------- Admin panel --------
+// ============ FINANCE MODULE ============
+
+var allCategories = [];
+var editingExpenseId = null;
+
+async function loadFinance() {
+  // Load categories
+  var { data: cats = [] } = await sb.from('cost_categories').select('*').order('sort_order', { ascending: true });
+  allCategories = cats;
+
+  // Zones grid - metraže
+  var zonesGrid = document.getElementById('fin-zones-grid');
+  if (zonesGrid) {
+    zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+      var label = z.tenant_name || z.name;
+      return '<div class="flex items-center space-x-2 bg-slate-50 rounded-xl px-3 py-2">' +
+        '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
+        '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-20 text-right border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">' +
+        '<span class="text-[8px] text-slate-400">m²</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  // Category filter dropdown
+  var catFilter = document.getElementById('fin-cat-filter');
+  if (catFilter) {
+    catFilter.innerHTML = '<option value="all">Všetky</option>' + cats.map(function(c) {
+      return '<option value="' + c.id + '">' + c.name + '</option>';
+    }).join('');
+  }
+
+  // Category dropdown in modal
+  var expCat = document.getElementById('exp-category');
+  if (expCat) {
+    expCat.innerHTML = cats.map(function(c) {
+      return '<option value="' + c.id + '">' + c.name + '</option>';
+    }).join('');
+  }
+
+  // Zone dropdown in modal
+  var expZone = document.getElementById('exp-zone');
+  if (expZone) {
+    expZone.innerHTML = '<option value="">— Celá budova —</option>' + allZones.map(function(z) {
+      var label = z.tenant_name || z.name;
+      return '<option value="' + z.id + '">' + label + '</option>';
+    }).join('');
+  }
+
+  // Year dropdown
+  var yearSel = document.getElementById('fin-year');
+  if (yearSel && yearSel.options.length === 0) {
+    var curYear = new Date().getFullYear();
+    for (var y = curYear; y >= 2020; y--) {
+      yearSel.innerHTML += '<option value="' + y + '">' + y + '</option>';
+    }
+  }
+
+  // Set default date
+  var expDate = document.getElementById('exp-date');
+  if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
+
+  await loadExpenses();
+}
+
+window.loadExpenses = async function() {
+  var year = document.getElementById('fin-year').value || new Date().getFullYear();
+  var catFilter = document.getElementById('fin-cat-filter').value;
+
+  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)')
+    .gte('date', year + '-01-01').lte('date', year + '-12-31')
+    .order('date', { ascending: false });
+
+  if (catFilter !== 'all') query = query.eq('category_id', catFilter);
+
+  var { data: expenses = [] } = await query;
+
+  var list = document.getElementById('fin-expenses-list');
+  if (expenses.length === 0) {
+    list.innerHTML = '<p class="text-center py-8 text-[10px] text-slate-200 font-bold uppercase">Žiadne náklady</p>';
+    document.getElementById('fin-total-amount').innerText = '0 €';
+    return;
+  }
+
+  var total = 0;
+  list.innerHTML = '<div class="space-y-2">' + expenses.map(function(e) {
+    total += parseFloat(e.amount) || 0;
+    var zoneName = e.zones ? (e.zones.tenant_name || e.zones.name) : 'Celá budova';
+    var catName = e.cost_categories ? e.cost_categories.name : '--';
+    return '<div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center space-x-2">' +
+          '<span class="text-[8px] font-black text-slate-400 uppercase">' + fmtD(e.date) + '</span>' +
+          '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
+          '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
+        '</div>' +
+        '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
+        (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + '</p>' : '') +
+      '</div>' +
+      '<div class="flex items-center space-x-3 ml-3">' +
+        '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
+        '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
+        '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
+
+  document.getElementById('fin-total-amount').innerText = total.toFixed(2) + ' €';
+};
+
+window.saveZoneAreas = async function() {
+  var inputs = document.querySelectorAll('.zone-area-input');
+  for (var i = 0; i < inputs.length; i++) {
+    var zoneId = inputs[i].getAttribute('data-zone-id');
+    var area = parseFloat(inputs[i].value) || 0;
+    await sb.from('zones').update({ area_m2: area }).eq('id', zoneId);
+  }
+  // Update local
+  for (var j = 0; j < allZones.length; j++) {
+    var inp = document.querySelector('[data-zone-id="' + allZones[j].id + '"]');
+    if (inp) allZones[j].area_m2 = parseFloat(inp.value) || 0;
+  }
+  alert('Metraže uložené.');
+};
+
+window.showAddExpense = function() {
+  editingExpenseId = null;
+  document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('exp-desc').value = '';
+  document.getElementById('exp-supplier').value = '';
+  document.getElementById('exp-amount').value = '';
+  document.getElementById('exp-zone').value = '';
+  document.getElementById('exp-invoice').value = '';
+  document.getElementById('exp-note').value = '';
+  document.getElementById('modal-expense').classList.remove('hidden');
+};
+
+window.closeExpenseModal = function() {
+  document.getElementById('modal-expense').classList.add('hidden');
+};
+
+window.saveExpense = async function() {
+  var data = {
+    date: document.getElementById('exp-date').value,
+    category_id: document.getElementById('exp-category').value,
+    description: document.getElementById('exp-desc').value.trim(),
+    supplier: document.getElementById('exp-supplier').value.trim() || null,
+    amount: parseFloat(document.getElementById('exp-amount').value) || 0,
+    zone_id: document.getElementById('exp-zone').value || null,
+    invoice_number: document.getElementById('exp-invoice').value.trim() || null,
+    note: document.getElementById('exp-note').value.trim() || null,
+    created_by: currentUserId
+  };
+
+  if (!data.description || !data.amount) {
+    alert('Vyplňte popis a sumu.');
+    return;
+  }
+
+  if (editingExpenseId) {
+    await sb.from('expenses').update(data).eq('id', editingExpenseId);
+  } else {
+    await sb.from('expenses').insert(data);
+  }
+
+  window.closeExpenseModal();
+  await loadExpenses();
+};
+
+window.editExpense = async function(id) {
+  var { data: e } = await sb.from('expenses').select('*').eq('id', id).single();
+  if (!e) return;
+
+  editingExpenseId = id;
+  document.getElementById('exp-date').value = e.date;
+  document.getElementById('exp-category').value = e.category_id;
+  document.getElementById('exp-desc').value = e.description;
+  document.getElementById('exp-supplier').value = e.supplier || '';
+  document.getElementById('exp-amount').value = e.amount;
+  document.getElementById('exp-zone').value = e.zone_id || '';
+  document.getElementById('exp-invoice').value = e.invoice_number || '';
+  document.getElementById('exp-note').value = e.note || '';
+  document.getElementById('modal-expense').classList.remove('hidden');
+};
+
+window.deleteExpense = async function(id) {
+  if (!confirm('Vymazať tento náklad?')) return;
+  await sb.from('expenses').delete().eq('id', id);
+  await loadExpenses();
+};
+
+// ============ END FINANCE MODULE ============
+
 async function loadAdmin() {
   if (currentRole !== 'admin') return;
   const { data: users = [] } = await sb.from('user_profiles').select('*').order('created_at', { ascending: true });
@@ -1059,6 +1252,8 @@ function applyPermissions() {
   // Admin nav - only for admin
   var na = document.getElementById('n-admin'); if (na) na.classList.toggle('hidden', currentRole !== 'admin');
   var nam = document.getElementById('n-admin-mob'); if (nam) nam.classList.toggle('hidden', currentRole !== 'admin');
+  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
+  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
 
   // Pozorovateľ: hide add buttons, edit buttons etc via CSS class on body
   if (currentRole === 'pozorovatel') {
