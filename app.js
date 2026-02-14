@@ -355,7 +355,7 @@ async function loadSections() {
             <h3 class="font-black text-sm uppercase text-slate-300 leading-tight">${floor}</h3>
             <span class="text-[9px] text-slate-200 font-bold uppercase">OK</span>
           </div>
-          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="text-[9px] font-black uppercase text-slate-300 leading-tight">+ Pridať</button>` : ''}
+          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>` : ''}
         </div>
       `;
     } else {
@@ -882,7 +882,7 @@ async function loadAdmin() {
         ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
         : '<div class="mt-3">' +
           '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zóny:</p>' +
-          '<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-1">' +
+          '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-2 gap-y-1">' +
           allZones.map(function(z) {
             var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
             var label = z.tenant_name ? z.tenant_name : z.name;
