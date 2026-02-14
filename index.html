@@ -237,6 +237,17 @@
                     <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-6">Nový náklad</h3>
                         <div class="space-y-4">
+                            <div class="bg-blue-50 rounded-xl p-4">
+                                <label class="text-[9px] font-black text-blue-600 uppercase">Účtenka / Faktúra (foto alebo PDF)</label>
+                                <input type="file" id="exp-receipt" accept="image/*,.pdf" capture="environment" class="w-full text-xs mt-1">
+                                <div id="exp-receipt-preview" class="mt-2 hidden">
+                                    <img id="exp-receipt-img" class="max-h-32 rounded-lg cursor-pointer" onclick="window.open(this.src)">
+                                </div>
+                                <button type="button" onclick="window.aiExtractReceipt()" id="btn-ai-extract" class="hidden mt-2 w-full bg-blue-600 text-white py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">
+                                    <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> Analyzovať účtenku
+                                </button>
+                                <div id="ai-extract-status" class="hidden mt-1 text-[8px] text-blue-500 font-bold uppercase text-center"></div>
+                            </div>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Dátum</label>
                                 <input type="date" id="exp-date" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
