@@ -3,6 +3,7 @@ const S_KEY = 'sb_publishable_jX6gFj0WZfxXFNpwF1bTuw_dQADscTW';
 const sb = supabase.createClient(S_URL, S_KEY);
 
 let allLocs = [], allIssues = [], allUpdates = [];
+let allZones = [], currentZoneId = null, userZoneIds = [];
 let currentEditingPhotoUrl = null;
 let removePhotoFlag = false;
 let currentRole = null;
@@ -144,15 +145,52 @@ async function switchView(v) {
   if (v === 'admin') return await loadAdmin();
 }
 
+window.switchZone = function(zoneId) {
+  currentZoneId = zoneId;
+  // Sync both selectors
+  var sel = document.getElementById('zone-select');
+  var selM = document.getElementById('zone-select-mob');
+  if (sel) sel.value = zoneId;
+  if (selM) selM.value = zoneId;
+  // Reload current view
+  var activeView = document.querySelector('[id^="v-"]:not(.hidden)');
+  if (activeView) {
+    var v = activeView.id.replace('v-', '');
+    if (v === 'dash') loadDash();
+    else if (v === 'insp') loadSections();
+    else if (v === 'arch') loadArchive();
+    else if (v === 'rep') loadReports();
+  }
+};
+
+function getZoneName() {
+  var z = allZones.find(function(z) { return z.id === currentZoneId; });
+  if (!z) return 'Panská 17';
+  return z.tenant_name || z.name;
+}
+
 
 async function loadDash() {
   var now = new Date();
   var thisYear = now.getFullYear();
   document.getElementById('s-year').innerText = thisYear;
 
-  // Načítaj všetko
-  var { data: allIss = [] } = await sb.from('issues').select('id, title, status, archived, created_at, locations(floor, name)');
+  var dashTitle = document.getElementById('dash-zone-title');
+  if (dashTitle) dashTitle.innerText = getZoneName();
+
+  // Načítaj issues s locations filtrované podľa zóny
+  var issQuery = sb.from('issues').select('id, title, status, archived, created_at, location_id, locations(floor, name, zone_id)');
+  var { data: rawIss = [] } = await issQuery;
+
+  // Filter podľa zóny
+  var allIss = currentZoneId ? rawIss.filter(function(i) {
+    return i.locations && i.locations.zone_id === currentZoneId;
+  }) : rawIss;
+
+  var issIds = allIss.map(function(i) { return i.id; });
   var { data: allUpd = [] } = await sb.from('issue_updates').select('issue_id, status_to, event_date, note').order('event_date', { ascending: false });
+  // Filter updaty len pre naše issues
+  allUpd = allUpd.filter(function(u) { return issIds.indexOf(u.issue_id) !== -1; });
 
   // Vybavené tento rok - len NEARCHIVOVANÉ issues so statusom Opravené/Vybavené
   // a posledný resolved dátum v tomto roku
@@ -257,11 +295,16 @@ async function loadSections() {
   const container = document.getElementById('section-container');
   container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Synchronizujem...</div>';
 
+  // Názov zóny
+  var inspTitle = document.getElementById('insp-zone-title');
+  if (inspTitle) inspTitle.innerText = getZoneName();
+
   const { data: locs } = await sb.from('locations').select('*').order('sort_order', { ascending: true });
-  allLocs = locs || [];
+  allLocs = currentZoneId ? (locs || []).filter(function(l) { return l.zone_id === currentZoneId; }) : (locs || []);
 
   const { data: isss } = await sb.from('issues').select('*, locations(*)').eq('archived', false).order('created_at', { ascending: false });
-  allIssues = isss || [];
+  var locIds = allLocs.map(function(l) { return l.id; });
+  allIssues = (isss || []).filter(function(i) { return locIds.indexOf(i.location_id) !== -1; });
 
   const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false });
   allUpdates = updts || [];
@@ -342,6 +385,10 @@ async function loadReports() {
   const todayStr = new Date().toLocaleDateString();
   document.getElementById('rep-date-screen').innerText = todayStr;
 
+  // Názov zóny v reporte
+  var repTitle = document.getElementById('rep-zone-title');
+  if (repTitle) repTitle.innerText = getZoneName();
+
   // Set default Do dátum ak je prázdny
   var dateTo = document.getElementById('rep-date-to');
   if (!dateTo.value) dateTo.value = new Date().toISOString().split('T')[0];
@@ -360,17 +407,22 @@ async function loadReports() {
   if (filterType === 'active') query = query.eq('archived', false);
   else if (filterType === 'archived') query = query.eq('archived', true);
 
-  const { data: isss } = await query;
+  const { data: rawIsss } = await query;
+  // Filter podľa zóny
+  var isss = currentZoneId ? (rawIsss || []).filter(function(i) {
+    return i.locations && i.locations.zone_id === currentZoneId;
+  }) : (rawIsss || []);
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
   if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
 
-  // Naplň podlažia dropdown
   // Naplň podlažia dropdown - zoradené podľa sort_order
   var floorOrder = {};
-  allLocs.forEach(function(l) {
-    if (floorOrder[l.floor] === undefined || l.sort_order < floorOrder[l.floor]) {
-      floorOrder[l.floor] = l.sort_order;
+  isss.forEach(function(i) {
+    if (i.locations && i.locations.floor) {
+      if (floorOrder[i.locations.floor] === undefined || i.locations.sort_order < floorOrder[i.locations.floor]) {
+        floorOrder[i.locations.floor] = i.locations.sort_order;
+      }
     }
   });
   var floors = [];
@@ -799,12 +851,31 @@ function canEditEntry(entry) {
 async function loadAdmin() {
   if (currentRole !== 'admin') return;
   const { data: users = [] } = await sb.from('user_profiles').select('*').order('created_at', { ascending: true });
+  const { data: allAccess = [] } = await sb.from('user_zone_access').select('*');
 
   var roleLabels = { admin: 'Admin', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
 
   document.getElementById('admin-user-list').innerHTML = users.length === 0
     ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadni používatelia</p>'
-    : users.map(u => `
+    : users.map(u => {
+      var userAccess = allAccess.filter(function(a) { return a.user_id === u.user_id; });
+      var userZoneIds = userAccess.map(function(a) { return a.zone_id; });
+      var isAdminOrSpravca = u.role === 'admin' || u.role === 'spravca';
+
+      var zoneCheckboxes = isAdminOrSpravca
+        ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
+        : '<div class="mt-3 space-y-1">' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Zóny:</p>' +
+          allZones.map(function(z) {
+            var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
+            var label = z.tenant_name ? z.tenant_name : z.name;
+            return '<label class="flex items-center space-x-2 text-[9px] text-slate-600">' +
+              '<input type="checkbox" ' + checked + ' onchange="window.toggleUserZone(\'' + u.user_id + '\', \'' + z.id + '\', this.checked)" class="rounded">' +
+              '<span>' + label + '</span></label>';
+          }).join('') +
+          '</div>';
+
+      return `
       <div class="p-4 bg-slate-50 rounded-xl">
         <div class="flex items-center justify-between">
           <div class="flex-1">
@@ -818,13 +889,22 @@ async function loadAdmin() {
             ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
           </div>
         </div>
-      </div>
-    `).join('');
+        ${zoneCheckboxes}
+      </div>`;
+    }).join('');
 }
 
 window.changeUserRole = async (profileId, newRole) => {
   await sb.from('user_profiles').update({ role: newRole }).eq('id', profileId);
   await loadAdmin();
+};
+
+window.toggleUserZone = async (userId, zoneId, checked) => {
+  if (checked) {
+    await sb.from('user_zone_access').insert({ user_id: userId, zone_id: zoneId });
+  } else {
+    await sb.from('user_zone_access').delete().eq('user_id', userId).eq('zone_id', zoneId);
+  }
 };
 
 window.deleteUser = async (profileId) => {
@@ -889,7 +969,52 @@ async function init() {
 
     // Fetch user role
     const { data: profile } = await sb.from('user_profiles').select('role, display_name').eq('user_id', currentUserId).single();
-    currentRole = profile ? profile.role : 'spravca'; // default spravca if no profile yet
+    currentRole = profile ? profile.role : 'spravca';
+
+    // Load zones
+    var zonesResult = await sb.from('zones').select('*').order('sort_order', { ascending: true });
+    allZones = zonesResult.data || [];
+
+    // Load user zone access
+    var accessResult = await sb.from('user_zone_access').select('zone_id').eq('user_id', currentUserId);
+    userZoneIds = (accessResult.data || []).map(function(a) { return a.zone_id; });
+
+    // Ak zóny ešte neexistujú, pokračuj bez nich
+    if (allZones.length === 0) {
+      currentZoneId = null;
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('app-view').classList.remove('hidden');
+      applyPermissions();
+      switchView('insp');
+      return;
+    }
+
+    // Admin/spravca sees all zones
+    var isAdmin = currentRole === 'admin' || currentRole === 'spravca';
+    var availableZones = isAdmin ? allZones : allZones.filter(function(z) { return userZoneIds.indexOf(z.id) !== -1; });
+
+    // If user has no zone access and is not admin, show first zone as fallback
+    if (availableZones.length === 0) availableZones = allZones.slice(0, 1);
+
+    // Populate zone selectors
+    var opts = availableZones.map(function(z) {
+      var label = z.tenant_name ? z.tenant_name + ' (' + z.name + ')' : z.name;
+      return '<option value="' + z.id + '">' + label + '</option>';
+    }).join('');
+
+    var sel = document.getElementById('zone-select');
+    var selM = document.getElementById('zone-select-mob');
+    if (sel) sel.innerHTML = opts;
+    if (selM) selM.innerHTML = opts;
+
+    // Set current zone
+    currentZoneId = availableZones.length > 0 ? availableZones[0].id : null;
+
+    // Hide zone selector if only one zone
+    if (availableZones.length <= 1) {
+      if (sel) sel.parentElement.classList.add('hidden');
+      if (selM) selM.parentElement.classList.add('hidden');
+    }
 
     document.getElementById('login-view').classList.add('hidden');
     document.getElementById('app-view').classList.remove('hidden');
@@ -918,10 +1043,18 @@ async function loadArchive() {
   const container = document.getElementById('archive-container');
   container.innerHTML = '<div class="py-20 text-center animate-pulse text-[10px] font-black text-slate-300 uppercase">Sync...</div>';
 
-  const { data: arch } = await sb.from('issues')
+  var archTitle = document.getElementById('arch-zone-title');
+  if (archTitle) archTitle.innerText = 'Archív – ' + getZoneName();
+
+  const { data: rawArch } = await sb.from('issues')
     .select('*, locations(*)')
     .eq('archived', true)
     .order('updated_at', { ascending: false });
+
+  // Filter podľa zóny
+  var arch = currentZoneId ? (rawArch || []).filter(function(i) {
+    return i.locations && i.locations.zone_id === currentZoneId;
+  }) : (rawArch || []);
 
   if (!arch || arch.length === 0) {
     container.innerHTML = '<div class="py-20 text-center text-slate-200 font-black uppercase text-[10px]">Archív je prázdny</div>';
