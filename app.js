@@ -882,7 +882,7 @@ async function loadAdmin() {
         ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
         : '<div class="mt-3">' +
           '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zóny:</p>' +
-          '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-2 gap-y-1">' +
+          '<div class="grid grid-cols-2 min-[420px]:grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-x-2 gap-y-1">' +
           allZones.map(function(z) {
             var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
             var label = z.tenant_name ? z.tenant_name : z.name;
