@@ -887,7 +887,7 @@ async function loadFinance() {
   // Zones grid - metraže
   var zonesGrid = document.getElementById('fin-zones-grid');
   if (zonesGrid) {
-    zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+    zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory'; }).map(function(z) {
       var label = z.tenant_name || z.name;
       return '<div class="flex items-center space-x-2 bg-slate-50 rounded-xl px-3 py-2">' +
         '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
@@ -973,6 +973,7 @@ window.loadExpenses = async function() {
         (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + '</p>' : '') +
       '</div>' +
       '<div class="flex items-center space-x-3 ml-3">' +
+        (e.receipt_url ? '<a href="' + e.receipt_url + '" target="_blank" class="text-green-400 hover:text-green-600 text-xs" title="Účtenka"><i class="fa-solid fa-file-image"></i></a>' : '') +
         '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
         '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
         '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
@@ -1007,6 +1008,12 @@ window.showAddExpense = function() {
   document.getElementById('exp-zone').value = '';
   document.getElementById('exp-invoice').value = '';
   document.getElementById('exp-note').value = '';
+  document.getElementById('exp-receipt').value = '';
+  document.getElementById('exp-receipt-preview').classList.add('hidden');
+  document.getElementById('btn-ai-extract').classList.add('hidden');
+  var status = document.getElementById('ai-extract-status');
+  status.classList.add('hidden');
+  status.className = status.className.replace('text-green-600', 'text-blue-500').replace('text-red-500', 'text-blue-500');
   document.getElementById('modal-expense').classList.remove('hidden');
 };
 
@@ -1030,6 +1037,13 @@ window.saveExpense = async function() {
   if (!data.description || !data.amount) {
     alert('Vyplňte popis a sumu.');
     return;
+  }
+
+  // Upload receipt if selected
+  var receiptFile = document.getElementById('exp-receipt').files[0];
+  if (receiptFile) {
+    var receiptUrl = await uploadReceipt(receiptFile);
+    if (receiptUrl) data.receipt_url = receiptUrl;
   }
 
   if (editingExpenseId) {
@@ -1062,6 +1076,120 @@ window.deleteExpense = async function(id) {
   if (!confirm('Vymazať tento náklad?')) return;
   await sb.from('expenses').delete().eq('id', id);
   await loadExpenses();
+};
+
+// Receipt file preview
+var expReceipt = document.getElementById('exp-receipt');
+if (expReceipt) expReceipt.addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  var preview = document.getElementById('exp-receipt-preview');
+  var img = document.getElementById('exp-receipt-img');
+  var aiBtn = document.getElementById('btn-ai-extract');
+
+  if (file) {
+    if (file.type.startsWith('image/')) {
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        img.src = ev.target.result;
+        preview.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    } else {
+      preview.classList.add('hidden');
+    }
+    aiBtn.classList.remove('hidden');
+  } else {
+    preview.classList.add('hidden');
+    aiBtn.classList.add('hidden');
+  }
+});
+
+// Upload receipt to Supabase Storage
+async function uploadReceipt(file) {
+  var ext = file.name.split('.').pop();
+  var fileName = 'receipt_' + Date.now() + '.' + ext;
+  var { data, error } = await sb.storage.from('receipts').upload(fileName, file);
+  if (error) { console.error('Upload error:', error); return null; }
+  var { data: urlData } = sb.storage.from('receipts').getPublicUrl(fileName);
+  return urlData.publicUrl;
+}
+
+// AI Extract from receipt
+var anthropicKey = null;
+
+window.aiExtractReceipt = async function() {
+  var file = document.getElementById('exp-receipt').files[0];
+  if (!file) { alert('Najprv vyberte súbor.'); return; }
+
+  if (!anthropicKey) {
+    anthropicKey = prompt('Zadajte Anthropic API kľúč (len prvýkrát):');
+    if (!anthropicKey) return;
+  }
+
+  var status = document.getElementById('ai-extract-status');
+  status.classList.remove('hidden');
+  status.innerText = 'Analyzujem účtenku...';
+
+  try {
+    // Convert to base64
+    var base64 = await new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function() { resolve(reader.result.split(',')[1]); };
+      reader.onerror = function() { reject('Chyba čítania'); };
+      reader.readAsDataURL(file);
+    });
+
+    var mediaType = file.type || 'image/jpeg';
+    var content = [];
+
+    if (file.type === 'application/pdf') {
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } });
+    } else {
+      content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
+    }
+
+    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD","description":"stručný popis","supplier":"názov dodávateľa","amount":číslo,"invoice_number":"číslo faktúry alebo null","category":"jedna z: Vykurovanie, EPS a PO, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Ostatné"}' });
+
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [{ role: 'user', content: content }]
+      })
+    });
+
+    var data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+
+    var text = data.content.map(function(b) { return b.text || ''; }).join('');
+    var clean = text.replace(/```json|```/g, '').trim();
+    var result = JSON.parse(clean);
+
+    // Fill form
+    if (result.date) document.getElementById('exp-date').value = result.date;
+    if (result.description) document.getElementById('exp-desc').value = result.description;
+    if (result.supplier) document.getElementById('exp-supplier').value = result.supplier;
+    if (result.amount) document.getElementById('exp-amount').value = result.amount;
+    if (result.invoice_number) document.getElementById('exp-invoice').value = result.invoice_number;
+
+    // Match category
+    if (result.category) {
+      var cat = allCategories.find(function(c) { return c.name === result.category; });
+      if (cat) document.getElementById('exp-category').value = cat.id;
+    }
+
+    status.innerText = 'Hotovo – skontrolujte údaje';
+    status.classList.add('text-green-600');
+    status.classList.remove('text-blue-500');
+  } catch (err) {
+    console.error('AI error:', err);
+    status.innerText = 'Chyba: ' + (err.message || 'Nepodarilo sa analyzovať');
+    status.classList.add('text-red-500');
+    status.classList.remove('text-blue-500');
+    if (err.message && err.message.includes('invalid x-api-key')) anthropicKey = null;
+  }
 };
 
 // ============ END FINANCE MODULE ============
