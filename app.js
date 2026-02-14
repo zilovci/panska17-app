@@ -146,7 +146,7 @@ async function switchView(v) {
 }
 
 window.switchZone = function(zoneId) {
-  currentZoneId = zoneId;
+  currentZoneId = zoneId === 'all' ? null : zoneId;
   // Sync both selectors
   var sel = document.getElementById('zone-select');
   var selM = document.getElementById('zone-select-mob');
@@ -164,6 +164,7 @@ window.switchZone = function(zoneId) {
 };
 
 function getZoneName() {
+  if (!currentZoneId) return 'Panská 17';
   var z = allZones.find(function(z) { return z.id === currentZoneId; });
   if (!z) return 'Panská 17';
   return z.tenant_name || z.name;
@@ -997,8 +998,9 @@ async function init() {
     if (availableZones.length === 0) availableZones = allZones.slice(0, 1);
 
     // Populate zone selectors
-    var opts = availableZones.map(function(z) {
-      var label = z.tenant_name ? z.tenant_name + ' (' + z.name + ')' : z.name;
+    var allOpt = isAdmin ? '<option value="all">— Všetky zóny —</option>' : '';
+    var opts = allOpt + availableZones.map(function(z) {
+      var label = z.tenant_name || z.name;
       return '<option value="' + z.id + '">' + label + '</option>';
     }).join('');
 
@@ -1007,11 +1009,11 @@ async function init() {
     if (sel) sel.innerHTML = opts;
     if (selM) selM.innerHTML = opts;
 
-    // Set current zone
-    currentZoneId = availableZones.length > 0 ? availableZones[0].id : null;
+    // Set current zone - admin starts with all, others with first
+    currentZoneId = isAdmin ? null : (availableZones.length > 0 ? availableZones[0].id : null);
 
-    // Hide zone selector if only one zone
-    if (availableZones.length <= 1) {
+    // Hide zone selector if only one zone and not admin
+    if (availableZones.length <= 1 && !isAdmin) {
       if (sel) sel.parentElement.classList.add('hidden');
       if (selM) selM.parentElement.classList.add('hidden');
     }
