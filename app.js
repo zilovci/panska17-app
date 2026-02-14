@@ -865,16 +865,17 @@ async function loadAdmin() {
 
       var zoneCheckboxes = isAdminOrSpravca
         ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
-        : '<div class="mt-3 space-y-1">' +
-          '<p class="text-[8px] font-black text-slate-400 uppercase">Zóny:</p>' +
+        : '<div class="mt-3">' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zóny:</p>' +
+          '<div class="flex flex-wrap gap-x-4 gap-y-1">' +
           allZones.map(function(z) {
             var checked = userZoneIds.indexOf(z.id) !== -1 ? 'checked' : '';
             var label = z.tenant_name ? z.tenant_name : z.name;
-            return '<label class="flex items-center space-x-2 text-[9px] text-slate-600">' +
+            return '<label class="flex items-center space-x-1 text-[9px] text-slate-600 whitespace-nowrap">' +
               '<input type="checkbox" ' + checked + ' onchange="window.toggleUserZone(\'' + u.user_id + '\', \'' + z.id + '\', this.checked)" class="rounded">' +
               '<span>' + label + '</span></label>';
           }).join('') +
-          '</div>';
+          '</div></div>';
 
       return `
       <div class="p-4 bg-slate-50 rounded-xl">
