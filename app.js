@@ -1009,7 +1009,9 @@ async function loadMeters() {
           return '<div class="flex items-center justify-between text-[9px] text-slate-500 bg-white rounded-lg px-3 py-1.5">' +
             '<span>' + fmtD(r.date) + '</span>' +
             '<span class="font-bold">' + parseFloat(r.value).toFixed(2) + ' ' + m.unit + '</span>' +
+            (prevR ? '<span class="text-slate-300">pred: ' + parseFloat(prevR.value).toFixed(2) + '</span>' : '<span class="text-slate-300">--</span>') +
             '<span class="text-green-600 font-bold">' + (cons !== '--' ? '+' + cons : '--') + '</span>' +
+            '<button onclick="window.editReading(\'' + r.id + '\', \'' + m.id + '\')" class="text-slate-300 hover:text-blue-500"><i class="fa-solid fa-pen"></i></button>' +
             '<button onclick="window.deleteReading(\'' + r.id + '\')" class="text-red-300 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>' +
           '</div>';
         }).join('') + '</div></details>' : '') +
@@ -1071,6 +1073,7 @@ window.deleteMeter = async function(id) {
 
 window.showAddReading = async function(meterId) {
   currentReadingMeterId = meterId;
+  editingReadingId = null;
   var meter = allMeters.find(function(m) { return m.id === meterId; });
   document.getElementById('reading-meter-name').innerText = meter ? meter.name : '';
   document.getElementById('rdg-date').value = new Date().toISOString().split('T')[0];
@@ -1078,6 +1081,39 @@ window.showAddReading = async function(meterId) {
   document.getElementById('rdg-note').value = '';
 
   var { data: prev = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).order('date', { ascending: false }).limit(1);
+  var prevInfo = document.getElementById('reading-prev-info');
+  if (prev.length > 0) {
+    prevInfo.classList.remove('hidden');
+    document.getElementById('reading-prev-date').innerText = fmtD(prev[0].date);
+    document.getElementById('reading-prev-value').innerText = parseFloat(prev[0].value).toFixed(2) + ' ' + (meter ? meter.unit : '');
+  } else {
+    prevInfo.classList.add('hidden');
+  }
+
+  document.getElementById('modal-reading').classList.remove('hidden');
+};
+
+var editingReadingId = null;
+
+window.editReading = async function(readingId, meterId) {
+  var { data: r } = await sb.from('meter_readings').select('*').eq('id', readingId).single();
+  if (!r) return;
+
+  currentReadingMeterId = meterId;
+  editingReadingId = readingId;
+  var meter = allMeters.find(function(m) { return m.id === meterId; });
+  document.getElementById('reading-meter-name').innerText = (meter ? meter.name : '') + ' – úprava';
+  document.getElementById('rdg-date').value = r.date;
+  document.getElementById('rdg-value').value = r.value;
+  document.getElementById('rdg-note').value = r.note || '';
+
+  // Show previous reading before this one
+  var { data: prev = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).lt('date', r.date).order('date', { ascending: false }).limit(1);
+  // If no earlier by date, try by created_at
+  if (prev.length === 0) {
+    var { data: prev2 = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).neq('id', readingId).order('date', { ascending: false }).limit(1);
+    prev = prev2.filter(function(p) { return p.date <= r.date && p.id !== readingId; });
+  }
   var prevInfo = document.getElementById('reading-prev-info');
   if (prev.length > 0) {
     prevInfo.classList.remove('hidden');
@@ -1098,9 +1134,15 @@ window.saveReading = async function() {
     note: document.getElementById('rdg-note').value.trim() || null,
     created_by: currentUserId
   };
-  if (!data.value) { alert('Zadajte stav merača.'); return; }
+  if (!data.value && data.value !== 0) { alert('Zadajte stav merača.'); return; }
 
-  await sb.from('meter_readings').insert(data);
+  if (editingReadingId) {
+    await sb.from('meter_readings').update({ date: data.date, value: data.value, note: data.note }).eq('id', editingReadingId);
+    editingReadingId = null;
+  } else {
+    await sb.from('meter_readings').insert(data);
+  }
+
   document.getElementById('modal-reading').classList.add('hidden');
   await loadMeters();
 };
