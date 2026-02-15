@@ -935,8 +935,181 @@ async function loadFinance() {
   var expDate = document.getElementById('exp-date');
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
 
+  await loadMeters();
   await loadExpenses();
 }
+
+// ---- MERAČE ----
+var allMeters = [];
+var editingMeterId = null;
+var currentReadingMeterId = null;
+
+async function loadMeters() {
+  var { data: meters = [] } = await sb.from('meters').select('*, zones(name, tenant_name)').order('sort_order', { ascending: true });
+  allMeters = meters;
+
+  var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date', { ascending: false });
+
+  // Zone dropdown in meter modal
+  var mtrZone = document.getElementById('mtr-zone');
+  if (mtrZone) {
+    mtrZone.innerHTML = '<option value="">— Celá budova / Blok —</option>' + allZones.map(function(z) {
+      return '<option value="' + z.id + '">' + (z.tenant_name || z.name) + '</option>';
+    }).join('');
+  }
+
+  var typeIcons = { water: 'fa-droplet', electricity: 'fa-bolt', gas: 'fa-fire' };
+  var typeColors = { water: 'text-blue-500', electricity: 'text-yellow-600', gas: 'text-orange-500' };
+
+  var list = document.getElementById('fin-meters-list');
+  if (meters.length === 0) {
+    list.innerHTML = '<p class="text-center py-6 text-[10px] text-slate-200 font-bold uppercase">Žiadne merače</p>';
+    return;
+  }
+
+  list.innerHTML = '<div class="space-y-3">' + meters.map(function(m) {
+    var zoneName = m.zones ? (m.zones.tenant_name || m.zones.name) : 'Celá budova';
+    var meterReadings = readings.filter(function(r) { return r.meter_id === m.id; });
+    var last = meterReadings.length > 0 ? meterReadings[0] : null;
+    var prev = meterReadings.length > 1 ? meterReadings[1] : null;
+    var consumption = (last && prev) ? (parseFloat(last.value) - parseFloat(prev.value)).toFixed(2) : null;
+
+    return '<div class="bg-slate-50 rounded-xl p-4">' +
+      '<div class="flex items-center justify-between mb-2">' +
+        '<div class="flex items-center space-x-2">' +
+          '<i class="fa-solid ' + (typeIcons[m.type] || 'fa-gauge') + ' ' + (typeColors[m.type] || '') + '"></i>' +
+          '<span class="text-xs font-bold text-slate-800">' + m.name + '</span>' +
+          '<span class="text-[8px] text-slate-400">' + zoneName + '</span>' +
+          (m.meter_number ? '<span class="text-[8px] text-slate-300">#' + m.meter_number + '</span>' : '') +
+        '</div>' +
+        '<div class="flex items-center space-x-2">' +
+          '<button onclick="window.showAddReading(\'' + m.id + '\')" class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase">+ Odčítanie</button>' +
+          '<button onclick="window.editMeter(\'' + m.id + '\')" class="text-slate-300 hover:text-blue-500 text-xs"><i class="fa-solid fa-pen"></i></button>' +
+          '<button onclick="window.deleteMeter(\'' + m.id + '\')" class="text-slate-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
+        '</div>' +
+      '</div>' +
+      (last ? '<div class="flex items-center space-x-4">' +
+        '<div>' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Posledné</p>' +
+          '<p class="text-sm font-bold text-slate-700">' + parseFloat(last.value).toFixed(2) + ' ' + m.unit + ' <span class="text-[8px] text-slate-400">' + fmtD(last.date) + '</span></p>' +
+        '</div>' +
+        (prev ? '<div>' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Predchádzajúce</p>' +
+          '<p class="text-sm font-bold text-slate-400">' + parseFloat(prev.value).toFixed(2) + ' ' + m.unit + ' <span class="text-[8px] text-slate-300">' + fmtD(prev.date) + '</span></p>' +
+        '</div>' : '') +
+        (consumption ? '<div>' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Spotreba</p>' +
+          '<p class="text-sm font-black text-green-600">' + consumption + ' ' + m.unit + '</p>' +
+        '</div>' : '') +
+      '</div>' : '<p class="text-[9px] text-slate-300 italic">Žiadne odčítanie</p>') +
+      (meterReadings.length > 0 ? '<details class="mt-2"><summary class="text-[8px] font-bold text-slate-400 uppercase cursor-pointer">História (' + meterReadings.length + ')</summary>' +
+        '<div class="mt-2 space-y-1">' + meterReadings.slice(0, 10).map(function(r, idx) {
+          var prevR = meterReadings[idx + 1];
+          var cons = prevR ? (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2) : '--';
+          return '<div class="flex items-center justify-between text-[9px] text-slate-500 bg-white rounded-lg px-3 py-1.5">' +
+            '<span>' + fmtD(r.date) + '</span>' +
+            '<span class="font-bold">' + parseFloat(r.value).toFixed(2) + ' ' + m.unit + '</span>' +
+            '<span class="text-green-600 font-bold">' + (cons !== '--' ? '+' + cons : '--') + '</span>' +
+            '<button onclick="window.deleteReading(\'' + r.id + '\')" class="text-red-300 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>' +
+          '</div>';
+        }).join('') + '</div></details>' : '') +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+window.showAddMeter = function() {
+  editingMeterId = null;
+  document.getElementById('meter-modal-title').innerText = 'Nový merač';
+  document.getElementById('mtr-name').value = '';
+  document.getElementById('mtr-type').value = 'water';
+  document.getElementById('mtr-zone').value = '';
+  document.getElementById('mtr-number').value = '';
+  document.getElementById('mtr-note').value = '';
+  document.getElementById('modal-meter').classList.remove('hidden');
+};
+
+window.editMeter = async function(id) {
+  var { data: m } = await sb.from('meters').select('*').eq('id', id).single();
+  if (!m) return;
+  editingMeterId = id;
+  document.getElementById('meter-modal-title').innerText = 'Upraviť merač';
+  document.getElementById('mtr-name').value = m.name;
+  document.getElementById('mtr-type').value = m.type;
+  document.getElementById('mtr-zone').value = m.zone_id || '';
+  document.getElementById('mtr-number').value = m.meter_number || '';
+  document.getElementById('mtr-note').value = m.note || '';
+  document.getElementById('modal-meter').classList.remove('hidden');
+};
+
+window.saveMeter = async function() {
+  var unitMap = { water: 'm³', electricity: 'kWh', gas: 'm³' };
+  var type = document.getElementById('mtr-type').value;
+  var data = {
+    name: document.getElementById('mtr-name').value.trim(),
+    type: type,
+    unit: unitMap[type] || 'm³',
+    zone_id: document.getElementById('mtr-zone').value || null,
+    meter_number: document.getElementById('mtr-number').value.trim() || null,
+    note: document.getElementById('mtr-note').value.trim() || null
+  };
+  if (!data.name) { alert('Vyplňte názov.'); return; }
+
+  if (editingMeterId) {
+    await sb.from('meters').update(data).eq('id', editingMeterId);
+  } else {
+    await sb.from('meters').insert(data);
+  }
+  document.getElementById('modal-meter').classList.add('hidden');
+  await loadMeters();
+};
+
+window.deleteMeter = async function(id) {
+  if (!confirm('Vymazať merač a všetky odčítania?')) return;
+  await sb.from('meters').delete().eq('id', id);
+  await loadMeters();
+};
+
+window.showAddReading = async function(meterId) {
+  currentReadingMeterId = meterId;
+  var meter = allMeters.find(function(m) { return m.id === meterId; });
+  document.getElementById('reading-meter-name').innerText = meter ? meter.name : '';
+  document.getElementById('rdg-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('rdg-value').value = '';
+  document.getElementById('rdg-note').value = '';
+
+  var { data: prev = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).order('date', { ascending: false }).limit(1);
+  var prevInfo = document.getElementById('reading-prev-info');
+  if (prev.length > 0) {
+    prevInfo.classList.remove('hidden');
+    document.getElementById('reading-prev-date').innerText = fmtD(prev[0].date);
+    document.getElementById('reading-prev-value').innerText = parseFloat(prev[0].value).toFixed(2) + ' ' + (meter ? meter.unit : '');
+  } else {
+    prevInfo.classList.add('hidden');
+  }
+
+  document.getElementById('modal-reading').classList.remove('hidden');
+};
+
+window.saveReading = async function() {
+  var data = {
+    meter_id: currentReadingMeterId,
+    date: document.getElementById('rdg-date').value,
+    value: parseFloat(document.getElementById('rdg-value').value) || 0,
+    note: document.getElementById('rdg-note').value.trim() || null,
+    created_by: currentUserId
+  };
+  if (!data.value) { alert('Zadajte stav merača.'); return; }
+
+  await sb.from('meter_readings').insert(data);
+  document.getElementById('modal-reading').classList.add('hidden');
+  await loadMeters();
+};
+
+window.deleteReading = async function(id) {
+  if (!confirm('Vymazať toto odčítanie?')) return;
+  await sb.from('meter_readings').delete().eq('id', id);
+  await loadMeters();
+};
 
 window.loadExpenses = async function() {
   var year = document.getElementById('fin-year').value || new Date().getFullYear();
