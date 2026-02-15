@@ -891,7 +891,7 @@ async function loadFinance() {
       var label = z.tenant_name || z.name;
       return '<div class="flex items-center space-x-2 bg-slate-50 rounded-xl px-3 py-2">' +
         '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
-        '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-20 text-right border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">' +
+        '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-14 text-right border border-slate-200 rounded-lg px-1 py-1 text-[10px] font-bold">' +
         '<span class="text-[8px] text-slate-400">m²</span>' +
         '</div>';
     }).join('');
