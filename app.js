@@ -1185,7 +1185,7 @@ window.loadExpenses = async function() {
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
         '</div>' +
         '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
-        (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + '</p>' : '') +
+        (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + (e.period_from ? ' • ' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) : '') + '</p>' : (e.period_from ? '<p class="text-[8px] text-slate-400">' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) + '</p>' : '')) +
       '</div>' +
       '<div class="flex items-center space-x-3 ml-3">' +
         (e.receipt_url ? '<img src="' + e.receipt_url + '" onclick="window.open(\'' + e.receipt_url + '\')" class="w-10 h-10 object-cover rounded-lg cursor-pointer border border-slate-200 hover:border-blue-400">' : '') +
@@ -1222,6 +1222,8 @@ window.showAddExpense = function() {
   document.getElementById('exp-amount').value = '';
   document.getElementById('exp-zone').value = '';
   document.getElementById('exp-invoice').value = '';
+  document.getElementById('exp-period-from').value = '';
+  document.getElementById('exp-period-to').value = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-receipt').value = '';
   document.getElementById('exp-receipt-preview').classList.add('hidden');
@@ -1245,6 +1247,8 @@ window.saveExpense = async function() {
     amount: parseFloat(document.getElementById('exp-amount').value) || 0,
     zone_id: document.getElementById('exp-zone').value || null,
     invoice_number: document.getElementById('exp-invoice').value.trim() || null,
+    period_from: document.getElementById('exp-period-from').value || null,
+    period_to: document.getElementById('exp-period-to').value || null,
     note: document.getElementById('exp-note').value.trim() || null,
     created_by: currentUserId
   };
@@ -1283,6 +1287,8 @@ window.editExpense = async function(id) {
   document.getElementById('exp-amount').value = e.amount;
   document.getElementById('exp-zone').value = e.zone_id || '';
   document.getElementById('exp-invoice').value = e.invoice_number || '';
+  document.getElementById('exp-period-from').value = e.period_from || '';
+  document.getElementById('exp-period-to').value = e.period_to || '';
   document.getElementById('exp-note').value = e.note || '';
   document.getElementById('modal-expense').classList.remove('hidden');
 };
@@ -1363,7 +1369,7 @@ window.aiExtractReceipt = async function() {
       content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
     }
 
-    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD","description":"stručný popis","supplier":"názov dodávateľa","amount":číslo,"invoice_number":"číslo faktúry alebo null","category":"jedna z: Vykurovanie, EPS a PO, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Ostatné"}' });
+    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD","description":"stručný popis","supplier":"názov dodávateľa","amount":číslo,"invoice_number":"číslo faktúry alebo null","period_from":"YYYY-MM-DD alebo null","period_to":"YYYY-MM-DD alebo null","category":"jedna z: Vykurovanie, EPS a PO, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Ostatné"}' });
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1388,6 +1394,8 @@ window.aiExtractReceipt = async function() {
     if (result.supplier) document.getElementById('exp-supplier').value = result.supplier;
     if (result.amount) document.getElementById('exp-amount').value = result.amount;
     if (result.invoice_number) document.getElementById('exp-invoice').value = result.invoice_number;
+    if (result.period_from) document.getElementById('exp-period-from').value = result.period_from;
+    if (result.period_to) document.getElementById('exp-period-to').value = result.period_to;
 
     // Match category
     if (result.category) {
@@ -1751,3 +1759,4 @@ window.printReport = async () => {
 
 
 init();
+  
