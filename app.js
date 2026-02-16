@@ -1188,7 +1188,7 @@ window.loadExpenses = async function() {
         (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + '</p>' : '') +
       '</div>' +
       '<div class="flex items-center space-x-3 ml-3">' +
-        (e.receipt_url ? '<a href="' + e.receipt_url + '" target="_blank" class="text-green-400 hover:text-green-600 text-xs" title="Účtenka"><i class="fa-solid fa-file-image"></i></a>' : '') +
+        (e.receipt_url ? '<img src="' + e.receipt_url + '" onclick="window.open(\'' + e.receipt_url + '\')" class="w-10 h-10 object-cover rounded-lg cursor-pointer border border-slate-200 hover:border-blue-400">' : '') +
         '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
         '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
         '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
