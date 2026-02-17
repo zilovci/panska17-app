@@ -883,3 +883,5 @@ function canEditEntry(entry) {
 
 var allCategories = [];
 var editingExpenseId = null;
+
+
