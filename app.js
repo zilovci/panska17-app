@@ -2086,7 +2086,11 @@ window.loadOverview = async function() {
 
     e.expense_allocations.forEach(function(a) {
       if (!a.zones) return;
-      var zoneName = a.zones.tenant_name || a.zones.name;
+      var zName = a.zones.name;
+      var tName = a.zones.tenant_name || '';
+      // Strip s.r.o., a.s., spol. s r.o., etc.
+      tName = tName.replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.\s*s\s*r\.?\s*o\.?|s\.\s*r\.\s*o\.)$/i, '').trim();
+      var zoneName = tName ? tName + ' – ' + zName : zName;
       var key = a.payer === 'owner' ? ownerKey : zoneName;
 
       if (!matrix[key]) matrix[key] = {};
