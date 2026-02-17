@@ -443,11 +443,13 @@ window.loadPayments = async function() {
 
         if (pay) {
           var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' : 'bg-blue-50 text-blue-400 hover:bg-blue-100';
-          var cls = pay.paid
-            ? 'bg-green-100 text-green-700 cursor-pointer hover:bg-green-200'
-            : unpaidCls + ' cursor-pointer';
+          var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
+          var cls = pay.paid ? paidCls : unpaidCls;
           rowTotal += parseFloat(pay.amount) || 0;
-          html += '<td class="text-center py-1"><div onclick="window.togglePayment(\'' + pay.id + '\',' + !pay.paid + ')" class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold" title="' + (pay.paid ? 'Zaplatené' + (pay.paid_date ? ' ' + fmtD(pay.paid_date) : '') : 'Nezaplatené') + '">' +
+          html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer" ' +
+            'onclick="window.togglePayment(\'' + pay.id + '\',' + !pay.paid + ')" ' +
+            'ondblclick="event.stopPropagation();window.editPaymentAmount(\'' + pay.id + '\',' + pay.amount + ',this)" ' +
+            'title="Klik = zaplatené, Dvojklik = zmeniť sumu">' +
             parseFloat(pay.amount).toFixed(0) +
             (pay.paid ? ' ✓' : '') +
           '</div></td>';
@@ -526,6 +528,34 @@ window.generatePayments = async function() {
   }
 
   await window.loadPayments();
+};
+
+window.editPaymentAmount = function(payId, currentAmount, el) {
+  var input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.01';
+  input.value = currentAmount;
+  input.className = 'w-full text-center text-[9px] font-bold border border-blue-400 rounded p-1 bg-white';
+  input.style.maxWidth = '60px';
+
+  var parent = el.parentNode;
+  parent.innerHTML = '';
+  parent.appendChild(input);
+  input.focus();
+  input.select();
+
+  var save = async function() {
+    var newVal = parseFloat(input.value);
+    if (isNaN(newVal) || newVal < 0) newVal = currentAmount;
+    await sb.from('tenant_payments').update({ amount: newVal }).eq('id', payId);
+    await window.loadPayments();
+  };
+
+  input.onblur = save;
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { window.loadPayments(); }
+  };
 };
 
 window.togglePayment = async function(payId, newPaid) {
