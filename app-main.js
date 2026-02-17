@@ -730,7 +730,7 @@ window.generateInvoice = async function() {
   }
 
   y += 3;
-  doc.text(stripDia('Priestor: ' + zoneLabel + ' -- ' + totalArea + ' m2'), M, y);
+  doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea + ' m2'), M, y);
   y += 8;
 
   // Costs table
@@ -824,7 +824,7 @@ window.generateInvoice = async function() {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     var dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
+    dueDate.setDate(dueDate.getDate() + 15);
     doc.text(stripDia('Splatnost: ' + fmtD(dueDate.toISOString().split('T')[0])), M, y);
     y += 5;
     doc.text('IBAN: SK23 1100 0000 0026 2084 4545', M, y);
@@ -846,9 +846,115 @@ window.generateInvoice = async function() {
   doc.setTextColor(150);
   doc.text(stripDia('Vyuctovanie vygenerovane ' + new Date().toLocaleDateString('sk-SK')), M, y);
 
-  // Save
-  var fileName = stripDia('vyuctovanie_' + yearLabel + '_' + (tenant.company_name || tenant.name).replace(/[^a-zA-Z0-9]/g, '_') + '.pdf');
+  // Generate invoice number: VYUCT-2025-001
+  var { data: existingInv = [] } = await sb.from('invoices').select('invoice_number')
+    .like('invoice_number', 'VYUCT-' + yearLabel + '-%');
+  var nextNum = existingInv.length + 1;
+  var invNumber = 'VYUCT-' + yearLabel + '-' + String(nextNum).padStart(3, '0');
+
+  // Due date
+  var dueDateObj = new Date();
+  dueDateObj.setDate(dueDateObj.getDate() + 15);
+  var dueDateStr = dueDateObj.toISOString().split('T')[0];
+
+  // Save to DB
+  await sb.from('invoices').insert({
+    tenant_id: tenantId,
+    invoice_number: invNumber,
+    period_from: dateFrom,
+    period_to: dateTo,
+    total_costs: parseFloat(totalCosts.toFixed(2)),
+    total_advances: parseFloat(paidAdvances.toFixed(2)),
+    balance: parseFloat(balance.toFixed(2)),
+    due_date: dueDateStr,
+    status: 'draft'
+  });
+
+  // Add invoice number to PDF header
+  doc.setPage(1);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100);
+  doc.text(stripDia('Cislo: ' + invNumber), W - M, 20, { align: 'right' });
+  doc.setTextColor(0);
+
+  // Save PDF
+  var fileName = stripDia(invNumber + '_' + (tenant.company_name || tenant.name).replace(/[^a-zA-Z0-9]/g, '_') + '.pdf');
   doc.save(fileName);
+
+  // Refresh list
+  await window.loadInvoices();
+};
+
+// ============ EVIDENCIA VYÚČTOVANÍ ============
+
+var invoiceStatuses = {
+  'draft': { label: 'Koncept', cls: 'bg-slate-100 text-slate-500' },
+  'sent': { label: 'Odoslané', cls: 'bg-blue-100 text-blue-600' },
+  'paid': { label: 'Zaplatené', cls: 'bg-green-100 text-green-700' },
+  'cancelled': { label: 'Zrušené', cls: 'bg-red-100 text-red-500' }
+};
+
+window.loadInvoices = async function() {
+  var list = document.getElementById('fin-inv-list');
+  if (!list) return;
+
+  var { data: invoices = [] } = await sb.from('invoices')
+    .select('*, tenants(name, company_name)')
+    .order('created_at', { ascending: false });
+
+  if (invoices.length === 0) {
+    list.innerHTML = '<p class="text-sm text-slate-300 mt-3">Žiadne vyúčtovania</p>';
+    return;
+  }
+
+  list.innerHTML = invoices.map(function(inv) {
+    var tenantLabel = inv.tenants ? (inv.tenants.company_name || inv.tenants.name) : '';
+    tenantLabel = tenantLabel.replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?)$/i, '').trim();
+    var st = invoiceStatuses[inv.status] || invoiceStatuses['draft'];
+    var balLabel = inv.balance > 0.01 ? 'Nedoplatok ' + fmtEur(inv.balance) + ' €'
+      : inv.balance < -0.01 ? 'Preplatok ' + fmtEur(Math.abs(inv.balance)) + ' €'
+      : 'Vyrovnané';
+    var balCls = inv.balance > 0.01 ? 'text-red-500' : inv.balance < -0.01 ? 'text-green-600' : 'text-slate-400';
+
+    return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center gap-2">' +
+          '<span class="text-xs font-black text-slate-700">' + inv.invoice_number + '</span>' +
+          '<span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
+        '</div>' +
+        '<p class="text-[9px] text-slate-400">' +
+          tenantLabel + ' • ' +
+          fmtD(inv.period_from) + ' - ' + fmtD(inv.period_to) + ' • ' +
+          'Náklady: ' + fmtEur(inv.total_costs) + ' € • Zálohy: ' + fmtEur(inv.total_advances) + ' € • ' +
+          '<span class="' + balCls + '">' + balLabel + '</span>' +
+          (inv.due_date ? ' • Splat.: ' + fmtD(inv.due_date) : '') +
+        '</p>' +
+      '</div>' +
+      '<div class="flex items-center gap-1 ml-3">' +
+        '<select onchange="window.changeInvoiceStatus(\'' + inv.id + '\', this.value)" class="text-[8px] border border-slate-200 rounded px-1 py-0.5">' +
+          Object.keys(invoiceStatuses).map(function(s) {
+            return '<option value="' + s + '"' + (inv.status === s ? ' selected' : '') + '>' + invoiceStatuses[s].label + '</option>';
+          }).join('') +
+        '</select>' +
+        '<button onclick="window.deleteInvoice(\'' + inv.id + '\')" class="text-red-300 hover:text-red-500 text-xs ml-1"><i class="fa-solid fa-trash"></i></button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+};
+
+window.changeInvoiceStatus = async function(id, newStatus) {
+  var update = { status: newStatus };
+  if (newStatus === 'sent') update.sent_date = new Date().toISOString().split('T')[0];
+  if (newStatus === 'paid') update.paid_date = new Date().toISOString().split('T')[0];
+  await sb.from('invoices').update(update).eq('id', id);
+  await window.loadInvoices();
+};
+
+window.deleteInvoice = async function(id) {
+  if (!confirm('Vymazať vyúčtovanie?')) return;
+  await sb.from('invoices').delete().eq('id', id);
+  await window.loadInvoices();
 };
 
 async function init() {

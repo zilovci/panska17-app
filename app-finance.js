@@ -114,6 +114,7 @@ async function loadFinance() {
   await loadExpenses();
   await window.loadTenants();
   await window.loadPayments();
+  await window.loadInvoices();
   await window.loadOverview();
 }
 
