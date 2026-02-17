@@ -1188,7 +1188,9 @@ window.loadExpenses = async function() {
         (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + (e.period_from ? ' • ' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) : '') + '</p>' : (e.period_from ? '<p class="text-[8px] text-slate-400">' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) + '</p>' : '')) +
       '</div>' +
       '<div class="flex items-center space-x-3 ml-3">' +
-        (e.receipt_url ? '<img src="' + e.receipt_url + '" onclick="window.open(\'' + e.receipt_url + '\')" class="w-10 h-10 object-cover rounded-lg cursor-pointer border border-slate-200 hover:border-blue-400">' : '') +
+        (e.receipt_url ? (e.receipt_url.match(/\.pdf$/i) ?
+          '<a href="' + e.receipt_url + '" target="_blank" class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center border border-red-200 hover:border-red-400 cursor-pointer shrink-0"><i class="fa-solid fa-file-pdf text-red-500"></i></a>' :
+          '<img src="' + e.receipt_url + '" onclick="window.open(\'' + e.receipt_url + '\')" class="w-10 h-10 object-cover rounded-lg cursor-pointer border border-slate-200 hover:border-blue-400 shrink-0">') : '') +
         '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
         '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
         '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
@@ -1312,9 +1314,14 @@ if (expReceipt) expReceipt.addEventListener('change', function(e) {
       var reader = new FileReader();
       reader.onload = function(ev) {
         img.src = ev.target.result;
+        img.classList.remove('hidden');
         preview.classList.remove('hidden');
       };
       reader.readAsDataURL(file);
+    } else if (file.type === 'application/pdf') {
+      img.classList.add('hidden');
+      preview.classList.remove('hidden');
+      preview.innerHTML = '<div class="flex items-center space-x-2 bg-red-50 rounded-lg p-2"><i class="fa-solid fa-file-pdf text-red-500 text-xl"></i><span class="text-xs font-bold text-slate-600">' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)</span></div>';
     } else {
       preview.classList.add('hidden');
     }
@@ -1369,7 +1376,7 @@ window.aiExtractReceipt = async function() {
       content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
     }
 
-    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD","description":"stručný popis","supplier":"názov dodávateľa","amount":číslo,"invoice_number":"číslo faktúry alebo null","period_from":"YYYY-MM-DD alebo null","period_to":"YYYY-MM-DD alebo null","category":"jedna z: Vykurovanie, EPS a PO, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Ostatné"}' });
+    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. DÔLEŽITÉ: "amount" má byť FAKTUROVANÁ SUMA (celková suma s DPH za služby), NIE preplatok, nedoplatok alebo zostatok. Ak je to vyúčtovacia faktúra, použi fakturovanú sumu s DPH. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD dátum vystavenia","description":"stručný popis napr. Plyn - vyúčtovanie 2025","supplier":"názov dodávateľa","amount":číslo fakturovanej sumy s DPH,"invoice_number":"číslo faktúry alebo null","period_from":"YYYY-MM-DD alebo null","period_to":"YYYY-MM-DD alebo null","category":"jedna z: Vykurovanie, EPS a PO, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Ostatné","meter_number":"číslo merača ak je na faktúre alebo null","consumption":"spotreba v m3 alebo kWh ak je na faktúre alebo null","consumption_unit":"m3 alebo kWh alebo null"}' });
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -1397,6 +1404,12 @@ window.aiExtractReceipt = async function() {
     if (result.period_from) document.getElementById('exp-period-from').value = result.period_from;
     if (result.period_to) document.getElementById('exp-period-to').value = result.period_to;
 
+    // Auto-fill note with consumption and meter info
+    var noteparts = [];
+    if (result.consumption) noteparts.push('Spotreba: ' + result.consumption + ' ' + (result.consumption_unit || ''));
+    if (result.meter_number) noteparts.push('Merač: ' + result.meter_number);
+    if (noteparts.length > 0) document.getElementById('exp-note').value = noteparts.join(' • ');
+
     // Match category
     if (result.category) {
       var cat = allCategories.find(function(c) { return c.name === result.category; });
@@ -1404,6 +1417,9 @@ window.aiExtractReceipt = async function() {
     }
 
     status.innerText = 'Hotovo – skontrolujte údaje';
+    if (result.consumption) {
+      status.innerText = 'Hotovo • Spotreba: ' + result.consumption + ' ' + (result.consumption_unit || '') + (result.meter_number ? ' • Merač: ' + result.meter_number : '');
+    }
     status.classList.add('text-green-600');
     status.classList.remove('text-blue-500');
   } catch (err) {
@@ -1759,4 +1775,3 @@ window.printReport = async () => {
 
 
 init();
-  
