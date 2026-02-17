@@ -889,6 +889,7 @@ async function loadFinance() {
   if (zonesGrid) {
     zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory'; }).map(function(z) {
       var label = z.tenant_name || z.name;
+      var temper = z.tempering_pct || 0;
       return '<div class="bg-slate-50 rounded-xl px-3 py-2">' +
         '<div class="flex items-center space-x-2">' +
           '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
@@ -896,14 +897,10 @@ async function loadFinance() {
           '<span class="text-[8px] text-slate-400">m²</span>' +
         '</div>' +
         '<div class="flex items-center space-x-1 mt-1">' +
-          '<label class="flex items-center space-x-1 cursor-pointer">' +
-            '<input type="checkbox" ' + (z.is_active === false ? '' : 'checked') + ' data-active-zone="' + z.id + '" class="rounded text-xs" onchange="window.toggleZoneRow(this)">' +
-            '<span class="text-[8px] text-slate-400">Aktívna</span>' +
-          '</label>' +
-          '<span class="text-[8px] text-slate-300 mx-1">|</span>' +
-          '<span class="text-[8px] text-slate-400">Temp.:</span>' +
-          '<input type="number" step="1" min="0" max="100" value="' + (z.tempering_pct || 0) + '" data-temper-zone="' + z.id + '" class="zone-temper-input w-10 text-right border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold">' +
+          '<span class="text-[8px] text-slate-400">Kúrenie ak prázdna:</span>' +
+          '<input type="number" step="1" min="0" max="100" value="' + temper + '" data-temper-zone="' + z.id + '" class="zone-temper-input w-10 text-right border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold">' +
           '<span class="text-[8px] text-slate-400">%</span>' +
+          '<span class="text-[7px] text-slate-300 ml-1">(0=nekúri, 100=plné)</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -931,12 +928,11 @@ async function loadFinance() {
   if (zoneChecks) {
     zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
-      var inactive = z.is_active === false;
       var temper = z.tempering_pct || 0;
-      var tag = inactive ? (temper > 0 ? ' <span class="text-orange-400">temp.' + temper + '%</span>' : ' <span class="text-red-300">prázdna</span>') : '';
-      return '<label class="flex items-center space-x-1.5 bg-white rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50' + (inactive ? ' opacity-70' : '') + '">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" data-active="' + (z.is_active !== false) + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
-        '<span class="text-[9px] font-bold text-slate-600 truncate">' + label + tag + '</span>' +
+      var temperTag = temper > 0 ? ' <span class="text-orange-400 text-[7px]">↳ ' + temper + '% ak prázdna</span>' : '';
+      return '<label class="flex items-center space-x-1.5 bg-white rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<span class="text-[9px] font-bold text-slate-600 truncate">' + label + temperTag + '</span>' +
         '<span class="text-[8px] text-slate-300 shrink-0">' + (z.area_m2 || 0) + '</span>' +
       '</label>';
     }).join('');
@@ -1229,27 +1225,18 @@ window.loadExpenses = async function() {
   document.getElementById('fin-total-amount').innerText = total.toFixed(2) + ' €';
 };
 
-window.toggleZoneRow = function(cb) {
-  // Visual feedback only, saved with Uložiť
-};
-
 window.saveZoneAreas = async function() {
   var inputs = document.querySelectorAll('.zone-area-input');
   for (var i = 0; i < inputs.length; i++) {
     var zoneId = inputs[i].getAttribute('data-zone-id');
     var area = parseFloat(inputs[i].value) || 0;
-    var activeCb = document.querySelector('[data-active-zone="' + zoneId + '"]');
-    var isActive = activeCb ? activeCb.checked : true;
     var temperInput = document.querySelector('[data-temper-zone="' + zoneId + '"]');
     var temperPct = temperInput ? (parseFloat(temperInput.value) || 0) : 0;
-    await sb.from('zones').update({ area_m2: area, is_active: isActive, tempering_pct: temperPct }).eq('id', zoneId);
+    await sb.from('zones').update({ area_m2: area, tempering_pct: temperPct }).eq('id', zoneId);
   }
-  // Update local
   for (var j = 0; j < allZones.length; j++) {
     var inp = document.querySelector('[data-zone-id="' + allZones[j].id + '"]');
     if (inp) allZones[j].area_m2 = parseFloat(inp.value) || 0;
-    var act = document.querySelector('[data-active-zone="' + allZones[j].id + '"]');
-    if (act) allZones[j].is_active = act.checked;
     var tmp = document.querySelector('[data-temper-zone="' + allZones[j].id + '"]');
     if (tmp) allZones[j].tempering_pct = parseFloat(tmp.value) || 0;
   }
@@ -1334,6 +1321,13 @@ window.updateAllocPreview = function() {
     return;
   }
 
+  var html = '';
+  if (checkedZones.length > 0) {
+    html += '<p class="text-[8px] font-black text-green-600 uppercase mb-1">✅ Zaškrtnuté = nájomca platí (plná plocha)</p>';
+  } else if (amount > 0) {
+    html += '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zaškrtnite zóny ktoré sa na náklade podieľajú</p>';
+  }
+
   // Find unchecked zones with tempering
   var allCbs = document.querySelectorAll('.alloc-zone-cb');
   var temperedZones = [];
@@ -1352,7 +1346,7 @@ window.updateAllocPreview = function() {
   var totalArea = activeArea + temperedArea;
 
   // Active zones
-  var html = checkedZones.map(function(z) {
+  html += checkedZones.map(function(z) {
     var zone = allZones.find(function(az) { return az.id === z.id; });
     var label = zone ? (zone.tenant_name || zone.name) : z.id;
     var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / checkedZones.length);
@@ -1365,11 +1359,21 @@ window.updateAllocPreview = function() {
     '</div>';
   }).join('');
 
+  // Active total
+  if (checkedZones.length > 0 && amount > 0) {
+    var activeTotal = checkedZones.reduce(function(s, z) {
+      var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / checkedZones.length);
+      return s + amount * pct / 100;
+    }, 0);
+    html += '<div class="flex justify-between text-[9px] font-black text-green-700 px-2 pt-1">' +
+      '<span>Nájomcovia spolu</span><span>' + activeTotal.toFixed(2) + ' €</span></div>';
+  }
+
   // Tempered zones
   if (temperedZones.length > 0) {
     var tempTotal = 0;
     html += '<div class="border-t border-orange-200 mt-2 pt-2">' +
-      '<p class="text-[8px] font-black text-orange-500 uppercase mb-1">Temperovanie (vlastník)</p>';
+      '<p class="text-[8px] font-black text-orange-500 uppercase mb-1">❌ Nezaškrtnuté s kúrením = platí vlastník</p>';
     html += temperedZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
@@ -1377,7 +1381,7 @@ window.updateAllocPreview = function() {
       var amt = amount * pct / 100;
       tempTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
-        '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' (' + z.temper + '%)</span>' +
+        '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' (kúrenie ' + z.temper + '%)</span>' +
         '<span class="text-orange-400 w-12 text-right">' + z.effectiveArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
@@ -1386,6 +1390,23 @@ window.updateAllocPreview = function() {
     html += '<div class="flex justify-between text-[9px] font-black text-orange-700 px-2 pt-1">' +
       '<span>Temperovanie spolu</span><span>' + tempTotal.toFixed(2) + ' €</span></div>';
     html += '</div>';
+  }
+
+  // Grand total
+  if (amount > 0) {
+    var allocatedTotal = checkedZones.reduce(function(s, z) {
+      var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / checkedZones.length);
+      return s + amount * pct / 100;
+    }, 0);
+    var tempTot = temperedZones.reduce(function(s, z) {
+      var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
+      return s + amount * pct / 100;
+    }, 0);
+    var unallocated = amount - allocatedTotal - tempTot;
+    if (Math.abs(unallocated) > 0.01) {
+      html += '<div class="flex justify-between text-[9px] font-black text-red-500 px-2 pt-2 border-t border-red-200 mt-2">' +
+        '<span>Nerozpočítané</span><span>' + unallocated.toFixed(2) + ' €</span></div>';
+    }
   }
 
   rows.innerHTML = html;
