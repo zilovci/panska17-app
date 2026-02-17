@@ -1175,7 +1175,19 @@ window.loadExpenses = async function() {
 
   if (catFilter !== 'all') query = query.eq('category_id', catFilter);
 
-  var { data: expenses = [] } = await query;
+  var result = await query;
+  var expenses = result.data || [];
+
+  // Fallback if allocations table missing
+  if (result.error) {
+    console.warn('Expenses query error, trying without allocations:', result.error);
+    var q2 = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)')
+      .gte('date', year + '-01-01').lte('date', year + '-12-31')
+      .order('date', { ascending: false });
+    if (catFilter !== 'all') q2 = q2.eq('category_id', catFilter);
+    var r2 = await q2;
+    expenses = r2.data || [];
+  }
 
   var list = document.getElementById('fin-expenses-list');
   if (expenses.length === 0) {
@@ -1470,37 +1482,41 @@ window.saveExpense = async function() {
     var temperedArea = temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
     var totalArea = activeArea + temperedArea;
 
-    await sb.from('expense_allocations').delete().eq('expense_id', expenseId);
+    try {
+      await sb.from('expense_allocations').delete().eq('expense_id', expenseId);
 
-    var allocs = [];
-    // Active zones
-    zones.forEach(function(z) {
-      var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
-      allocs.push({
-        expense_id: expenseId,
-        zone_id: z.id,
-        percentage: parseFloat(pct.toFixed(2)),
-        amount: parseFloat((data.amount * pct / 100).toFixed(2))
+      var allocs = [];
+      // Active zones
+      zones.forEach(function(z) {
+        var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+        allocs.push({
+          expense_id: expenseId,
+          zone_id: z.id,
+          percentage: parseFloat(pct.toFixed(2)),
+          amount: parseFloat((data.amount * pct / 100).toFixed(2))
+        });
       });
-    });
-    // Tempered zones
-    temperedZones.forEach(function(z) {
-      var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
-      allocs.push({
-        expense_id: expenseId,
-        zone_id: z.id,
-        percentage: parseFloat(pct.toFixed(2)),
-        amount: parseFloat((data.amount * pct / 100).toFixed(2))
+      // Tempered zones
+      temperedZones.forEach(function(z) {
+        var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
+        allocs.push({
+          expense_id: expenseId,
+          zone_id: z.id,
+          percentage: parseFloat(pct.toFixed(2)),
+          amount: parseFloat((data.amount * pct / 100).toFixed(2))
+        });
       });
-    });
 
-    if (allocs.length > 0) {
-      await sb.from('expense_allocations').insert(allocs);
+      if (allocs.length > 0) {
+        await sb.from('expense_allocations').insert(allocs);
+      }
+
+      // Save preset for this category
+      var zoneIds = zones.map(function(z) { return z.id; });
+      await window.saveCategoryPreset(data.category_id, zoneIds);
+    } catch(allocErr) {
+      console.warn('Allocation save error (table may not exist):', allocErr);
     }
-
-    // Save preset for this category
-    var zoneIds = zones.map(function(z) { return z.id; });
-    await window.saveCategoryPreset(data.category_id, zoneIds);
   }
 
   window.closeExpenseModal();
