@@ -129,12 +129,32 @@ async function loadMeters() {
 
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date', { ascending: false });
 
-  // Zone dropdown in meter modal
-  var mtrZone = document.getElementById('mtr-zone');
-  if (mtrZone) {
-    mtrZone.innerHTML = '<option value="">— Celá budova / Blok —</option>' + allZones.map(function(z) {
-      return '<option value="' + z.id + '">' + (z.tenant_name || z.name) + '</option>';
+  // Load meter-zone assignments
+  var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id, zones(name, tenant_name)');
+  var mzByMeter = {};
+  mzAll.forEach(function(mz) {
+    if (!mzByMeter[mz.meter_id]) mzByMeter[mz.meter_id] = [];
+    mzByMeter[mz.meter_id].push(mz);
+  });
+
+  // Zone checkboxes in meter modal
+  var mtrZones = document.getElementById('mtr-zones');
+  if (mtrZones) {
+    mtrZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+      return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+        '<input type="checkbox" value="' + z.id + '" class="mtr-zone-cb rounded">' +
+        '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
+      '</label>';
     }).join('');
+  }
+
+  // Parent meter dropdown
+  var mtrParent = document.getElementById('mtr-parent');
+  if (mtrParent) {
+    mtrParent.innerHTML = '<option value="">— žiadny —</option>' +
+      meters.filter(function(m) { return m.is_main; }).map(function(m) {
+        return '<option value="' + m.id + '">' + m.name + '</option>';
+      }).join('');
   }
 
   var typeIcons = { water: 'fa-droplet', electricity: 'fa-bolt', gas: 'fa-fire' };
@@ -147,17 +167,23 @@ async function loadMeters() {
   }
 
   list.innerHTML = '<div class="space-y-3">' + meters.map(function(m) {
-    var zoneName = m.zones ? (m.zones.tenant_name || m.zones.name) : 'Celá budova';
+    var mZones = mzByMeter[m.id] || [];
+    var zoneName = mZones.length > 0
+      ? mZones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ')
+      : (m.zones ? (m.zones.tenant_name || m.zones.name) : 'Celá budova');
     var meterReadings = readings.filter(function(r) { return r.meter_id === m.id; });
     var last = meterReadings.length > 0 ? meterReadings[0] : null;
     var prev = meterReadings.length > 1 ? meterReadings[1] : null;
     var consumption = (last && prev) ? (parseFloat(last.value) - parseFloat(prev.value)).toFixed(2) : null;
+    var badges = (m.is_main ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">HLAVNÝ</span> ' : '') +
+      (m.parent_meter_id ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">SUB</span> ' : '');
 
     return '<div class="bg-slate-50 rounded-xl p-4">' +
       '<div class="flex items-center justify-between mb-2">' +
-        '<div class="flex items-center space-x-2">' +
+        '<div class="flex items-center space-x-2 flex-wrap">' +
           '<i class="fa-solid ' + (typeIcons[m.type] || 'fa-gauge') + ' ' + (typeColors[m.type] || '') + '"></i>' +
           '<span class="text-xs font-bold text-slate-800">' + m.name + '</span>' +
+          badges +
           '<span class="text-[8px] text-slate-400">' + zoneName + '</span>' +
           (m.meter_number ? '<span class="text-[8px] text-slate-300">#' + m.meter_number + '</span>' : '') +
         '</div>' +
@@ -203,7 +229,9 @@ window.showAddMeter = function() {
   document.getElementById('meter-modal-title').innerText = 'Nový merač';
   document.getElementById('mtr-name').value = '';
   document.getElementById('mtr-type').value = 'water';
-  document.getElementById('mtr-zone').value = '';
+  document.querySelectorAll('.mtr-zone-cb').forEach(function(cb) { cb.checked = false; });
+  document.getElementById('mtr-is-main').checked = false;
+  document.getElementById('mtr-parent').value = '';
   document.getElementById('mtr-number').value = '';
   document.getElementById('mtr-note').value = '';
   document.getElementById('modal-meter').classList.remove('hidden');
@@ -216,9 +244,18 @@ window.editMeter = async function(id) {
   document.getElementById('meter-modal-title').innerText = 'Upraviť merač';
   document.getElementById('mtr-name').value = m.name;
   document.getElementById('mtr-type').value = m.type;
-  document.getElementById('mtr-zone').value = m.zone_id || '';
+  document.getElementById('mtr-is-main').checked = m.is_main || false;
+  document.getElementById('mtr-parent').value = m.parent_meter_id || '';
   document.getElementById('mtr-number').value = m.meter_number || '';
   document.getElementById('mtr-note').value = m.note || '';
+
+  // Load zone assignments
+  var { data: mzList = [] } = await sb.from('meter_zones').select('zone_id').eq('meter_id', id);
+  var assignedZones = mzList.map(function(mz) { return mz.zone_id; });
+  document.querySelectorAll('.mtr-zone-cb').forEach(function(cb) {
+    cb.checked = assignedZones.indexOf(cb.value) >= 0;
+  });
+
   document.getElementById('modal-meter').classList.remove('hidden');
 };
 
@@ -229,17 +266,32 @@ window.saveMeter = async function() {
     name: document.getElementById('mtr-name').value.trim(),
     type: type,
     unit: unitMap[type] || 'm³',
-    zone_id: document.getElementById('mtr-zone').value || null,
+    is_main: document.getElementById('mtr-is-main').checked,
+    parent_meter_id: document.getElementById('mtr-parent').value || null,
     meter_number: document.getElementById('mtr-number').value.trim() || null,
     note: document.getElementById('mtr-note').value.trim() || null
   };
   if (!data.name) { alert('Vyplňte názov.'); return; }
 
+  var meterId;
   if (editingMeterId) {
     await sb.from('meters').update(data).eq('id', editingMeterId);
+    meterId = editingMeterId;
   } else {
-    await sb.from('meters').insert(data);
+    var { data: inserted } = await sb.from('meters').insert(data).select('id').single();
+    meterId = inserted.id;
   }
+
+  // Save zone assignments
+  await sb.from('meter_zones').delete().eq('meter_id', meterId);
+  var selectedZones = [];
+  document.querySelectorAll('.mtr-zone-cb:checked').forEach(function(cb) {
+    selectedZones.push({ meter_id: meterId, zone_id: cb.value });
+  });
+  if (selectedZones.length > 0) {
+    await sb.from('meter_zones').insert(selectedZones);
+  }
+
   document.getElementById('modal-meter').classList.add('hidden');
   await loadMeters();
 };
@@ -466,6 +518,12 @@ window.clearAllocChecks = function() {
   var cbs = document.querySelectorAll('.alloc-zone-cb');
   for (var i = 0; i < cbs.length; i++) cbs[i].checked = false;
   document.getElementById('exp-alloc-preview').classList.add('hidden');
+  currentAllocMethod = 'area';
+  window._meterAllocations = null;
+  document.getElementById('alloc-area-section').classList.remove('hidden');
+  document.getElementById('alloc-meter-section').classList.add('hidden');
+  document.getElementById('alloc-method-area').className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-900 text-white';
+  document.getElementById('alloc-method-meter').className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-500';
 };
 
 window.allocSelectAll = function(check) {
@@ -646,6 +704,269 @@ window.updateAllocPreview = function() {
 var expAmountInput = document.getElementById('exp-amount');
 if (expAmountInput) expAmountInput.addEventListener('input', function() { window.updateAllocPreview(); });
 
+// ============ ALLOCATION METHOD ============
+
+var currentAllocMethod = 'area';
+
+window.setAllocMethod = function(method) {
+  currentAllocMethod = method;
+  var areaBtn = document.getElementById('alloc-method-area');
+  var meterBtn = document.getElementById('alloc-method-meter');
+  var areaSection = document.getElementById('alloc-area-section');
+  var meterSection = document.getElementById('alloc-meter-section');
+
+  if (method === 'meter') {
+    meterBtn.className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-900 text-white';
+    areaBtn.className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-500';
+    areaSection.classList.add('hidden');
+    meterSection.classList.remove('hidden');
+    window.calcMeterAllocation();
+  } else {
+    areaBtn.className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-900 text-white';
+    meterBtn.className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-500';
+    areaSection.classList.remove('hidden');
+    meterSection.classList.add('hidden');
+    window.updateAllocPreview();
+  }
+};
+
+// Category name → meter type mapping
+var catMeterType = {
+  'Voda': 'water', 'Vodné a stočné': 'water',
+  'Elektrina': 'electricity', 'Elektrická energia': 'electricity',
+  'Plyn': 'gas', 'Vykurovanie': 'gas'
+};
+
+window.calcMeterAllocation = async function() {
+  var meterRows = document.getElementById('alloc-meter-rows');
+  var preview = document.getElementById('exp-alloc-preview');
+  var allocRows = document.getElementById('exp-alloc-rows');
+  var amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+  var periodFrom = document.getElementById('exp-period-from').value;
+  var periodTo = document.getElementById('exp-period-to').value;
+
+  if (!periodFrom || !periodTo) {
+    meterRows.innerHTML = '<p class="text-[9px] text-red-400">Vyplňte obdobie od-do pre výpočet spotreby.</p>';
+    preview.classList.add('hidden');
+    return;
+  }
+
+  // Determine meter type from category
+  var catSel = document.getElementById('exp-category');
+  var catName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+  var meterType = catMeterType[catName];
+
+  if (!meterType) {
+    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">Pre túto kategóriu nie sú merače. Použite rozpočítanie podľa plochy.</p>';
+    preview.classList.add('hidden');
+    return;
+  }
+
+  // Load meters of this type
+  var { data: meters = [] } = await sb.from('meters').select('*').eq('type', meterType);
+  if (meters.length === 0) {
+    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">Žiadne ' + meterType + ' merače. Pridajte merače v sekcii Merače.</p>';
+    preview.classList.add('hidden');
+    return;
+  }
+
+  // Load all readings in range (with buffer for finding closest)
+  var { data: readings = [] } = await sb.from('meter_readings').select('*')
+    .in('meter_id', meters.map(function(m) { return m.id; }))
+    .lte('date', periodTo)
+    .order('date', { ascending: true });
+
+  // Load meter-zone assignments
+  var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id');
+  var mzByMeter = {};
+  mzAll.forEach(function(mz) {
+    if (!mzByMeter[mz.meter_id]) mzByMeter[mz.meter_id] = [];
+    mzByMeter[mz.meter_id].push(mz.zone_id);
+  });
+
+  // Calculate consumption per meter
+  var meterConsumption = [];
+  var mainMeter = meters.find(function(m) { return m.is_main; });
+
+  meters.forEach(function(m) {
+    var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
+    if (mReadings.length < 2) return;
+
+    // Find reading closest to periodFrom (before or at)
+    var startReadings = mReadings.filter(function(r) { return r.date <= periodFrom; });
+    var startR = startReadings.length > 0 ? startReadings[startReadings.length - 1] : mReadings[0];
+
+    // Find reading closest to periodTo (before or at)
+    var endReadings = mReadings.filter(function(r) { return r.date <= periodTo; });
+    var endR = endReadings.length > 0 ? endReadings[endReadings.length - 1] : null;
+
+    if (!endR || endR.id === startR.id) return;
+
+    var consumption = parseFloat(endR.value) - parseFloat(startR.value);
+    if (consumption < 0) consumption = 0;
+
+    var zones = mzByMeter[m.id] || [];
+    // Fallback to old zone_id if no meter_zones
+    if (zones.length === 0 && m.zone_id) zones = [m.zone_id];
+
+    meterConsumption.push({
+      meter: m,
+      consumption: consumption,
+      startValue: parseFloat(startR.value),
+      endValue: parseFloat(endR.value),
+      startDate: startR.date,
+      endDate: endR.date,
+      zones: zones
+    });
+  });
+
+  // Build zone allocation
+  var zoneAllocs = []; // { zoneId, zoneName, consumption, pct, amount, payer, meterName, note }
+  var totalConsumption = 0;
+  var subMeterTotal = 0;
+
+  meterConsumption.forEach(function(mc) {
+    if (mc.meter.is_main) return; // Handle main meter separately
+
+    subMeterTotal += mc.consumption;
+
+    if (mc.zones.length === 1) {
+      // Single zone meter - direct assignment
+      var zone = allZones.find(function(z) { return z.id === mc.zones[0]; });
+      zoneAllocs.push({
+        zoneId: mc.zones[0],
+        zoneName: zone ? (zone.tenant_name || zone.name) : '?',
+        consumption: mc.consumption,
+        meterName: mc.meter.name,
+        payer: 'tenant',
+        note: mc.meter.meter_number ? '#' + mc.meter.meter_number : ''
+      });
+    } else if (mc.zones.length > 1) {
+      // Multi-zone meter (e.g., Blok B) - split by area
+      var zonesWithArea = mc.zones.map(function(zId) {
+        var z = allZones.find(function(az) { return az.id === zId; });
+        return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+      });
+      var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+
+      zonesWithArea.forEach(function(z) {
+        var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
+        var zoneCons = mc.consumption * share;
+        zoneAllocs.push({
+          zoneId: z.id,
+          zoneName: z.name,
+          consumption: zoneCons,
+          meterName: mc.meter.name,
+          payer: 'tenant',
+          note: z.area + ' m² z ' + totalZoneArea + ' m²'
+        });
+      });
+    }
+  });
+
+  // Main meter remainder = common areas / losses
+  var mainConsumption = 0;
+  var mainMc = meterConsumption.find(function(mc) { return mc.meter.is_main; });
+  if (mainMc) {
+    mainConsumption = mainMc.consumption;
+    var remainder = mainConsumption - subMeterTotal;
+    if (remainder > 0.01) {
+      zoneAllocs.push({
+        zoneId: null,
+        zoneName: 'Spoločné / straty',
+        consumption: remainder,
+        meterName: mainMc.meter.name + ' - podmerače',
+        payer: 'owner',
+        note: mainConsumption.toFixed(2) + ' - ' + subMeterTotal.toFixed(2)
+      });
+    }
+  }
+
+  totalConsumption = zoneAllocs.reduce(function(s, a) { return s + a.consumption; }, 0);
+
+  // Calculate percentages and amounts
+  zoneAllocs.forEach(function(a) {
+    a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
+    a.amount = amount * a.pct / 100;
+  });
+
+  // Display meter info
+  var unit = meters[0] ? meters[0].unit : 'm³';
+  meterRows.innerHTML = meterConsumption.map(function(mc) {
+    var badges = mc.meter.is_main ? ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-600">HLAVNÝ</span>' : '';
+    return '<div class="flex justify-between text-[9px] bg-white rounded-lg px-2 py-1.5">' +
+      '<span class="font-bold text-slate-600">' + mc.meter.name + badges + '</span>' +
+      '<span class="text-slate-400">' + mc.startValue.toFixed(2) + ' → ' + mc.endValue.toFixed(2) + '</span>' +
+      '<span class="font-black text-green-600">' + mc.consumption.toFixed(2) + ' ' + unit + '</span>' +
+    '</div>';
+  }).join('');
+
+  // Display allocation preview
+  if (zoneAllocs.length === 0) {
+    preview.classList.add('hidden');
+    return;
+  }
+
+  var tenantAllocs = zoneAllocs.filter(function(a) { return a.payer === 'tenant'; });
+  var ownerAllocs = zoneAllocs.filter(function(a) { return a.payer === 'owner'; });
+
+  var html = '';
+  if (tenantAllocs.length > 0) {
+    html += '<p class="text-[8px] font-black text-green-600 uppercase mb-1">Nájomca platí</p>';
+    var tenantTotal = 0;
+    html += tenantAllocs.map(function(a) {
+      tenantTotal += a.amount;
+      return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
+        '<span class="font-bold text-slate-600 truncate flex-1">' + a.zoneName + '</span>' +
+        '<span class="text-slate-400 w-16 text-right">' + a.consumption.toFixed(2) + ' ' + unit + '</span>' +
+        '<span class="font-bold text-blue-600 w-12 text-right">' + a.pct.toFixed(1) + '%</span>' +
+        '<span class="font-black text-slate-800 w-16 text-right">' + a.amount.toFixed(2) + ' €</span>' +
+      '</div>';
+    }).join('');
+    html += '<div class="flex justify-between text-[9px] font-black text-green-700 px-2 pt-1">' +
+      '<span>Nájomcovia spolu</span><span>' + tenantTotal.toFixed(2) + ' €</span></div>';
+  }
+
+  if (ownerAllocs.length > 0) {
+    html += '<div class="border-t border-orange-200 mt-2 pt-2">' +
+      '<p class="text-[8px] font-black text-orange-500 uppercase mb-1">Vlastník platí</p>';
+    var ownerTotal = 0;
+    html += ownerAllocs.map(function(a) {
+      ownerTotal += a.amount;
+      return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
+        '<span class="font-bold text-orange-600 truncate flex-1">' + a.zoneName + '</span>' +
+        '<span class="text-orange-400 w-16 text-right">' + a.consumption.toFixed(2) + ' ' + unit + '</span>' +
+        '<span class="font-bold text-orange-500 w-12 text-right">' + a.pct.toFixed(1) + '%</span>' +
+        '<span class="font-black text-orange-700 w-16 text-right">' + a.amount.toFixed(2) + ' €</span>' +
+      '</div>';
+    }).join('');
+    html += '<div class="flex justify-between text-[9px] font-black text-orange-700 px-2 pt-1">' +
+      '<span>Vlastník spolu</span><span>' + ownerTotal.toFixed(2) + ' €</span></div>';
+    html += '</div>';
+  }
+
+  allocRows.innerHTML = html;
+  preview.classList.remove('hidden');
+
+  // Store meter allocations for save
+  var allocUnit = meters[0] ? meters[0].unit : 'm³';
+  zoneAllocs.forEach(function(a) { a.unit = allocUnit; });
+  window._meterAllocations = zoneAllocs;
+};
+
+// Recalc meter when period changes
+var pfInput = document.getElementById('exp-period-from');
+var ptInput = document.getElementById('exp-period-to');
+if (pfInput) pfInput.addEventListener('change', function() { if (currentAllocMethod === 'meter') window.calcMeterAllocation(); });
+if (ptInput) ptInput.addEventListener('change', function() { if (currentAllocMethod === 'meter') window.calcMeterAllocation(); });
+
+// Amount change → recalc active method
+var expAmountInput = document.getElementById('exp-amount');
+if (expAmountInput) expAmountInput.addEventListener('input', function() {
+  if (currentAllocMethod === 'meter') window.calcMeterAllocation();
+  else window.updateAllocPreview();
+});
+
 window.saveExpense = async function() {
   var data = {
     date: document.getElementById('exp-date').value,
@@ -684,70 +1005,100 @@ window.saveExpense = async function() {
 
   // Save allocations
   if (expenseId) {
-    var zones = window.getSelectedAllocZones();
-
-    // Find unchecked tempered zones - ONLY for Vykurovanie
-    var catSel = document.getElementById('exp-category');
-    var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
-    var isHeating = selectedCatName === 'Vykurovanie';
-
-    var allCbs = document.querySelectorAll('.alloc-zone-cb');
-    var temperedZones = [];
-    if (isHeating) {
-      for (var t = 0; t < allCbs.length; t++) {
-        if (!allCbs[t].checked) {
-          var temper = parseFloat(allCbs[t].getAttribute('data-temper')) || 0;
-          if (temper > 0) {
-            var tArea = parseFloat(allCbs[t].getAttribute('data-area')) || 0;
-            temperedZones.push({ id: allCbs[t].value, area: tArea, temper: temper, effectiveArea: tArea * temper / 100 });
-          }
-        }
-      }
-    }
-
-    var activeArea = zones.reduce(function(s, z) { return s + z.area; }, 0);
-    var temperedArea = temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
-    var totalArea = activeArea + temperedArea;
-
     try {
       await sb.from('expense_allocations').delete().eq('expense_id', expenseId);
 
       var allocs = [];
-      // Active zones
-      zones.forEach(function(z) {
-        var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
-        var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
-        var payer = sel ? sel.value : 'tenant';
-        allocs.push({
-          expense_id: expenseId,
-          zone_id: z.id,
-          percentage: parseFloat(pct.toFixed(2)),
-          amount: parseFloat((data.amount * pct / 100).toFixed(2)),
-          payer: payer
+
+      if (currentAllocMethod === 'meter' && window._meterAllocations && window._meterAllocations.length > 0) {
+        // Meter-based allocations
+        window._meterAllocations.forEach(function(a) {
+          if (!a.zoneId) return;
+          allocs.push({
+            expense_id: expenseId,
+            zone_id: a.zoneId,
+            percentage: parseFloat(a.pct.toFixed(2)),
+            amount: parseFloat(a.amount.toFixed(2)),
+            payer: a.payer,
+            consumption: parseFloat(a.consumption.toFixed(4)),
+            consumption_unit: a.unit || 'm³'
+          });
         });
-      });
-      // Tempered zones (always owner)
-      temperedZones.forEach(function(z) {
-        var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
-        allocs.push({
-          expense_id: expenseId,
-          zone_id: z.id,
-          percentage: parseFloat(pct.toFixed(2)),
-          amount: parseFloat((data.amount * pct / 100).toFixed(2)),
-          payer: 'owner'
+        var lossAlloc = window._meterAllocations.find(function(a) { return !a.zoneId && a.payer === 'owner'; });
+        if (lossAlloc) {
+          var commonZone = allZones.find(function(z) { return z.name === 'Spoločné priestory'; });
+          if (commonZone) {
+            allocs.push({
+              expense_id: expenseId,
+              zone_id: commonZone.id,
+              percentage: parseFloat(lossAlloc.pct.toFixed(2)),
+              amount: parseFloat(lossAlloc.amount.toFixed(2)),
+              payer: 'owner',
+              consumption: parseFloat(lossAlloc.consumption.toFixed(4)),
+              consumption_unit: lossAlloc.unit || 'm³'
+            });
+          }
+        }
+      } else {
+        // Area-based allocations
+        var zones = window.getSelectedAllocZones();
+
+        var catSel = document.getElementById('exp-category');
+        var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+        var isHeating = selectedCatName === 'Vykurovanie';
+
+        var allCbs = document.querySelectorAll('.alloc-zone-cb');
+        var temperedZones = [];
+        if (isHeating) {
+          for (var t = 0; t < allCbs.length; t++) {
+            if (!allCbs[t].checked) {
+              var temper = parseFloat(allCbs[t].getAttribute('data-temper')) || 0;
+              if (temper > 0) {
+                var tArea = parseFloat(allCbs[t].getAttribute('data-area')) || 0;
+                temperedZones.push({ id: allCbs[t].value, area: tArea, temper: temper, effectiveArea: tArea * temper / 100 });
+              }
+            }
+          }
+        }
+
+        var activeArea = zones.reduce(function(s, z) { return s + z.area; }, 0);
+        var temperedArea = temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
+        var totalArea = activeArea + temperedArea;
+
+        zones.forEach(function(z) {
+          var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
+          var payer = sel ? sel.value : 'tenant';
+          allocs.push({
+            expense_id: expenseId,
+            zone_id: z.id,
+            percentage: parseFloat(pct.toFixed(2)),
+            amount: parseFloat((data.amount * pct / 100).toFixed(2)),
+            payer: payer
+          });
         });
-      });
+        temperedZones.forEach(function(z) {
+          var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
+          allocs.push({
+            expense_id: expenseId,
+            zone_id: z.id,
+            percentage: parseFloat(pct.toFixed(2)),
+            amount: parseFloat((data.amount * pct / 100).toFixed(2)),
+            payer: 'owner'
+          });
+        });
+
+        // Save preset
+        var presetZones = zones.map(function(z) {
+          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
+          return { id: z.id, payer: sel ? sel.value : 'tenant' };
+        });
+        await window.saveCategoryPreset(data.category_id, presetZones);
+      }
 
       if (allocs.length > 0) {
         await sb.from('expense_allocations').insert(allocs);
       }
-
-      // Save preset for this category (with payer info)
-      var presetZones = zones.map(function(z) {
-        var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
-        return { id: z.id, payer: sel ? sel.value : 'tenant' };
-      });
-      await window.saveCategoryPreset(data.category_id, presetZones);
     } catch(allocErr) {
       console.warn('Allocation save error (table may not exist):', allocErr);
     }

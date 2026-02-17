@@ -236,10 +236,20 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="text-[9px] font-black text-slate-400 uppercase">Zóna (ak patrí konkrétnej)</label>
-                                <select id="mtr-zone" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
-                                    <option value="">— Celá budova / Blok —</option>
-                                </select>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Zóny (ktoré tento merač pokrýva)</label>
+                                <div id="mtr-zones" class="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-1"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="flex items-center gap-2">
+                                    <input type="checkbox" id="mtr-is-main" class="rounded">
+                                    <label for="mtr-is-main" class="text-[9px] font-black text-slate-400 uppercase">Hlavný merač</label>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Nadradený merač</label>
+                                    <select id="mtr-parent" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                                        <option value="">— žiadny —</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Číslo merača</label>
@@ -361,12 +371,24 @@
                                 <div class="mt-2 bg-slate-50 rounded-xl p-4">
                                     <div class="flex justify-between items-center mb-2">
                                         <span class="text-[9px] font-black text-slate-400 uppercase">Rozpočítanie na zóny</span>
-                                        <div class="flex space-x-2">
+                                        <div class="flex items-center space-x-2">
+                                            <button type="button" id="alloc-method-area" onclick="window.setAllocMethod('area')" class="text-[8px] font-black px-2 py-1 rounded-lg bg-slate-900 text-white">Podľa plochy</button>
+                                            <button type="button" id="alloc-method-meter" onclick="window.setAllocMethod('meter')" class="text-[8px] font-black px-2 py-1 rounded-lg bg-slate-200 text-slate-500">Podľa meračov</button>
+                                        </div>
+                                    </div>
+                                    <!-- Area-based: checkboxes -->
+                                    <div id="alloc-area-section">
+                                        <div class="flex justify-end space-x-2 mb-1">
                                             <button type="button" onclick="window.allocSelectAll(true)" class="text-[8px] font-bold text-blue-500 hover:text-blue-700">Všetky</button>
                                             <button type="button" onclick="window.allocSelectAll(false)" class="text-[8px] font-bold text-slate-400 hover:text-slate-600">Žiadne</button>
                                         </div>
+                                        <div id="exp-zone-checks" class="grid grid-cols-2 sm:grid-cols-3 gap-1"></div>
                                     </div>
-                                    <div id="exp-zone-checks" class="grid grid-cols-2 sm:grid-cols-3 gap-1"></div>
+                                    <!-- Meter-based: auto-calculated -->
+                                    <div id="alloc-meter-section" class="hidden">
+                                        <p class="text-[9px] text-slate-400 mb-2">Spotreba sa vypočíta z odčítaní meračov za obdobie faktúry.</p>
+                                        <div id="alloc-meter-rows" class="space-y-1"></div>
+                                    </div>
                                     <div id="exp-alloc-preview" class="mt-3 pt-3 border-t border-slate-200 hidden">
                                         <p class="text-[9px] font-black text-slate-400 uppercase mb-2">Náhľad rozpočítania</p>
                                         <div id="exp-alloc-rows" class="space-y-1"></div>

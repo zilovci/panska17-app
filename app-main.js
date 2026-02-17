@@ -646,7 +646,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Load allocations for this tenant's zones in period
   var { data: allocs = [] } = await sb.from('expense_allocations')
-    .select('amount, percentage, payer, zone_id, expenses(id, amount, date, period_from, period_to, supplier, invoice_number, cost_categories(name))')
+    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, date, period_from, period_to, supplier, invoice_number, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
 
   // Filter by period overlap
@@ -755,27 +755,32 @@ window.generateInvoice = async function(existingInvoice) {
     var avgPct = byCat[c].items.length > 0
       ? (byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.percentage) || 0); }, 0) / byCat[c].items.length)
       : 0;
-    return [stripDia(c), avgPct.toFixed(1) + ' %', fmtEur(byCat[c].amount) + ' EUR'];
+    // Sum consumption if available
+    var totalCons = byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
+    var consUnit = byCat[c].items[0] && byCat[c].items[0].consumption_unit ? byCat[c].items[0].consumption_unit : '';
+    var consLabel = totalCons > 0 ? totalCons.toFixed(2) + ' ' + consUnit : '';
+    return [stripDia(c), consLabel, avgPct.toFixed(1) + ' %', fmtEur(byCat[c].amount) + ' EUR'];
   });
 
   costRows.push([
     { content: stripDia('NAKLADY SPOLU'), styles: { fontStyle: 'bold' } },
-    '',
+    '', '',
     { content: fmtEur(totalCosts) + ' EUR', styles: { fontStyle: 'bold' } }
   ]);
 
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Polozka'), stripDia('Podiel'), 'Suma']],
+    head: [[stripDia('Polozka'), stripDia('Spotreba'), stripDia('Podiel'), 'Suma']],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2 },
     headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
     columnStyles: {
-      0: { cellWidth: 80 },
-      1: { cellWidth: 30, halign: 'right' },
-      2: { cellWidth: 40, halign: 'right' }
+      0: { cellWidth: 60 },
+      1: { cellWidth: 35, halign: 'right' },
+      2: { cellWidth: 25, halign: 'right' },
+      3: { cellWidth: 35, halign: 'right' }
     }
   });
 
