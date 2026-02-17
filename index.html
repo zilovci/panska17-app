@@ -436,7 +436,14 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-3 mb-4">
                         <select id="fin-inv-tenant" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
-                        <select id="fin-inv-year" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                        <div class="flex items-center gap-1">
+                            <label class="text-[9px] font-black text-slate-400">OD</label>
+                            <input type="date" id="fin-inv-from" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold">
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <label class="text-[9px] font-black text-slate-400">DO</label>
+                            <input type="date" id="fin-inv-to" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold">
+                        </div>
                         <button onclick="window.generateInvoice()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">
                             <i class="fa-solid fa-file-pdf mr-1"></i> Generovať PDF
                         </button>

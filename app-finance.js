@@ -89,14 +89,11 @@ async function loadFinance() {
     }
   }
 
-  // Invoice year dropdown
-  var invYearSel = document.getElementById('fin-inv-year');
-  if (invYearSel && invYearSel.options.length === 0) {
-    var curYear4 = new Date().getFullYear();
-    for (var y4 = curYear4; y4 >= 2020; y4--) {
-      invYearSel.innerHTML += '<option value="' + y4 + '">' + y4 + '</option>';
-    }
-  }
+  // Invoice date defaults (current year)
+  var invFrom = document.getElementById('fin-inv-from');
+  var invTo = document.getElementById('fin-inv-to');
+  if (invFrom && !invFrom.value) invFrom.value = new Date().getFullYear() + '-01-01';
+  if (invTo && !invTo.value) invTo.value = new Date().getFullYear() + '-12-31';
 
   // Invoice tenant dropdown
   var invTenSel = document.getElementById('fin-inv-tenant');
