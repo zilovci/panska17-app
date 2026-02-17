@@ -446,9 +446,8 @@ window.loadPayments = async function() {
           var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
           var cls = pay.paid ? paidCls : unpaidCls;
           rowTotal += parseFloat(pay.amount) || 0;
-          html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer" ' +
-            'onclick="window.togglePayment(\'' + pay.id + '\',' + !pay.paid + ')" ' +
-            'ondblclick="event.stopPropagation();window.editPaymentAmount(\'' + pay.id + '\',' + pay.amount + ',this)" ' +
+          html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
+            'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
             'title="Klik = zaplatené, Dvojklik = zmeniť sumu">' +
             parseFloat(pay.amount).toFixed(0) +
             (pay.paid ? ' ✓' : '') +
@@ -476,6 +475,28 @@ window.loadPayments = async function() {
     '</tr></tbody></table>';
 
   grid.innerHTML = html;
+
+  // Delegated click vs dblclick handler
+  var clickTimer = null;
+  grid.onclick = function(e) {
+    var cell = e.target.closest('.pay-cell');
+    if (!cell) return;
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
+    clickTimer = setTimeout(function() {
+      clickTimer = null;
+      var id = cell.getAttribute('data-pay-id');
+      var paid = cell.getAttribute('data-pay-paid') === 'true';
+      window.togglePayment(id, !paid);
+    }, 250);
+  };
+  grid.ondblclick = function(e) {
+    var cell = e.target.closest('.pay-cell');
+    if (!cell) return;
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    var id = cell.getAttribute('data-pay-id');
+    var amount = parseFloat(cell.getAttribute('data-pay-amount')) || 0;
+    window.editPaymentAmount(id, amount, cell);
+  };
 };
 
 window.generatePayments = async function() {
