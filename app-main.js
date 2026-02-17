@@ -935,29 +935,20 @@ window.loadInvoices = async function() {
       : 'Vyrovnané';
     var balCls = inv.balance > 0.01 ? 'text-red-500' : inv.balance < -0.01 ? 'text-green-600' : 'text-slate-400';
 
-    return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
+    return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded-lg px-2 -mx-2" onclick="window.showInvoiceDetail(\'' + inv.id + '\')">' +
       '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center gap-2">' +
           '<span class="text-xs font-black text-slate-700">' + inv.invoice_number + '</span>' +
           '<span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
+          '<span class="text-xs font-bold text-slate-500">' + tenantLabel + '</span>' +
         '</div>' +
         '<p class="text-[9px] text-slate-400">' +
-          tenantLabel + ' • ' +
           fmtD(inv.period_from) + ' - ' + fmtD(inv.period_to) + ' • ' +
-          'Náklady: ' + fmtEur(inv.total_costs) + ' € • Zálohy: ' + fmtEur(inv.total_advances) + ' € • ' +
           '<span class="' + balCls + '">' + balLabel + '</span>' +
           (inv.due_date ? ' • Splat.: ' + fmtD(inv.due_date) : '') +
         '</p>' +
       '</div>' +
-      '<div class="flex items-center gap-1 ml-3">' +
-        '<button onclick="window.redownloadInvoice(\'' + inv.id + '\')" class="text-slate-400 hover:text-slate-700 text-xs" title="Stiahnuť PDF"><i class="fa-solid fa-file-pdf"></i></button>' +
-        '<select onchange="window.changeInvoiceStatus(\'' + inv.id + '\', this.value)" class="text-[8px] border border-slate-200 rounded px-1 py-0.5">' +
-          Object.keys(invoiceStatuses).map(function(s) {
-            return '<option value="' + s + '"' + (inv.status === s ? ' selected' : '') + '>' + invoiceStatuses[s].label + '</option>';
-          }).join('') +
-        '</select>' +
-        '<button onclick="window.deleteInvoice(\'' + inv.id + '\')" class="text-red-300 hover:text-red-500 text-xs ml-1"><i class="fa-solid fa-trash"></i></button>' +
-      '</div>' +
+      '<i class="fa-solid fa-chevron-right text-slate-300 ml-3"></i>' +
     '</div>';
   }).join('');
 };
@@ -968,11 +959,80 @@ window.changeInvoiceStatus = async function(id, newStatus) {
   if (newStatus === 'paid') update.paid_date = new Date().toISOString().split('T')[0];
   await sb.from('invoices').update(update).eq('id', id);
   await window.loadInvoices();
+  if (currentInvoiceId === id) await window.showInvoiceDetail(id);
 };
 
 window.deleteInvoice = async function(id) {
   if (!confirm('Vymazať vyúčtovanie?')) return;
   await sb.from('invoices').delete().eq('id', id);
+  await window.loadInvoices();
+};
+
+var currentInvoiceId = null;
+
+window.showInvoiceDetail = async function(id) {
+  var { data: inv } = await sb.from('invoices').select('*, tenants(name, company_name, ico, dic, ic_dph, address, city, zip)').eq('id', id).single();
+  if (!inv) return;
+  currentInvoiceId = id;
+
+  var t = inv.tenants || {};
+  var tenantLabel = t.company_name || t.name || '';
+  var st = invoiceStatuses[inv.status] || invoiceStatuses['draft'];
+
+  document.getElementById('inv-modal-title').innerText = inv.invoice_number;
+
+  var balLabel, balCls;
+  if (inv.balance > 0.01) { balLabel = 'Nedoplatok: ' + fmtEur(inv.balance) + ' €'; balCls = 'text-red-600'; }
+  else if (inv.balance < -0.01) { balLabel = 'Preplatok: ' + fmtEur(Math.abs(inv.balance)) + ' €'; balCls = 'text-green-600'; }
+  else { balLabel = 'Vyrovnané'; balCls = 'text-slate-500'; }
+
+  var html = '' +
+    '<div class="bg-slate-50 rounded-xl p-4 space-y-2">' +
+      '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Nájomca</span><span class="font-bold">' + tenantLabel + '</span></div>' +
+      (t.ico ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">IČO</span><span>' + t.ico + (t.dic ? ' • DIČ: ' + t.dic : '') + '</span></div>' : '') +
+      (t.address ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Adresa</span><span>' + (t.address || '') + ', ' + (t.zip || '') + ' ' + (t.city || '') + '</span></div>' : '') +
+      '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Obdobie</span><span>' + fmtD(inv.period_from) + ' - ' + fmtD(inv.period_to) + '</span></div>' +
+    '</div>' +
+
+    '<div class="bg-slate-50 rounded-xl p-4 space-y-2">' +
+      '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Náklady</span><span class="font-bold">' + fmtEur(inv.total_costs) + ' €</span></div>' +
+      '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Zálohy zaplatené</span><span class="font-bold">' + fmtEur(inv.total_advances) + ' €</span></div>' +
+      '<div class="flex justify-between border-t border-slate-200 pt-2"><span class="text-[9px] font-black text-slate-400 uppercase">Výsledok</span><span class="font-black text-base ' + balCls + '">' + balLabel + '</span></div>' +
+      (inv.due_date ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Splatnosť</span><span>' + fmtD(inv.due_date) + '</span></div>' : '') +
+    '</div>' +
+
+    '<div class="flex items-center gap-3">' +
+      '<label class="text-[9px] font-black text-slate-400 uppercase">Stav</label>' +
+      '<select id="inv-detail-status" onchange="window.changeInvoiceStatus(\'' + id + '\', this.value)" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">' +
+        Object.keys(invoiceStatuses).map(function(s) {
+          return '<option value="' + s + '"' + (inv.status === s ? ' selected' : '') + '>' + invoiceStatuses[s].label + '</option>';
+        }).join('') +
+      '</select>' +
+      '<span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
+    '</div>' +
+
+    (inv.sent_date ? '<p class="text-[9px] text-slate-400">Odoslané: ' + fmtD(inv.sent_date) + '</p>' : '') +
+    (inv.paid_date ? '<p class="text-[9px] text-slate-400">Zaplatené: ' + fmtD(inv.paid_date) + '</p>' : '');
+
+  document.getElementById('inv-modal-body').innerHTML = html;
+  document.getElementById('modal-invoice').classList.remove('hidden');
+};
+
+window.closeInvoiceModal = function() {
+  document.getElementById('modal-invoice').classList.add('hidden');
+  currentInvoiceId = null;
+};
+
+window.redownloadInvoiceFromModal = async function() {
+  if (!currentInvoiceId) return;
+  await window.redownloadInvoice(currentInvoiceId);
+};
+
+window.deleteInvoiceFromModal = async function() {
+  if (!currentInvoiceId) return;
+  if (!confirm('Vymazať vyúčtovanie?')) return;
+  await sb.from('invoices').delete().eq('id', currentInvoiceId);
+  window.closeInvoiceModal();
   await window.loadInvoices();
 };
 
