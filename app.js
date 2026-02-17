@@ -947,12 +947,23 @@ async function loadFinance() {
     }
   }
 
+  // Overview year dropdown
+  var ovYearSel = document.getElementById('fin-overview-year');
+  if (ovYearSel && ovYearSel.options.length === 0) {
+    var curYear2 = new Date().getFullYear();
+    for (var y2 = curYear2; y2 >= 2020; y2--) {
+      ovYearSel.innerHTML += '<option value="' + y2 + '">' + y2 + '</option>';
+    }
+  }
+
   // Set default date
   var expDate = document.getElementById('exp-date');
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
 
   await loadMeters();
   await loadExpenses();
+  await window.loadTenants();
+  await window.loadOverview();
 }
 
 // ---- MERAČE ----
@@ -1879,6 +1890,263 @@ document.getElementById('f-add-user').onsubmit = async (e) => {
     console.error(err);
     alert('Chyba: ' + (err.message || 'Nepodarilo sa.'));
   }
+};
+
+// ============ NÁJOMCOVIA ============
+
+var editingTenantId = null;
+
+window.loadTenants = async function() {
+  var { data: tenants = [] } = await sb.from('tenants').select('*').order('name');
+  var list = document.getElementById('fin-tenants-list');
+  if (!list) return;
+
+  if (tenants.length === 0) {
+    list.innerHTML = '<p class="text-sm text-slate-300">Žiadni nájomcovia</p>';
+    return;
+  }
+
+  // Get zone assignments
+  var { data: zones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+
+  list.innerHTML = tenants.map(function(t) {
+    var tZones = zones.filter(function(z) { return z.tenant_id === t.id; });
+    var zoneNames = tZones.map(function(z) { return z.tenant_name || z.name; }).join(', ');
+    return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
+      '<div class="flex-1 min-w-0">' +
+        '<p class="text-sm font-bold text-slate-800">' + (t.company_name || t.name) + '</p>' +
+        '<p class="text-[9px] text-slate-400">' +
+          (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
+          (t.email || '') +
+          (zoneNames ? ' • ' + zoneNames : '') +
+        '</p>' +
+      '</div>' +
+      '<div class="flex items-center space-x-2 ml-3">' +
+        '<button onclick="window.editTenant(\'' + t.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
+        '<button onclick="window.deleteTenant(\'' + t.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+};
+
+window.showAddTenant = function() {
+  editingTenantId = null;
+  document.getElementById('tenant-modal-title').innerText = 'Nový nájomca';
+  ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-iban','ten-note'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  // Zone checkboxes
+  var tenZones = document.getElementById('ten-zones');
+  if (tenZones) {
+    tenZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+      return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+        '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded">' +
+        '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
+      '</label>';
+    }).join('');
+  }
+  document.getElementById('modal-tenant').classList.remove('hidden');
+};
+
+window.closeTenantModal = function() {
+  document.getElementById('modal-tenant').classList.add('hidden');
+};
+
+window.saveTenant = async function() {
+  var data = {
+    name: document.getElementById('ten-name').value.trim(),
+    company_name: document.getElementById('ten-company').value.trim() || null,
+    ico: document.getElementById('ten-ico').value.trim() || null,
+    dic: document.getElementById('ten-dic').value.trim() || null,
+    ic_dph: document.getElementById('ten-icdph').value.trim() || null,
+    address: document.getElementById('ten-address').value.trim() || null,
+    city: document.getElementById('ten-city').value.trim() || null,
+    zip: document.getElementById('ten-zip').value.trim() || null,
+    email: document.getElementById('ten-email').value.trim() || null,
+    phone: document.getElementById('ten-phone').value.trim() || null,
+    iban: document.getElementById('ten-iban').value.trim() || null,
+    note: document.getElementById('ten-note').value.trim() || null
+  };
+
+  if (!data.name) { alert('Vyplňte meno.'); return; }
+
+  var tenantId;
+  if (editingTenantId) {
+    await sb.from('tenants').update(data).eq('id', editingTenantId);
+    tenantId = editingTenantId;
+  } else {
+    var { data: inserted } = await sb.from('tenants').insert(data).select('id').single();
+    tenantId = inserted ? inserted.id : null;
+  }
+
+  // Update zone assignments
+  if (tenantId) {
+    // Clear old assignments
+    await sb.from('zones').update({ tenant_id: null }).eq('tenant_id', tenantId);
+    // Set new
+    var cbs = document.querySelectorAll('.ten-zone-cb:checked');
+    for (var i = 0; i < cbs.length; i++) {
+      await sb.from('zones').update({ tenant_id: tenantId }).eq('id', cbs[i].value);
+    }
+    // Refresh allZones
+    var { data: z2 } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
+    allZones = z2 || [];
+  }
+
+  window.closeTenantModal();
+  await window.loadTenants();
+};
+
+window.editTenant = async function(id) {
+  var { data: t } = await sb.from('tenants').select('*').eq('id', id).single();
+  if (!t) return;
+
+  editingTenantId = id;
+  document.getElementById('tenant-modal-title').innerText = 'Upraviť nájomcu';
+  document.getElementById('ten-name').value = t.name || '';
+  document.getElementById('ten-company').value = t.company_name || '';
+  document.getElementById('ten-ico').value = t.ico || '';
+  document.getElementById('ten-dic').value = t.dic || '';
+  document.getElementById('ten-icdph').value = t.ic_dph || '';
+  document.getElementById('ten-address').value = t.address || '';
+  document.getElementById('ten-city').value = t.city || '';
+  document.getElementById('ten-zip').value = t.zip || '';
+  document.getElementById('ten-email').value = t.email || '';
+  document.getElementById('ten-phone').value = t.phone || '';
+  document.getElementById('ten-iban').value = t.iban || '';
+  document.getElementById('ten-note').value = t.note || '';
+
+  // Zone checkboxes
+  var tenZones = document.getElementById('ten-zones');
+  if (tenZones) {
+    tenZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+      var checked = z.tenant_id === id ? ' checked' : '';
+      return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+        '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded"' + checked + '>' +
+        '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
+      '</label>';
+    }).join('');
+  }
+
+  document.getElementById('modal-tenant').classList.remove('hidden');
+};
+
+window.deleteTenant = async function(id) {
+  if (!confirm('Vymazať nájomcu?')) return;
+  await sb.from('zones').update({ tenant_id: null }).eq('tenant_id', id);
+  await sb.from('tenants').delete().eq('id', id);
+  await window.loadTenants();
+};
+
+// ============ PREHĽAD NÁKLADOV ============
+
+window.loadOverview = async function() {
+  var yearSel = document.getElementById('fin-overview-year');
+  if (!yearSel) return;
+  var year = yearSel.value || new Date().getFullYear();
+
+  // Get all allocations for this year's expenses (by period)
+  var { data: expenses = [] } = await sb.from('expenses')
+    .select('id, amount, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .lte('period_from', year + '-12-31')
+    .gte('period_to', year + '-01-01');
+
+  // Also get expenses without period but with date in year
+  var { data: expenses2 = [] } = await sb.from('expenses')
+    .select('id, amount, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .is('period_from', null)
+    .gte('date', year + '-01-01')
+    .lte('date', year + '-12-31');
+
+  var allExp = expenses.concat(expenses2);
+  // Deduplicate by id
+  var seen = {};
+  allExp = allExp.filter(function(e) {
+    if (seen[e.id]) return false;
+    seen[e.id] = true;
+    return true;
+  });
+
+  // Get categories
+  var { data: cats = [] } = await sb.from('cost_categories').select('id, name').order('name');
+
+  // Build matrix: zone -> category -> { tenant, owner }
+  var matrix = {};
+  var catTotals = {};
+  var ownerKey = '__VLASTNÍK__';
+
+  allExp.forEach(function(e) {
+    var catName = e.cost_categories ? e.cost_categories.name : 'Ostatné';
+    if (!e.expense_allocations || e.expense_allocations.length === 0) return;
+
+    e.expense_allocations.forEach(function(a) {
+      if (!a.zones) return;
+      var zoneName = a.zones.tenant_name || a.zones.name;
+      var key = a.payer === 'owner' ? ownerKey : zoneName;
+
+      if (!matrix[key]) matrix[key] = {};
+      if (!matrix[key][catName]) matrix[key][catName] = 0;
+      matrix[key][catName] += parseFloat(a.amount) || 0;
+
+      if (!catTotals[catName]) catTotals[catName] = 0;
+      catTotals[catName] += parseFloat(a.amount) || 0;
+    });
+  });
+
+  // Get unique category names that have data
+  var catNames = Object.keys(catTotals).sort();
+  var zoneNames = Object.keys(matrix).filter(function(k) { return k !== ownerKey; }).sort();
+  if (matrix[ownerKey]) zoneNames.push(ownerKey);
+
+  // Build table
+  var table = document.getElementById('fin-overview-table');
+  if (!table) return;
+
+  if (catNames.length === 0) {
+    table.innerHTML = '<p class="text-sm text-slate-300">Žiadne dáta pre tento rok</p>';
+    return;
+  }
+
+  var html = '<table class="w-full text-[9px]">' +
+    '<thead><tr class="border-b-2 border-slate-200">' +
+    '<th class="text-left py-2 font-black text-slate-400 uppercase">Nájomca</th>' +
+    catNames.map(function(c) { return '<th class="text-right py-2 font-black text-slate-400 uppercase px-2">' + c + '</th>'; }).join('') +
+    '<th class="text-right py-2 font-black text-slate-800 uppercase px-2">Spolu</th>' +
+    '</tr></thead><tbody>';
+
+  var grandTotals = {};
+  catNames.forEach(function(c) { grandTotals[c] = 0; });
+  var grandTotal = 0;
+
+  zoneNames.forEach(function(z) {
+    var isOwner = z === ownerKey;
+    var rowTotal = 0;
+    html += '<tr class="border-b border-slate-100' + (isOwner ? ' bg-orange-50' : '') + '">' +
+      '<td class="py-2 font-bold ' + (isOwner ? 'text-orange-600' : 'text-slate-700') + '">' + (isOwner ? 'Vlastník' : z) + '</td>';
+
+    catNames.forEach(function(c) {
+      var val = (matrix[z] && matrix[z][c]) || 0;
+      rowTotal += val;
+      grandTotals[c] += val;
+      html += '<td class="text-right py-2 px-2 ' + (val > 0 ? (isOwner ? 'text-orange-600' : 'text-slate-600') : 'text-slate-200') + '">' +
+        (val > 0 ? val.toFixed(2) : '–') + '</td>';
+    });
+
+    grandTotal += rowTotal;
+    html += '<td class="text-right py-2 px-2 font-black ' + (isOwner ? 'text-orange-700' : 'text-slate-800') + '">' + rowTotal.toFixed(2) + ' €</td>';
+    html += '</tr>';
+  });
+
+  // Totals row
+  html += '<tr class="border-t-2 border-slate-300 bg-slate-50">' +
+    '<td class="py-2 font-black text-slate-800 uppercase">Celkom</td>';
+  catNames.forEach(function(c) {
+    html += '<td class="text-right py-2 px-2 font-black text-slate-800">' + (grandTotals[c] || 0).toFixed(2) + '</td>';
+  });
+  html += '<td class="text-right py-2 px-2 font-black text-slate-900">' + grandTotal.toFixed(2) + ' €</td>';
+  html += '</tr></tbody></table>';
+
+  table.innerHTML = html;
 };
 
 async function init() {
