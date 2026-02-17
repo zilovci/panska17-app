@@ -615,7 +615,19 @@ function stripDia(s) {
 
 function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
-window.generateInvoice = async function() {
+window.redownloadInvoice = async function(invId) {
+  var { data: inv } = await sb.from('invoices').select('*').eq('id', invId).single();
+  if (!inv) { alert('Vyúčtovanie nenájdené.'); return; }
+
+  // Set fields and generate without saving new record
+  document.getElementById('fin-inv-tenant').value = inv.tenant_id;
+  document.getElementById('fin-inv-from').value = inv.period_from;
+  document.getElementById('fin-inv-to').value = inv.period_to;
+
+  await window.generateInvoice(inv);
+};
+
+window.generateInvoice = async function(existingInvoice) {
   var tenantId = document.getElementById('fin-inv-tenant').value;
   var dateFrom = document.getElementById('fin-inv-from').value;
   var dateTo = document.getElementById('fin-inv-to').value;
@@ -823,9 +835,7 @@ window.generateInvoice = async function() {
     y += 8;
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    var dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 15);
-    doc.text(stripDia('Splatnost: ' + fmtD(dueDate.toISOString().split('T')[0])), M, y);
+    doc.text(stripDia('Splatnost: ' + fmtD(dueDateStr)), M, y);
     y += 5;
     doc.text('IBAN: SK23 1100 0000 0026 2084 4545', M, y);
     y += 5;
@@ -846,31 +856,39 @@ window.generateInvoice = async function() {
   doc.setTextColor(150);
   doc.text(stripDia('Vyuctovanie vygenerovane ' + new Date().toLocaleDateString('sk-SK')), M, y);
 
-  // Generate invoice number: VYUCT-2025-001
-  var { data: existingInv = [] } = await sb.from('invoices').select('invoice_number')
-    .like('invoice_number', 'VYUCT-' + yearLabel + '-%');
-  var nextNum = existingInv.length + 1;
-  var invNumber = 'VYUCT-' + yearLabel + '-' + String(nextNum).padStart(3, '0');
+  // Invoice number and DB save
+  var invNumber;
+  var dueDateStr;
 
-  // Due date
-  var dueDateObj = new Date();
-  dueDateObj.setDate(dueDateObj.getDate() + 15);
-  var dueDateStr = dueDateObj.toISOString().split('T')[0];
+  if (existingInvoice) {
+    // Re-download: use existing number, don't save
+    invNumber = existingInvoice.invoice_number;
+    dueDateStr = existingInvoice.due_date;
+  } else {
+    // New: generate number and save
+    var { data: existingInv = [] } = await sb.from('invoices').select('invoice_number')
+      .like('invoice_number', 'VYUCT-' + yearLabel + '-%');
+    var nextNum = existingInv.length + 1;
+    invNumber = 'VYUCT-' + yearLabel + '-' + String(nextNum).padStart(3, '0');
 
-  // Save to DB
-  await sb.from('invoices').insert({
-    tenant_id: tenantId,
-    invoice_number: invNumber,
-    period_from: dateFrom,
-    period_to: dateTo,
-    total_costs: parseFloat(totalCosts.toFixed(2)),
-    total_advances: parseFloat(paidAdvances.toFixed(2)),
-    balance: parseFloat(balance.toFixed(2)),
-    due_date: dueDateStr,
-    status: 'draft'
-  });
+    var dueDateObj = new Date();
+    dueDateObj.setDate(dueDateObj.getDate() + 15);
+    dueDateStr = dueDateObj.toISOString().split('T')[0];
 
-  // Add invoice number to PDF header
+    await sb.from('invoices').insert({
+      tenant_id: tenantId,
+      invoice_number: invNumber,
+      period_from: dateFrom,
+      period_to: dateTo,
+      total_costs: parseFloat(totalCosts.toFixed(2)),
+      total_advances: parseFloat(paidAdvances.toFixed(2)),
+      balance: parseFloat(balance.toFixed(2)),
+      due_date: dueDateStr,
+      status: 'draft'
+    });
+
+    await window.loadInvoices();
+  }
   doc.setPage(1);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
@@ -932,6 +950,7 @@ window.loadInvoices = async function() {
         '</p>' +
       '</div>' +
       '<div class="flex items-center gap-1 ml-3">' +
+        '<button onclick="window.redownloadInvoice(\'' + inv.id + '\')" class="text-slate-400 hover:text-slate-700 text-xs" title="Stiahnuť PDF"><i class="fa-solid fa-file-pdf"></i></button>' +
         '<select onchange="window.changeInvoiceStatus(\'' + inv.id + '\', this.value)" class="text-[8px] border border-slate-200 rounded px-1 py-0.5">' +
           Object.keys(invoiceStatuses).map(function(s) {
             return '<option value="' + s + '"' + (inv.status === s ? ' selected' : '') + '>' + invoiceStatuses[s].label + '</option>';
