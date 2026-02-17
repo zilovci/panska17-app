@@ -292,11 +292,15 @@
                         <button onclick="window.showAddExpense()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
                     </div>
 
-                    <!-- Filter rok -->
-                    <div class="flex items-center space-x-3 mb-4">
+                    <div class="flex flex-wrap items-center gap-3 mb-4">
                         <label class="text-[9px] font-black text-slate-400 uppercase">Rok:</label>
                         <select id="fin-year" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
-                        <label class="text-[9px] font-black text-slate-400 uppercase ml-4">Kategória:</label>
+                        <label class="text-[9px] font-black text-slate-400 uppercase">Podľa:</label>
+                        <select id="fin-date-mode" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                            <option value="invoice">Dátum faktúry</option>
+                            <option value="period">Zúčtovacie obdobie</option>
+                        </select>
+                        <label class="text-[9px] font-black text-slate-400 uppercase">Kategória:</label>
                         <select id="fin-cat-filter" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
                             <option value="all">Všetky</option>
                         </select>
