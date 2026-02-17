@@ -144,7 +144,8 @@ window.loadTenants = async function() {
         '<p class="text-[9px] text-slate-400">' +
           (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
           (t.lease_from ? fmtD(t.lease_from) + ' – ' + (t.lease_to ? fmtD(t.lease_to) : '∞') + ' • ' : '') +
-          (t.monthly_advance > 0 ? 'Záloha: ' + parseFloat(t.monthly_advance).toFixed(2) + ' €/mes • ' : '') +
+          (t.monthly_rent > 0 ? 'Nájom: ' + parseFloat(t.monthly_rent).toFixed(0) + ' € • ' : '') +
+          (t.monthly_advance > 0 ? 'Záloha: ' + parseFloat(t.monthly_advance).toFixed(0) + ' € • ' : '') +
           (t.email || '') +
           (zoneNames ? ' • ' + zoneNames : '') +
         '</p>' +
@@ -160,7 +161,7 @@ window.loadTenants = async function() {
 window.showAddTenant = function() {
   editingTenantId = null;
   document.getElementById('tenant-modal-title').innerText = 'Nový nájomca';
-  ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-lease-from','ten-lease-to','ten-iban','ten-advance','ten-note'].forEach(function(id) {
+  ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-lease-from','ten-lease-to','ten-iban','ten-rent','ten-advance','ten-note'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   // Zone checkboxes
@@ -195,6 +196,7 @@ window.saveTenant = async function() {
     lease_from: document.getElementById('ten-lease-from').value || null,
     lease_to: document.getElementById('ten-lease-to').value || null,
     iban: document.getElementById('ten-iban').value.trim() || null,
+    monthly_rent: parseFloat(document.getElementById('ten-rent').value) || 0,
     monthly_advance: parseFloat(document.getElementById('ten-advance').value) || 0,
     note: document.getElementById('ten-note').value.trim() || null
   };
@@ -247,6 +249,7 @@ window.editTenant = async function(id) {
   document.getElementById('ten-lease-from').value = t.lease_from || '';
   document.getElementById('ten-lease-to').value = t.lease_to || '';
   document.getElementById('ten-iban').value = t.iban || '';
+  document.getElementById('ten-rent').value = t.monthly_rent || '';
   document.getElementById('ten-advance').value = t.monthly_advance || '';
   document.getElementById('ten-note').value = t.note || '';
 
@@ -396,7 +399,7 @@ window.loadPayments = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, monthly_advance').order('name');
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, monthly_rent, monthly_advance').order('name');
   var { data: payments = [] } = await sb.from('tenant_payments').select('*')
     .gte('month', year + '-01-01').lte('month', year + '-12-01');
 
@@ -408,50 +411,66 @@ window.loadPayments = async function() {
     return;
   }
 
-  // Header
   var html = '<table class="w-full text-[9px]">' +
     '<thead><tr class="border-b-2 border-slate-200">' +
-    '<th class="text-left py-2 font-black text-slate-400 uppercase">Nájomca</th>' +
+    '<th class="text-left py-2 font-black text-slate-400 uppercase" colspan="2">Nájomca</th>' +
     monthNames.map(function(m) { return '<th class="text-center py-2 font-black text-slate-400 uppercase w-12">' + m + '</th>'; }).join('') +
     '<th class="text-right py-2 font-black text-slate-800 uppercase px-2">Spolu</th>' +
     '</tr></thead><tbody>';
 
-  var grandTotal = 0;
+  var grandRent = 0, grandAdv = 0;
 
   tenants.forEach(function(t) {
     var tLabel = t.company_name || t.name;
     tLabel = tLabel.replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?)$/i, '').trim();
-    var rowTotal = 0;
 
-    html += '<tr class="border-b border-slate-100">' +
-      '<td class="py-2 font-bold text-slate-700">' + tLabel + '</td>';
+    var types = [];
+    if (t.monthly_rent > 0) types.push({ type: 'rent', label: 'Nájomné', cls: 'text-indigo-500' });
+    if (t.monthly_advance > 0) types.push({ type: 'advance', label: 'Zálohy', cls: 'text-blue-500' });
+    if (types.length === 0) return;
 
-    for (var m = 0; m < 12; m++) {
-      var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
-      var pay = payments.find(function(p) { return p.tenant_id === t.id && p.month === monthStr; });
+    // Tenant header
+    html += '<tr class="border-t-2 border-slate-200"><td colspan="15" class="pt-3 pb-1 font-black text-slate-700">' + tLabel + '</td></tr>';
 
-      if (pay) {
-        var cls = pay.paid ? 'bg-green-100 text-green-700 cursor-pointer hover:bg-green-200' : 'bg-red-50 text-red-400 cursor-pointer hover:bg-red-100';
-        rowTotal += parseFloat(pay.amount) || 0;
-        html += '<td class="text-center py-1"><div onclick="window.togglePayment(\'' + pay.id + '\',' + !pay.paid + ')" class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold" title="' + (pay.paid ? 'Zaplatené' + (pay.paid_date ? ' ' + fmtD(pay.paid_date) : '') : 'Nezaplatené') + '">' +
-          parseFloat(pay.amount).toFixed(0) +
-          (pay.paid ? ' ✓' : '') +
-        '</div></td>';
-      } else {
-        html += '<td class="text-center py-1"><span class="text-slate-200">–</span></td>';
+    types.forEach(function(tp) {
+      var rowTotal = 0;
+      html += '<tr class="border-b border-slate-50">' +
+        '<td colspan="2" class="py-1 pl-4 text-[8px] font-bold ' + tp.cls + ' uppercase">' + tp.label + '</td>';
+
+      for (var m = 0; m < 12; m++) {
+        var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
+        var pay = payments.find(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
+
+        if (pay) {
+          var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' : 'bg-blue-50 text-blue-400 hover:bg-blue-100';
+          var cls = pay.paid
+            ? 'bg-green-100 text-green-700 cursor-pointer hover:bg-green-200'
+            : unpaidCls + ' cursor-pointer';
+          rowTotal += parseFloat(pay.amount) || 0;
+          html += '<td class="text-center py-1"><div onclick="window.togglePayment(\'' + pay.id + '\',' + !pay.paid + ')" class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold" title="' + (pay.paid ? 'Zaplatené' + (pay.paid_date ? ' ' + fmtD(pay.paid_date) : '') : 'Nezaplatené') + '">' +
+            parseFloat(pay.amount).toFixed(0) +
+            (pay.paid ? ' ✓' : '') +
+          '</div></td>';
+        } else {
+          html += '<td class="text-center py-1"><span class="text-slate-200">–</span></td>';
+        }
       }
-    }
 
-    grandTotal += rowTotal;
-    html += '<td class="text-right py-2 px-2 font-black text-slate-800">' + (rowTotal > 0 ? rowTotal.toFixed(2) + ' €' : '–') + '</td>';
-    html += '</tr>';
+      if (tp.type === 'rent') grandRent += rowTotal;
+      else grandAdv += rowTotal;
+
+      html += '<td class="text-right py-1 px-2 font-black text-slate-700">' + (rowTotal > 0 ? rowTotal.toFixed(0) + ' €' : '–') + '</td>';
+      html += '</tr>';
+    });
   });
 
   // Totals
   html += '<tr class="border-t-2 border-slate-300 bg-slate-50">' +
-    '<td class="py-2 font-black text-slate-800 uppercase">Celkom</td>' +
-    '<td colspan="12"></td>' +
-    '<td class="text-right py-2 px-2 font-black text-slate-900">' + grandTotal.toFixed(2) + ' €</td>' +
+    '<td colspan="2" class="py-2 font-black text-slate-800 uppercase">Celkom</td>' +
+    '<td colspan="12" class="py-2 text-center text-[8px] text-slate-400">' +
+      'Nájomné: ' + grandRent.toFixed(0) + ' € • Zálohy: ' + grandAdv.toFixed(0) + ' €' +
+    '</td>' +
+    '<td class="text-right py-2 px-2 font-black text-slate-900">' + (grandRent + grandAdv).toFixed(0) + ' €</td>' +
     '</tr></tbody></table>';
 
   grid.innerHTML = html;
@@ -461,47 +480,49 @@ window.generatePayments = async function() {
   var yearSel = document.getElementById('fin-pay-year');
   var year = yearSel ? yearSel.value : new Date().getFullYear();
 
-  var { data: tenants = [] } = await sb.from('tenants').select('id, name, monthly_advance, lease_from, lease_to');
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, monthly_rent, monthly_advance, lease_from, lease_to');
 
   var toInsert = [];
   tenants.forEach(function(t) {
-    if (!t.monthly_advance || t.monthly_advance <= 0) return;
+    var amounts = [];
+    if (t.monthly_rent > 0) amounts.push({ type: 'rent', amount: t.monthly_rent });
+    if (t.monthly_advance > 0) amounts.push({ type: 'advance', amount: t.monthly_advance });
 
-    for (var m = 0; m < 12; m++) {
-      var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
+    amounts.forEach(function(a) {
+      for (var m = 0; m < 12; m++) {
+        var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
+        if (t.lease_from && monthStr < t.lease_from.substring(0, 7) + '-01') return;
+        if (t.lease_to && monthStr > t.lease_to.substring(0, 7) + '-01') return;
 
-      // Skip months outside lease period
-      if (t.lease_from && monthStr < t.lease_from.substring(0, 7) + '-01') return;
-      if (t.lease_to && monthStr > t.lease_to.substring(0, 7) + '-01') return;
-
-      toInsert.push({
-        tenant_id: t.id,
-        month: monthStr,
-        amount: t.monthly_advance,
-        paid: false
-      });
-    }
+        toInsert.push({
+          tenant_id: t.id,
+          month: monthStr,
+          amount: a.amount,
+          type: a.type,
+          paid: false
+        });
+      }
+    });
   });
 
   if (toInsert.length === 0) {
-    alert('Žiadni nájomcovia s mesačnou zálohou.');
+    alert('Žiadni nájomcovia s nájomným alebo zálohou.');
     return;
   }
 
-  // Upsert – don't overwrite existing
-  var { data: existing = [] } = await sb.from('tenant_payments').select('tenant_id, month')
+  var { data: existing = [] } = await sb.from('tenant_payments').select('tenant_id, month, type')
     .gte('month', year + '-01-01').lte('month', year + '-12-01');
 
   var existingKeys = {};
-  existing.forEach(function(e) { existingKeys[e.tenant_id + '|' + e.month] = true; });
+  existing.forEach(function(e) { existingKeys[e.tenant_id + '|' + e.month + '|' + (e.type || 'advance')] = true; });
 
-  var newOnly = toInsert.filter(function(p) { return !existingKeys[p.tenant_id + '|' + p.month]; });
+  var newOnly = toInsert.filter(function(p) { return !existingKeys[p.tenant_id + '|' + p.month + '|' + p.type]; });
 
   if (newOnly.length === 0) {
-    alert('Zálohy pre rok ' + year + ' už existujú.');
+    alert('Platby pre rok ' + year + ' už existujú.');
   } else {
     await sb.from('tenant_payments').insert(newOnly);
-    alert('Vygenerovaných ' + newOnly.length + ' záloh.');
+    alert('Vygenerovaných ' + newOnly.length + ' platieb.');
   }
 
   await window.loadPayments();

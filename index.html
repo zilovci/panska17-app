@@ -409,7 +409,7 @@
                 <!-- ZÁLOHY -->
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Zálohy nájomcov</h3>
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Platby nájomcov</h3>
                         <div class="flex items-center gap-3">
                             <select id="fin-pay-year" onchange="window.loadPayments()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                             <button onclick="window.generatePayments()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Generovať</button>
@@ -496,9 +496,16 @@
                                     <input type="text" id="ten-iban" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
                                 </div>
                                 <div>
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Mesačné nájomné €</label>
+                                    <input type="number" step="0.01" id="ten-rent" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="0.00">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
                                     <label class="text-[9px] font-black text-slate-400 uppercase">Mesačná záloha €</label>
                                     <input type="number" step="0.01" id="ten-advance" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="0.00">
                                 </div>
+                                <div></div>
                             </div>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Zóny</label>
