@@ -1168,10 +1168,18 @@ window.deleteReading = async function(id) {
 window.loadExpenses = async function() {
   var year = document.getElementById('fin-year').value || new Date().getFullYear();
   var catFilter = document.getElementById('fin-cat-filter').value;
+  var dateMode = document.getElementById('fin-date-mode').value;
 
-  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, zones(name, tenant_name))')
-    .gte('date', year + '-01-01').lte('date', year + '-12-31')
-    .order('date', { ascending: false });
+  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, zones(name, tenant_name))');
+
+  if (dateMode === 'period') {
+    // Obdobie sa prekrýva s rokom: period_from <= koniec roka AND period_to >= začiatok roka
+    query = query.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+  } else {
+    query = query.gte('date', year + '-01-01').lte('date', year + '-12-31');
+  }
+
+  query = query.order('date', { ascending: false });
 
   if (catFilter !== 'all') query = query.eq('category_id', catFilter);
 
@@ -1181,9 +1189,13 @@ window.loadExpenses = async function() {
   // Fallback if allocations table missing
   if (result.error) {
     console.warn('Expenses query error, trying without allocations:', result.error);
-    var q2 = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)')
-      .gte('date', year + '-01-01').lte('date', year + '-12-31')
-      .order('date', { ascending: false });
+    var q2 = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)');
+    if (dateMode === 'period') {
+      q2 = q2.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+    } else {
+      q2 = q2.gte('date', year + '-01-01').lte('date', year + '-12-31');
+    }
+    q2 = q2.order('date', { ascending: false });
     if (catFilter !== 'all') q2 = q2.eq('category_id', catFilter);
     var r2 = await q2;
     expenses = r2.data || [];
