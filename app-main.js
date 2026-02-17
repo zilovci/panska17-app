@@ -590,6 +590,254 @@ window.togglePayment = async function(payId, newPaid) {
   await window.loadPayments();
 };
 
+// ============ VYÚČTOVANIE ============
+
+// Strip Slovak diacritics for PDF (standard fonts don't support them)
+function stripDia(s) {
+  if (!s) return '';
+  return s.replace(/[áÁ]/g, function(c) { return c === 'á' ? 'a' : 'A'; })
+    .replace(/[äÄ]/g, function(c) { return c === 'ä' ? 'a' : 'A'; })
+    .replace(/[čČ]/g, function(c) { return c === 'č' ? 'c' : 'C'; })
+    .replace(/[ďĎ]/g, function(c) { return c === 'ď' ? 'd' : 'D'; })
+    .replace(/[éÉ]/g, function(c) { return c === 'é' ? 'e' : 'E'; })
+    .replace(/[íÍ]/g, function(c) { return c === 'í' ? 'i' : 'I'; })
+    .replace(/[ľĽ]/g, function(c) { return c === 'ľ' ? 'l' : 'L'; })
+    .replace(/[ňŇ]/g, function(c) { return c === 'ň' ? 'n' : 'N'; })
+    .replace(/[óÓ]/g, function(c) { return c === 'ó' ? 'o' : 'O'; })
+    .replace(/[ôÔ]/g, function(c) { return c === 'ô' ? 'o' : 'O'; })
+    .replace(/[ŕŔ]/g, function(c) { return c === 'ŕ' ? 'r' : 'R'; })
+    .replace(/[šŠ]/g, function(c) { return c === 'š' ? 's' : 'S'; })
+    .replace(/[ťŤ]/g, function(c) { return c === 'ť' ? 't' : 'T'; })
+    .replace(/[úÚ]/g, function(c) { return c === 'ú' ? 'u' : 'U'; })
+    .replace(/[ýÝ]/g, function(c) { return c === 'ý' ? 'y' : 'Y'; })
+    .replace(/[žŽ]/g, function(c) { return c === 'ž' ? 'z' : 'Z'; });
+}
+
+function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+window.generateInvoice = async function() {
+  var tenantId = document.getElementById('fin-inv-tenant').value;
+  var year = document.getElementById('fin-inv-year').value;
+  if (!tenantId) { alert('Vyberte najomcu.'); return; }
+
+  // Load tenant
+  var { data: tenant } = await sb.from('tenants').select('*').eq('id', tenantId).single();
+  if (!tenant) { alert('Najomca nenajdeny.'); return; }
+
+  // Load zones for this tenant
+  var { data: tenantZones = [] } = await sb.from('zones').select('id, name, tenant_name, area_m2').eq('tenant_id', tenantId);
+  var zoneIds = tenantZones.map(function(z) { return z.id; });
+  var totalArea = tenantZones.reduce(function(s, z) { return s + (parseFloat(z.area_m2) || 0); }, 0);
+  var zoneLabel = tenantZones.map(function(z) { return z.name; }).join(', ');
+
+  // Load allocations for this tenant's zones for this year
+  var { data: allocs = [] } = await sb.from('expense_allocations')
+    .select('amount, percentage, payer, zone_id, expenses(id, amount, date, period_from, period_to, supplier, invoice_number, cost_categories(name))')
+    .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
+
+  // Filter by year (period or date)
+  var yearAllocs = allocs.filter(function(a) {
+    if (!a.expenses) return false;
+    var e = a.expenses;
+    if (e.period_from && e.period_to) {
+      return e.period_from <= year + '-12-31' && e.period_to >= year + '-01-01';
+    }
+    return e.date && e.date >= year + '-01-01' && e.date <= year + '-12-31';
+  });
+
+  // Only tenant-paid allocations
+  var tenantAllocs = yearAllocs.filter(function(a) { return a.payer !== 'owner'; });
+
+  // Group by category
+  var byCat = {};
+  tenantAllocs.forEach(function(a) {
+    var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
+    if (!byCat[cat]) byCat[cat] = { amount: 0, items: [] };
+    byCat[cat].amount += parseFloat(a.amount) || 0;
+    byCat[cat].items.push(a);
+  });
+
+  var catNames = Object.keys(byCat).sort();
+  var totalCosts = catNames.reduce(function(s, c) { return s + byCat[c].amount; }, 0);
+
+  // Load advance payments
+  var { data: payments = [] } = await sb.from('tenant_payments').select('*')
+    .eq('tenant_id', tenantId).eq('type', 'advance')
+    .gte('month', year + '-01-01').lte('month', year + '-12-01')
+    .order('month');
+
+  var totalAdvances = payments.reduce(function(s, p) { return s + (parseFloat(p.amount) || 0); }, 0);
+  var paidAdvances = payments.filter(function(p) { return p.paid; }).reduce(function(s, p) { return s + (parseFloat(p.amount) || 0); }, 0);
+
+  var balance = totalCosts - paidAdvances;
+
+  // Generate PDF
+  var { jsPDF } = window.jspdf;
+  var doc = new jsPDF('p', 'mm', 'a4');
+  var W = 210, M = 20, y = 20;
+
+  // Header
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia('VYÚČTOVANIE NÁKLADOV ZA ROK ' + year), M, y);
+  y += 10;
+
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.5);
+  doc.line(M, y, W - M, y);
+  y += 10;
+
+  // Landlord info
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(stripDia('Prenajímateľ:'), M, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia('Ing. Vladimír Žila, Zuzana Žilová'), M + 30, y);
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.text(stripDia('Nehnuteľnosť:'), M, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia('Panská 17, 811 01 Bratislava'), M + 30, y);
+  y += 10;
+
+  // Tenant info
+  doc.setFont('helvetica', 'normal');
+  doc.text(stripDia('Nájomca:'), M, y);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia(tenant.company_name || tenant.name), M + 30, y);
+  y += 5;
+
+  if (tenant.ico) {
+    doc.setFont('helvetica', 'normal');
+    doc.text(stripDia('IČO: ' + tenant.ico + (tenant.dic ? '  DIČ: ' + tenant.dic : '') + (tenant.ic_dph ? '  IČ DPH: ' + tenant.ic_dph : '')), M + 30, y);
+    y += 5;
+  }
+  if (tenant.address) {
+    doc.setFont('helvetica', 'normal');
+    doc.text(stripDia((tenant.address || '') + ', ' + (tenant.zip || '') + ' ' + (tenant.city || '')), M + 30, y);
+    y += 5;
+  }
+
+  y += 3;
+  doc.setFont('helvetica', 'normal');
+  doc.text(stripDia('Priestor:'), M, y);
+  doc.text(stripDia(zoneLabel + ' — ' + totalArea + ' m2'), M + 30, y);
+  y += 5;
+  doc.text(stripDia('Obdobie:'), M, y);
+  doc.text('01.01.' + year + ' — 31.12.' + year, M + 30, y);
+  y += 10;
+
+  // Costs table
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia('NÁKLADY'), M, y);
+  y += 3;
+
+  var costRows = catNames.map(function(c) {
+    var avgPct = byCat[c].items.length > 0
+      ? (byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.percentage) || 0); }, 0) / byCat[c].items.length)
+      : 0;
+    return [stripDia(c), avgPct.toFixed(1) + ' %', fmtEur(byCat[c].amount) + ' EUR'];
+  });
+
+  costRows.push([{ content: stripDia('NÁKLADY SPOLU'), styles: { fontStyle: 'bold' } }, '', { content: fmtEur(totalCosts) + ' EUR', styles: { fontStyle: 'bold' } }]);
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: M, right: M },
+    head: [[stripDia('Položka'), stripDia('Podiel'), 'Suma']],
+    body: costRows,
+    theme: 'plain',
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
+    columnStyles: {
+      0: { cellWidth: 80 },
+      1: { cellWidth: 30, halign: 'right' },
+      2: { cellWidth: 40, halign: 'right' }
+    }
+  });
+
+  y = doc.lastAutoTable.finalY + 10;
+
+  // Advances table
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(stripDia('ZÁLOHY'), M, y);
+  y += 3;
+
+  var advRows = payments.map(function(p) {
+    var mDate = new Date(p.month + 'T00:00:00');
+    var mLabel = String(mDate.getMonth() + 1).padStart(2, '0') + '/' + year;
+    return [
+      mLabel,
+      fmtEur(p.amount) + ' EUR',
+      p.paid ? (stripDia('Zaplatené') + (p.paid_date ? ' ' + fmtD(p.paid_date) : '')) : stripDia('Nezaplatené')
+    ];
+  });
+
+  advRows.push([
+    { content: stripDia('ZÁLOHY SPOLU'), styles: { fontStyle: 'bold' } },
+    { content: fmtEur(paidAdvances) + ' EUR', styles: { fontStyle: 'bold' } },
+    ''
+  ]);
+
+  doc.autoTable({
+    startY: y,
+    margin: { left: M, right: M },
+    head: [[stripDia('Mesiac'), 'Suma', stripDia('Stav')]],
+    body: advRows,
+    theme: 'plain',
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
+    columnStyles: {
+      0: { cellWidth: 30 },
+      1: { cellWidth: 40, halign: 'right' },
+      2: { cellWidth: 60 }
+    }
+  });
+
+  y = doc.lastAutoTable.finalY + 12;
+
+  // Result
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.8);
+  doc.line(M, y, W - M, y);
+  y += 8;
+
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  if (balance > 0) {
+    doc.text(stripDia('NEDOPLATOK:  ' + fmtEur(balance) + ' EUR'), M, y);
+  } else if (balance < 0) {
+    doc.text(stripDia('PREPLATOK:  ' + fmtEur(Math.abs(balance)) + ' EUR'), M, y);
+  } else {
+    doc.text(stripDia('VYROVNANÉ'), M, y);
+  }
+  y += 8;
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  var dueDate = new Date(parseInt(year) + 1, 2, 15);
+  doc.text(stripDia('Splatnosť: ' + fmtD(dueDate.toISOString().split('T')[0])), M, y);
+
+  if (balance > 0 && tenant.iban) {
+    y += 5;
+    doc.text('IBAN: ' + tenant.iban, M, y);
+    y += 5;
+    doc.text('VS: ' + year + '001', M, y);
+  }
+
+  // Footer
+  y += 15;
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text(stripDia('Vyúčtovanie vygenerované ' + new Date().toLocaleDateString('sk-SK')), M, y);
+
+  // Save
+  var fileName = stripDia('vyuctovanie_' + year + '_' + (tenant.company_name || tenant.name).replace(/[^a-zA-Z0-9]/g, '_') + '.pdf');
+  doc.save(fileName);
+};
+
 async function init() {
   const { data: { session } } = await sb.auth.getSession();
   if (session) {

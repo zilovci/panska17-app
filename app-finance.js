@@ -89,6 +89,26 @@ async function loadFinance() {
     }
   }
 
+  // Invoice year dropdown
+  var invYearSel = document.getElementById('fin-inv-year');
+  if (invYearSel && invYearSel.options.length === 0) {
+    var curYear4 = new Date().getFullYear();
+    for (var y4 = curYear4; y4 >= 2020; y4--) {
+      invYearSel.innerHTML += '<option value="' + y4 + '">' + y4 + '</option>';
+    }
+  }
+
+  // Invoice tenant dropdown
+  var invTenSel = document.getElementById('fin-inv-tenant');
+  if (invTenSel) {
+    var { data: invTenants = [] } = await sb.from('tenants').select('id, name, company_name').order('name');
+    invTenSel.innerHTML = '<option value="">-- Vyberte nájomcu --</option>' +
+      invTenants.map(function(t) {
+        var label = t.company_name || t.name;
+        return '<option value="' + t.id + '">' + label + '</option>';
+      }).join('');
+  }
+
   // Set default date
   var expDate = document.getElementById('exp-date');
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
