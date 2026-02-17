@@ -919,7 +919,7 @@ async function loadFinance() {
     expCat.innerHTML = cats.map(function(c) {
       return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '">' + c.name + '</option>';
     }).join('');
-    expCat.onchange = function() { window.loadCategoryPreset(this.value); };
+    expCat.onchange = function() { window.loadCategoryPreset(this.value); window.updateAllocPreview(); };
   }
 
   // Zone checkboxes
@@ -1348,15 +1348,21 @@ window.updateAllocPreview = function() {
     html += '<p class="text-[8px] font-black text-slate-400 uppercase mb-1">Zaškrtnite zóny ktoré sa na náklade podieľajú</p>';
   }
 
-  // Find unchecked zones with tempering
+  // Find unchecked zones with tempering - ONLY for Vykurovanie
+  var catSel = document.getElementById('exp-category');
+  var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+  var isHeating = selectedCatName === 'Vykurovanie';
+
   var allCbs = document.querySelectorAll('.alloc-zone-cb');
   var temperedZones = [];
-  for (var i = 0; i < allCbs.length; i++) {
-    if (!allCbs[i].checked) {
-      var temper = parseFloat(allCbs[i].getAttribute('data-temper')) || 0;
-      if (temper > 0) {
-        var area = parseFloat(allCbs[i].getAttribute('data-area')) || 0;
-        temperedZones.push({ id: allCbs[i].value, area: area, temper: temper, effectiveArea: area * temper / 100 });
+  if (isHeating) {
+    for (var i = 0; i < allCbs.length; i++) {
+      if (!allCbs[i].checked) {
+        var temper = parseFloat(allCbs[i].getAttribute('data-temper')) || 0;
+        if (temper > 0) {
+          var area = parseFloat(allCbs[i].getAttribute('data-area')) || 0;
+          temperedZones.push({ id: allCbs[i].value, area: area, temper: temper, effectiveArea: area * temper / 100 });
+        }
       }
     }
   }
@@ -1477,15 +1483,21 @@ window.saveExpense = async function() {
   if (expenseId) {
     var zones = window.getSelectedAllocZones();
 
-    // Find unchecked tempered zones
+    // Find unchecked tempered zones - ONLY for Vykurovanie
+    var catSel = document.getElementById('exp-category');
+    var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+    var isHeating = selectedCatName === 'Vykurovanie';
+
     var allCbs = document.querySelectorAll('.alloc-zone-cb');
     var temperedZones = [];
-    for (var t = 0; t < allCbs.length; t++) {
-      if (!allCbs[t].checked) {
-        var temper = parseFloat(allCbs[t].getAttribute('data-temper')) || 0;
-        if (temper > 0) {
-          var tArea = parseFloat(allCbs[t].getAttribute('data-area')) || 0;
-          temperedZones.push({ id: allCbs[t].value, area: tArea, temper: temper, effectiveArea: tArea * temper / 100 });
+    if (isHeating) {
+      for (var t = 0; t < allCbs.length; t++) {
+        if (!allCbs[t].checked) {
+          var temper = parseFloat(allCbs[t].getAttribute('data-temper')) || 0;
+          if (temper > 0) {
+            var tArea = parseFloat(allCbs[t].getAttribute('data-area')) || 0;
+            temperedZones.push({ id: allCbs[t].value, area: tArea, temper: temper, effectiveArea: tArea * temper / 100 });
+          }
         }
       }
     }
