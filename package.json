@@ -1,0 +1,29 @@
+{
+  "name": "panska17-app",
+  "version": "1.0.0",
+  "description": "Facility Maintenance Application for Panská 17",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 8000 -o",
+    "dev": "npx http-server -p 8000 -o -c-1",
+    "deploy": "echo 'Deployment is handled by Vercel automatically on push to main'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zilovci/panska17-app.git"
+  },
+  "keywords": [
+    "facility-management",
+    "maintenance",
+    "supabase",
+    "vanilla-js"
+  ],
+  "author": "zilovci",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zilovci/panska17-app/issues"
+  },
+  "homepage": "https://panska17-app.vercel.app",
+  "devDependencies": {},
+  "dependencies": {}
+}
