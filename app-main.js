@@ -937,16 +937,14 @@ window.loadInvoices = async function() {
 
     return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 rounded-lg px-2 -mx-2" onclick="window.showInvoiceDetail(\'' + inv.id + '\')">' +
       '<div class="flex-1 min-w-0">' +
-        '<div class="flex items-center gap-2">' +
-          '<span class="text-xs font-black text-slate-700">' + inv.invoice_number + '</span>' +
-          '<span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
-          '<span class="text-xs font-bold text-slate-500">' + tenantLabel + '</span>' +
-        '</div>' +
-        '<p class="text-[9px] text-slate-400">' +
+        '<span class="text-xs font-black text-slate-700">' + inv.invoice_number + '</span>' +
+        ' <span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
+        ' <span class="text-xs font-bold text-slate-500">' + tenantLabel + '</span>' +
+        ' <span class="text-[9px] text-slate-400">' +
           fmtD(inv.period_from) + ' - ' + fmtD(inv.period_to) + ' • ' +
           '<span class="' + balCls + '">' + balLabel + '</span>' +
           (inv.due_date ? ' • Splat.: ' + fmtD(inv.due_date) : '') +
-        '</p>' +
+        '</span>' +
       '</div>' +
       '<i class="fa-solid fa-chevron-right text-slate-300 ml-3"></i>' +
     '</div>';
