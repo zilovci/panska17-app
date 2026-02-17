@@ -905,20 +905,26 @@ async function loadFinance() {
     }).join('');
   }
 
-  // Category dropdown in modal
+  // Category dropdown in modal - with preset loading
   var expCat = document.getElementById('exp-category');
   if (expCat) {
     expCat.innerHTML = cats.map(function(c) {
-      return '<option value="' + c.id + '">' + c.name + '</option>';
+      return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '">' + c.name + '</option>';
     }).join('');
+    expCat.onchange = function() { window.loadCategoryPreset(this.value); };
   }
 
-  // Zone dropdown in modal
-  var expZone = document.getElementById('exp-zone');
-  if (expZone) {
-    expZone.innerHTML = '<option value="">— Celá budova —</option>' + allZones.map(function(z) {
+  // Zone checkboxes
+  var zoneChecks = document.getElementById('exp-zone-checks');
+  if (zoneChecks) {
+    zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
-      return '<option value="' + z.id + '">' + label + '</option>';
+      var inactive = z.is_active === false ? ' (prázdna)' : '';
+      return '<label class="flex items-center space-x-1.5 bg-white rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<span class="text-[9px] font-bold text-slate-600 truncate">' + label + inactive + '</span>' +
+        '<span class="text-[8px] text-slate-300 shrink-0">' + (z.area_m2 || 0) + 'm²</span>' +
+      '</label>';
     }).join('');
   }
 
@@ -1157,7 +1163,7 @@ window.loadExpenses = async function() {
   var year = document.getElementById('fin-year').value || new Date().getFullYear();
   var catFilter = document.getElementById('fin-cat-filter').value;
 
-  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)')
+  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, zones(name, tenant_name))')
     .gte('date', year + '-01-01').lte('date', year + '-12-31')
     .order('date', { ascending: false });
 
@@ -1175,7 +1181,15 @@ window.loadExpenses = async function() {
   var total = 0;
   list.innerHTML = '<div class="space-y-2">' + expenses.map(function(e) {
     total += parseFloat(e.amount) || 0;
-    var zoneName = e.zones ? (e.zones.tenant_name || e.zones.name) : 'Celá budova';
+    var zoneName = '';
+    var allocCount = e.expense_allocations ? e.expense_allocations.length : 0;
+    if (allocCount > 0) {
+      zoneName = allocCount + ' zón';
+    } else if (e.zones) {
+      zoneName = e.zones.tenant_name || e.zones.name;
+    } else {
+      zoneName = 'Celá budova';
+    }
     var catName = e.cost_categories ? e.cost_categories.name : '--';
     return '<div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">' +
       '<div class="flex-1 min-w-0">' +
@@ -1222,7 +1236,6 @@ window.showAddExpense = function() {
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-supplier').value = '';
   document.getElementById('exp-amount').value = '';
-  document.getElementById('exp-zone').value = '';
   document.getElementById('exp-invoice').value = '';
   document.getElementById('exp-period-from').value = '';
   document.getElementById('exp-period-to').value = '';
@@ -1233,12 +1246,89 @@ window.showAddExpense = function() {
   var status = document.getElementById('ai-extract-status');
   status.classList.add('hidden');
   status.className = status.className.replace('text-green-600', 'text-blue-500').replace('text-red-500', 'text-blue-500');
+  // Reset checkboxes and load preset for first category
+  window.clearAllocChecks();
+  var catSel = document.getElementById('exp-category');
+  if (catSel && catSel.value) window.loadCategoryPreset(catSel.value);
   document.getElementById('modal-expense').classList.remove('hidden');
 };
 
 window.closeExpenseModal = function() {
   document.getElementById('modal-expense').classList.add('hidden');
 };
+
+// Allocation helpers
+window.clearAllocChecks = function() {
+  var cbs = document.querySelectorAll('.alloc-zone-cb');
+  for (var i = 0; i < cbs.length; i++) cbs[i].checked = false;
+  document.getElementById('exp-alloc-preview').classList.add('hidden');
+};
+
+window.allocSelectAll = function(check) {
+  var cbs = document.querySelectorAll('.alloc-zone-cb');
+  for (var i = 0; i < cbs.length; i++) cbs[i].checked = check;
+  window.updateAllocPreview();
+};
+
+window.loadCategoryPreset = async function(catId) {
+  var { data: presets = [] } = await sb.from('category_zone_presets').select('zone_id').eq('category_id', catId);
+  var presetIds = presets.map(function(p) { return p.zone_id; });
+  var cbs = document.querySelectorAll('.alloc-zone-cb');
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = presetIds.indexOf(cbs[i].value) !== -1;
+  }
+  window.updateAllocPreview();
+};
+
+window.saveCategoryPreset = async function(catId, zoneIds) {
+  await sb.from('category_zone_presets').delete().eq('category_id', catId);
+  if (zoneIds.length > 0) {
+    var rows = zoneIds.map(function(zid) { return { category_id: catId, zone_id: zid }; });
+    await sb.from('category_zone_presets').insert(rows);
+  }
+};
+
+window.getSelectedAllocZones = function() {
+  var cbs = document.querySelectorAll('.alloc-zone-cb:checked');
+  var zones = [];
+  for (var i = 0; i < cbs.length; i++) {
+    zones.push({ id: cbs[i].value, area: parseFloat(cbs[i].getAttribute('data-area')) || 0 });
+  }
+  return zones;
+};
+
+window.updateAllocPreview = function() {
+  var zones = window.getSelectedAllocZones();
+  var preview = document.getElementById('exp-alloc-preview');
+  var rows = document.getElementById('exp-alloc-rows');
+  var amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+
+  if (zones.length === 0) {
+    preview.classList.add('hidden');
+    return;
+  }
+
+  var totalArea = zones.reduce(function(s, z) { return s + z.area; }, 0);
+
+  rows.innerHTML = zones.map(function(z) {
+    var zone = allZones.find(function(az) { return az.id === z.id; });
+    var label = zone ? (zone.tenant_name || zone.name) : z.id;
+    var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+    var amt = amount * pct / 100;
+    return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
+      '<span class="font-bold text-slate-600 truncate">' + label + '</span>' +
+      '<span class="text-slate-400">' + z.area + ' m²</span>' +
+      '<span class="font-bold text-blue-600">' + pct.toFixed(1) + '%</span>' +
+      '<span class="font-black text-slate-800">' + amt.toFixed(2) + ' €</span>' +
+    '</div>';
+  }).join('');
+
+  preview.classList.remove('hidden');
+};
+
+// Update preview when amount changes
+var expAmountInput = document.getElementById('exp-amount');
+if (expAmountInput) expAmountInput.addEventListener('input', function() { window.updateAllocPreview(); });
 
 window.saveExpense = async function() {
   var data = {
@@ -1247,7 +1337,7 @@ window.saveExpense = async function() {
     description: document.getElementById('exp-desc').value.trim(),
     supplier: document.getElementById('exp-supplier').value.trim() || null,
     amount: parseFloat(document.getElementById('exp-amount').value) || 0,
-    zone_id: document.getElementById('exp-zone').value || null,
+    zone_id: null,
     invoice_number: document.getElementById('exp-invoice').value.trim() || null,
     period_from: document.getElementById('exp-period-from').value || null,
     period_to: document.getElementById('exp-period-to').value || null,
@@ -1267,10 +1357,38 @@ window.saveExpense = async function() {
     if (receiptUrl) data.receipt_url = receiptUrl;
   }
 
+  var expenseId;
   if (editingExpenseId) {
     await sb.from('expenses').update(data).eq('id', editingExpenseId);
+    expenseId = editingExpenseId;
   } else {
-    await sb.from('expenses').insert(data);
+    var { data: inserted } = await sb.from('expenses').insert(data).select('id').single();
+    expenseId = inserted ? inserted.id : null;
+  }
+
+  // Save allocations
+  if (expenseId) {
+    var zones = window.getSelectedAllocZones();
+    var totalArea = zones.reduce(function(s, z) { return s + z.area; }, 0);
+
+    await sb.from('expense_allocations').delete().eq('expense_id', expenseId);
+
+    if (zones.length > 0) {
+      var allocs = zones.map(function(z) {
+        var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+        return {
+          expense_id: expenseId,
+          zone_id: z.id,
+          percentage: parseFloat(pct.toFixed(2)),
+          amount: parseFloat((data.amount * pct / 100).toFixed(2))
+        };
+      });
+      await sb.from('expense_allocations').insert(allocs);
+    }
+
+    // Save preset for this category
+    var zoneIds = zones.map(function(z) { return z.id; });
+    await window.saveCategoryPreset(data.category_id, zoneIds);
   }
 
   window.closeExpenseModal();
@@ -1287,11 +1405,20 @@ window.editExpense = async function(id) {
   document.getElementById('exp-desc').value = e.description;
   document.getElementById('exp-supplier').value = e.supplier || '';
   document.getElementById('exp-amount').value = e.amount;
-  document.getElementById('exp-zone').value = e.zone_id || '';
   document.getElementById('exp-invoice').value = e.invoice_number || '';
   document.getElementById('exp-period-from').value = e.period_from || '';
   document.getElementById('exp-period-to').value = e.period_to || '';
   document.getElementById('exp-note').value = e.note || '';
+
+  // Load existing allocations
+  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id').eq('expense_id', id);
+  var allocIds = allocs.map(function(a) { return a.zone_id; });
+  var cbs = document.querySelectorAll('.alloc-zone-cb');
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = allocIds.indexOf(cbs[i].value) !== -1;
+  }
+  window.updateAllocPreview();
+
   document.getElementById('modal-expense').classList.remove('hidden');
 };
 
