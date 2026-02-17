@@ -80,6 +80,15 @@ async function loadFinance() {
     }
   }
 
+  // Payment year dropdown
+  var payYearSel = document.getElementById('fin-pay-year');
+  if (payYearSel && payYearSel.options.length === 0) {
+    var curYear3 = new Date().getFullYear();
+    for (var y3 = curYear3; y3 >= 2020; y3--) {
+      payYearSel.innerHTML += '<option value="' + y3 + '">' + y3 + '</option>';
+    }
+  }
+
   // Set default date
   var expDate = document.getElementById('exp-date');
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
@@ -87,6 +96,7 @@ async function loadFinance() {
   await loadMeters();
   await loadExpenses();
   await window.loadTenants();
+  await window.loadPayments();
   await window.loadOverview();
 }
 
