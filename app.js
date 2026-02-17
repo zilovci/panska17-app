@@ -897,10 +897,9 @@ async function loadFinance() {
           '<span class="text-[8px] text-slate-400">m²</span>' +
         '</div>' +
         '<div class="flex items-center space-x-1 mt-1">' +
-          '<span class="text-[8px] text-slate-400">Kúrenie ak prázdna:</span>' +
+          '<span class="text-[8px] text-slate-400">Prikurovanie ak prázdna</span>' +
           '<input type="number" step="1" min="0" max="100" value="' + temper + '" data-temper-zone="' + z.id + '" class="zone-temper-input w-10 text-right border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold">' +
           '<span class="text-[8px] text-slate-400">%</span>' +
-          '<span class="text-[7px] text-slate-300 ml-1">(0=nekúri, 100=plné)</span>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -928,12 +927,9 @@ async function loadFinance() {
   if (zoneChecks) {
     zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
-      var temper = z.tempering_pct || 0;
-      var temperTag = temper > 0 ? ' <span class="text-orange-400 text-[7px]">↳ ' + temper + '% ak prázdna</span>' : '';
       return '<label class="flex items-center space-x-1.5 bg-white rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
-        '<span class="text-[9px] font-bold text-slate-600 truncate">' + label + temperTag + '</span>' +
-        '<span class="text-[8px] text-slate-300 shrink-0">' + (z.area_m2 || 0) + '</span>' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + (z.tempering_pct || 0) + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<span class="text-[9px] font-bold text-slate-600 truncate">' + label + '</span>' +
       '</label>';
     }).join('');
   }
