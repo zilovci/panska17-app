@@ -1917,6 +1917,7 @@ window.loadTenants = async function() {
         '<p class="text-sm font-bold text-slate-800">' + (t.company_name || t.name) + '</p>' +
         '<p class="text-[9px] text-slate-400">' +
           (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
+          (t.lease_from ? fmtD(t.lease_from) + ' – ' + (t.lease_to ? fmtD(t.lease_to) : '∞') + ' • ' : '') +
           (t.email || '') +
           (zoneNames ? ' • ' + zoneNames : '') +
         '</p>' +
@@ -1932,7 +1933,7 @@ window.loadTenants = async function() {
 window.showAddTenant = function() {
   editingTenantId = null;
   document.getElementById('tenant-modal-title').innerText = 'Nový nájomca';
-  ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-iban','ten-note'].forEach(function(id) {
+  ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-lease-from','ten-lease-to','ten-iban','ten-note'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   // Zone checkboxes
@@ -1964,6 +1965,8 @@ window.saveTenant = async function() {
     zip: document.getElementById('ten-zip').value.trim() || null,
     email: document.getElementById('ten-email').value.trim() || null,
     phone: document.getElementById('ten-phone').value.trim() || null,
+    lease_from: document.getElementById('ten-lease-from').value || null,
+    lease_to: document.getElementById('ten-lease-to').value || null,
     iban: document.getElementById('ten-iban').value.trim() || null,
     note: document.getElementById('ten-note').value.trim() || null
   };
@@ -2013,6 +2016,8 @@ window.editTenant = async function(id) {
   document.getElementById('ten-zip').value = t.zip || '';
   document.getElementById('ten-email').value = t.email || '';
   document.getElementById('ten-phone').value = t.phone || '';
+  document.getElementById('ten-lease-from').value = t.lease_from || '';
+  document.getElementById('ten-lease-to').value = t.lease_to || '';
   document.getElementById('ten-iban').value = t.iban || '';
   document.getElementById('ten-note').value = t.note || '';
 
