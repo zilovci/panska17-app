@@ -43,7 +43,7 @@ async function loadFinance() {
     expCat.innerHTML = cats.map(function(c) {
       return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '">' + c.name + '</option>';
     }).join('');
-    expCat.onchange = function() { window.loadCategoryPreset(this.value); window.updateAllocPreview(); };
+    expCat.onchange = function() { window.loadCategoryPreset(this.value); window.updateAllocPreview(); if (window.updateMonthsVisibility) window.updateMonthsVisibility(); };
   }
 
   // Zone checkboxes
@@ -51,16 +51,60 @@ async function loadFinance() {
   if (zoneChecks) {
     zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
-      return '<div class="flex items-center space-x-1.5 bg-white rounded-lg px-2 py-1.5">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + (z.tempering_pct || 0) + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+      var temper = z.tempering_pct || 0;
+      return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
         '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
           '<option value="owner">vlastník</option>' +
         '</select>' +
+        '<span data-months-zone="' + z.id + '" class="alloc-months-wrap hidden flex items-center gap-0.5">' +
+          '<span class="text-[7px] text-orange-500 font-bold">obsadené</span>' +
+          '<input type="number" min="0" max="12" step="1" data-months-input="' + z.id + '" class="alloc-months-input w-7 text-center border border-orange-300 rounded px-0.5 py-0 text-[9px] font-bold text-orange-600" onchange="window.updateAllocPreview()" oninput="window.updateAllocPreview()">' +
+          '<span class="text-[7px] text-orange-400 font-bold alloc-months-total">/12 mes.</span>' +
+        '</span>' +
       '</div>';
     }).join('');
   }
+
+  // Helper: calculate total months in billing period
+  window.getPeriodMonths = function() {
+    var pf = document.getElementById('exp-period-from').value;
+    var pt = document.getElementById('exp-period-to').value;
+    if (!pf || !pt) return 12;
+    var d1 = new Date(pf), d2 = new Date(pt);
+    var months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
+    return Math.max(1, Math.min(36, months));
+  };
+
+  // Show/hide months inputs based on category and period
+  window.updateMonthsVisibility = function() {
+    var catSel = document.getElementById('exp-category');
+    var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+    var isHeating = selectedCatName === 'Vykurovanie';
+    var totalMonths = window.getPeriodMonths();
+
+    var monthsWraps = document.querySelectorAll('.alloc-months-wrap');
+    for (var m = 0; m < monthsWraps.length; m++) {
+      var zoneId = monthsWraps[m].getAttribute('data-months-zone');
+      var cb = document.querySelector('.alloc-zone-cb[value="' + zoneId + '"]');
+      var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+      var isChecked = cb ? cb.checked : false;
+      // Show only for heating, checked zones with tempering > 0
+      var show = isHeating && isChecked && temper > 0;
+      monthsWraps[m].classList.toggle('hidden', !show);
+      // Update total label and default value
+      var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
+      if (totalLabel) totalLabel.textContent = '/' + totalMonths + ' mes.';
+      var inp = monthsWraps[m].querySelector('.alloc-months-input');
+      if (inp) {
+        inp.max = totalMonths;
+        // If input is empty or exceeds total, set to total (full occupation)
+        if (!inp.value || parseInt(inp.value) > totalMonths) inp.value = totalMonths;
+      }
+    }
+  };
 
   // Year dropdown
   var yearSel = document.getElementById('fin-year');
@@ -504,6 +548,11 @@ window.showAddExpense = function() {
   window.clearAllocChecks();
   var payerSels = document.querySelectorAll('.alloc-payer-sel');
   for (var p = 0; p < payerSels.length; p++) { payerSels[p].value = 'tenant'; payerSels[p].classList.add('hidden'); }
+  // Reset months inputs
+  var monthsInputs = document.querySelectorAll('.alloc-months-input');
+  for (var mi = 0; mi < monthsInputs.length; mi++) { monthsInputs[mi].value = ''; }
+  var monthsWraps = document.querySelectorAll('.alloc-months-wrap');
+  for (var mw = 0; mw < monthsWraps.length; mw++) { monthsWraps[mw].classList.add('hidden'); }
   var catSel = document.getElementById('exp-category');
   if (catSel && catSel.value) window.loadCategoryPreset(catSel.value);
   document.getElementById('modal-expense').classList.remove('hidden');
@@ -574,6 +623,9 @@ window.updateAllocPreview = function() {
     if (payerSel) payerSel.classList.toggle('hidden', !allCbs[k].checked);
   }
 
+  // Update months visibility for heating
+  if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+
   var checkedZones = window.getSelectedAllocZones();
   var preview = document.getElementById('exp-alloc-preview');
   var rows = document.getElementById('exp-alloc-rows');
@@ -594,7 +646,35 @@ window.updateAllocPreview = function() {
   var catSel = document.getElementById('exp-category');
   var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
   var isHeating = selectedCatName === 'Vykurovanie';
+  var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
 
+  // === TIME-WEIGHTED ALLOCATION ===
+  // For each checked zone: check if it has partial occupation (months < totalMonths)
+  // If so, split into tenant portion and owner-tempered portion
+  var timeWeightedSplits = []; // { zoneId, tenantEffArea, ownerEffArea, temper, monthsOcc, totalMonths }
+
+  if (isHeating) {
+    checkedZones.forEach(function(z) {
+      var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+      var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+      if (temper > 0) {
+        var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
+        var monthsOcc = monthsInput ? (parseInt(monthsInput.value) || totalMonths) : totalMonths;
+        if (monthsOcc < totalMonths) {
+          var monthsTemp = totalMonths - monthsOcc;
+          z.tenantEffArea = z.area * monthsOcc / totalMonths;
+          z.ownerEffArea = z.area * (temper / 100) * monthsTemp / totalMonths;
+          z.monthsOcc = monthsOcc;
+          z.monthsTemp = monthsTemp;
+          z.temper = temper;
+          z.isTimeWeighted = true;
+          timeWeightedSplits.push(z);
+        }
+      }
+    });
+  }
+
+  // Unchecked zones with tempering (full period tempered, owner pays)
   var temperedZones = [];
   if (isHeating) {
     for (var i = 0; i < allCbs.length; i++) {
@@ -608,29 +688,38 @@ window.updateAllocPreview = function() {
     }
   }
 
-  var activeArea = checkedZones.reduce(function(s, z) { return s + z.area; }, 0);
-  var temperedArea = temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
-  var totalArea = activeArea + temperedArea;
+  // Calculate total effective area
+  var totalArea = 0;
+  checkedZones.forEach(function(z) {
+    if (z.isTimeWeighted) {
+      totalArea += z.tenantEffArea + z.ownerEffArea;
+    } else {
+      totalArea += z.area;
+    }
+  });
+  totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
-  // Split into tenant and owner
+  // Split into display groups
   var tenantZones = checkedZones.filter(function(z) { return z.payer === 'tenant'; });
   var ownerZones = checkedZones.filter(function(z) { return z.payer === 'owner'; });
 
   var html = '';
 
-  // Tenant zones
+  // === TENANT ZONES ===
   if (tenantZones.length > 0) {
     html += '<p class="text-[8px] font-black text-green-600 uppercase mb-1">Nájomca platí</p>';
     var tenantTotal = 0;
     html += tenantZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
-      var pct = totalArea > 0 ? (z.area / totalArea * 100) : 0;
+      var effArea = z.isTimeWeighted ? z.tenantEffArea : z.area;
+      var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = amount * pct / 100;
       tenantTotal += amt;
+      var timeNote = z.isTimeWeighted ? ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>' : '';
       return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
-        '<span class="font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
-        '<span class="text-slate-400 w-12 text-right">' + z.area + ' m²</span>' +
+        '<span class="font-bold text-slate-600 truncate flex-1">' + label + timeNote + '</span>' +
+        '<span class="text-slate-400 w-14 text-right">' + effArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-blue-600 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-slate-800 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
       '</div>';
@@ -639,27 +728,47 @@ window.updateAllocPreview = function() {
       '<span>Nájomcovia spolu</span><span>' + tenantTotal.toFixed(2) + ' €</span></div>';
   }
 
-  // Owner zones (from checkboxes)
-  if (ownerZones.length > 0 || temperedZones.length > 0) {
+  // === OWNER ZONES ===
+  // Collect all owner items: explicit owner zones + time-weighted tempered portions + unchecked tempered
+  var hasOwnerItems = ownerZones.length > 0 || temperedZones.length > 0 || timeWeightedSplits.some(function(z) { return z.payer === 'tenant'; });
+
+  if (hasOwnerItems) {
     html += '<div class="border-t border-orange-200 mt-2 pt-2">' +
       '<p class="text-[8px] font-black text-orange-500 uppercase mb-1">Vlastník platí</p>';
     var ownerTotal = 0;
 
+    // Explicit owner zones (checked with payer=owner)
     html += ownerZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
-      var pct = totalArea > 0 ? (z.area / totalArea * 100) : 0;
+      var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
+      var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = amount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
         '<span class="font-bold text-orange-600 truncate flex-1">' + label + '</span>' +
-        '<span class="text-orange-400 w-12 text-right">' + z.area + ' m²</span>' +
+        '<span class="text-orange-400 w-14 text-right">' + effArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
       '</div>';
     }).join('');
 
-    // Tempered (heating only)
+    // Time-weighted tempered portions (from tenant zones with partial occupation)
+    html += timeWeightedSplits.filter(function(z) { return z.payer === 'tenant'; }).map(function(z) {
+      var zone = allZones.find(function(az) { return az.id === z.id; });
+      var label = zone ? (zone.tenant_name || zone.name) : z.id;
+      var pct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
+      var amt = amount * pct / 100;
+      ownerTotal += amt;
+      return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
+        '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' <span class="text-orange-400">(kúr.' + z.temper + '% × ' + z.monthsTemp + ' mes.)</span></span>' +
+        '<span class="text-orange-400 w-14 text-right">' + z.ownerEffArea.toFixed(1) + ' m²</span>' +
+        '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
+        '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
+      '</div>';
+    }).join('');
+
+    // Unchecked tempered zones (full period)
     html += temperedZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
@@ -668,7 +777,7 @@ window.updateAllocPreview = function() {
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
         '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' (kúrenie ' + z.temper + '%)</span>' +
-        '<span class="text-orange-400 w-12 text-right">' + z.effectiveArea.toFixed(1) + ' m²</span>' +
+        '<span class="text-orange-400 w-14 text-right">' + z.effectiveArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
       '</div>';
@@ -679,17 +788,17 @@ window.updateAllocPreview = function() {
     html += '</div>';
   }
 
-  // Unallocated
+  // Unallocated check
   if (amount > 0 && checkedZones.length > 0) {
-    var allTotal = checkedZones.reduce(function(s, z) {
-      var pct = totalArea > 0 ? (z.area / totalArea * 100) : 0;
-      return s + amount * pct / 100;
-    }, 0);
-    var tempTot = temperedZones.reduce(function(s, z) {
-      var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
-      return s + amount * pct / 100;
-    }, 0);
-    var unallocated = amount - allTotal - tempTot;
+    var grandTotal = 0;
+    checkedZones.forEach(function(z) {
+      var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
+      grandTotal += amount * (totalArea > 0 ? effArea / totalArea * 100 : 0) / 100;
+    });
+    temperedZones.forEach(function(z) {
+      grandTotal += amount * (totalArea > 0 ? z.effectiveArea / totalArea * 100 : 0) / 100;
+    });
+    var unallocated = amount - grandTotal;
     if (Math.abs(unallocated) > 0.01) {
       html += '<div class="flex justify-between text-[9px] font-black text-red-500 px-2 pt-2 border-t border-red-200 mt-2">' +
         '<span>Nerozpočítané</span><span>' + unallocated.toFixed(2) + ' €</span></div>';
@@ -699,10 +808,6 @@ window.updateAllocPreview = function() {
   rows.innerHTML = html;
   preview.classList.remove('hidden');
 };
-
-// Update preview when amount changes
-var expAmountInput = document.getElementById('exp-amount');
-if (expAmountInput) expAmountInput.addEventListener('input', function() { window.updateAllocPreview(); });
 
 // ============ ALLOCATION METHOD ============
 
@@ -957,8 +1062,14 @@ window.calcMeterAllocation = async function() {
 // Recalc meter when period changes
 var pfInput = document.getElementById('exp-period-from');
 var ptInput = document.getElementById('exp-period-to');
-if (pfInput) pfInput.addEventListener('change', function() { if (currentAllocMethod === 'meter') window.calcMeterAllocation(); });
-if (ptInput) ptInput.addEventListener('change', function() { if (currentAllocMethod === 'meter') window.calcMeterAllocation(); });
+if (pfInput) pfInput.addEventListener('change', function() {
+  if (currentAllocMethod === 'meter') window.calcMeterAllocation();
+  else window.updateAllocPreview();
+});
+if (ptInput) ptInput.addEventListener('change', function() {
+  if (currentAllocMethod === 'meter') window.calcMeterAllocation();
+  else window.updateAllocPreview();
+});
 
 // Amount change → recalc active method
 var expAmountInput = document.getElementById('exp-amount');
@@ -1046,6 +1157,28 @@ window.saveExpense = async function() {
         var catSel = document.getElementById('exp-category');
         var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
         var isHeating = selectedCatName === 'Vykurovanie';
+        var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+
+        // Get time-weighted info for checked zones
+        zones.forEach(function(z) {
+          var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+          var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+          z.temper = temper;
+          z.isTimeWeighted = false;
+          if (isHeating && temper > 0) {
+            var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
+            var monthsOcc = monthsInput ? (parseInt(monthsInput.value) || totalMonths) : totalMonths;
+            if (monthsOcc < totalMonths) {
+              z.isTimeWeighted = true;
+              z.monthsOcc = monthsOcc;
+              z.monthsTemp = totalMonths - monthsOcc;
+              z.tenantEffArea = z.area * monthsOcc / totalMonths;
+              z.ownerEffArea = z.area * (temper / 100) * z.monthsTemp / totalMonths;
+            }
+          }
+          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
+          z.payer = sel ? sel.value : 'tenant';
+        });
 
         var allCbs = document.querySelectorAll('.alloc-zone-cb');
         var temperedZones = [];
@@ -1061,21 +1194,52 @@ window.saveExpense = async function() {
           }
         }
 
-        var activeArea = zones.reduce(function(s, z) { return s + z.area; }, 0);
-        var temperedArea = temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
-        var totalArea = activeArea + temperedArea;
+        // Calculate total effective area
+        var totalArea = 0;
+        zones.forEach(function(z) {
+          if (z.isTimeWeighted) {
+            totalArea += z.tenantEffArea + z.ownerEffArea;
+          } else {
+            totalArea += z.area;
+          }
+        });
+        totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
         zones.forEach(function(z) {
-          var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
-          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
-          var payer = sel ? sel.value : 'tenant';
-          allocs.push({
-            expense_id: expenseId,
-            zone_id: z.id,
-            percentage: parseFloat(pct.toFixed(2)),
-            amount: parseFloat((data.amount * pct / 100).toFixed(2)),
-            payer: payer
-          });
+          if (z.isTimeWeighted) {
+            // Split into tenant and owner allocations
+            var tenantPct = totalArea > 0 ? (z.tenantEffArea / totalArea * 100) : 0;
+            var ownerPct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
+            allocs.push({
+              expense_id: expenseId,
+              zone_id: z.id,
+              percentage: parseFloat(tenantPct.toFixed(2)),
+              amount: parseFloat((data.amount * tenantPct / 100).toFixed(2)),
+              payer: z.payer,
+              months_occupied: z.monthsOcc,
+              months_total: totalMonths
+            });
+            if (z.payer === 'tenant' && ownerPct > 0) {
+              allocs.push({
+                expense_id: expenseId,
+                zone_id: z.id,
+                percentage: parseFloat(ownerPct.toFixed(2)),
+                amount: parseFloat((data.amount * ownerPct / 100).toFixed(2)),
+                payer: 'owner',
+                months_occupied: 0,
+                months_total: totalMonths
+              });
+            }
+          } else {
+            var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+            allocs.push({
+              expense_id: expenseId,
+              zone_id: z.id,
+              percentage: parseFloat(pct.toFixed(2)),
+              amount: parseFloat((data.amount * pct / 100).toFixed(2)),
+              payer: z.payer
+            });
+          }
         });
         temperedZones.forEach(function(z) {
           var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
