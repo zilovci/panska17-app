@@ -9,7 +9,19 @@ ADD COLUMN IF NOT EXISTS months_occupied smallint DEFAULT NULL;
 ALTER TABLE expense_allocations 
 ADD COLUMN IF NOT EXISTS months_total smallint DEFAULT NULL;
 
--- Komentár: 
+-- Pravidlo pre prázdne zóny na kategórii
+-- 'owner'         = vlastník platí plnú plochu za prázdne mesiace (poistka, daň)
+-- 'owner_temper'   = vlastník platí zníženú plochu podľa tempering % (vykurovanie)
+-- 'exclude'        = prázdne mesiace sa vylúčia, platia len obsadení (smetie, voda, upratovanie)
+ALTER TABLE cost_categories
+ADD COLUMN IF NOT EXISTS empty_zone_rule text DEFAULT 'owner';
+
+-- Nastaviť defaultné pravidlá pre existujúce kategórie
+UPDATE cost_categories SET empty_zone_rule = 'owner_temper' WHERE name = 'Vykurovanie';
+UPDATE cost_categories SET empty_zone_rule = 'exclude' WHERE name IN ('Odvoz smetí', 'Voda a kanalizácia', 'Upratovanie');
+UPDATE cost_categories SET empty_zone_rule = 'owner' WHERE name IN ('EPS a PO', 'Správa', 'Náklady na budovu', 'Údržba', 'Ostatné');
+
+-- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov
--- Zvyšných 5 mesiacov je temperovanie (owner platí)
+-- empty_zone_rule určuje čo sa stane so zvyšnými 5 mesiacmi

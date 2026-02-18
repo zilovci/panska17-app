@@ -46,7 +46,7 @@ async function loadFinance() {
   var expCat = document.getElementById('exp-category');
   if (expCat) {
     expCat.innerHTML = cats.map(function(c) {
-      return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '">' + c.name + '</option>';
+      return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '" data-empty-rule="' + (c.empty_zone_rule || 'owner') + '">' + c.name + '</option>';
     }).join('');
     expCat.onchange = function() { window.loadCategoryPreset(this.value); window.updateAllocPreview(); if (window.updateMonthsVisibility) window.updateMonthsVisibility(); };
   }
@@ -706,16 +706,18 @@ window.updateAllocPreview = function() {
     z.payer = sel ? sel.value : 'tenant';
   });
 
-  // Category info
+  // Category empty zone rule
   var catSel = document.getElementById('exp-category');
-  var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
-  var isHeating = selectedCatName === 'Vykurovanie';
+  var selectedOpt = catSel ? catSel.options[catSel.selectedIndex] : null;
+  var selectedCatName = selectedOpt ? selectedOpt.text : '';
+  var emptyRule = selectedOpt ? (selectedOpt.getAttribute('data-empty-rule') || 'owner') : 'owner';
+  // 'exclude'       = prázdne mesiace sa nepočítajú nikomu (smetie, voda, upratovanie)
+  // 'owner'         = vlastník platí plnú plochu (poistka, daň)
+  // 'owner_temper'  = vlastník platí tempering % (vykurovanie)
+  var isHeating = emptyRule === 'owner_temper';
   var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
 
   // === TIME-WEIGHTED ALLOCATION (all area-based categories) ===
-  // For each checked zone: check if months occupied < total months
-  // Heating: empty months → owner pays at tempering %
-  // Other (smetie, voda, elektrina...): empty months → owner pays at 100% area
   var timeWeightedSplits = [];
 
   checkedZones.forEach(function(z) {
@@ -728,14 +730,26 @@ window.updateAllocPreview = function() {
     if (monthsOcc < totalMonths) {
       var monthsEmpty = totalMonths - monthsOcc;
       z.tenantEffArea = z.area * monthsOcc / totalMonths;
-      // Heating: owner portion weighted by tempering %. Non-heating: owner pays 100% of area for empty months
-      var ownerWeight = isHeating ? (temper / 100) : 1;
-      z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
+      
+      // Owner portion depends on rule
+      if (emptyRule === 'exclude') {
+        z.ownerEffArea = 0; // nobody pays for empty months
+      } else if (emptyRule === 'owner_temper') {
+        z.ownerEffArea = z.area * (temper / 100) * monthsEmpty / totalMonths;
+      } else { // 'owner'
+        z.ownerEffArea = z.area * monthsEmpty / totalMonths;
+      }
+      
       z.monthsOcc = monthsOcc;
       z.monthsEmpty = monthsEmpty;
       z.temper = temper;
       z.isTimeWeighted = true;
-      z.ownerLabel = isHeating ? ('kúr.' + temper + '% × ' + monthsEmpty + ' mes.') : ('prázdna ' + monthsEmpty + ' mes.');
+      z.emptyRule = emptyRule;
+      if (emptyRule === 'owner_temper') {
+        z.ownerLabel = 'kúr.' + temper + '% × ' + monthsEmpty + ' mes.';
+      } else if (emptyRule === 'owner') {
+        z.ownerLabel = 'prázdna ' + monthsEmpty + ' mes.';
+      }
       timeWeightedSplits.push(z);
     }
   });
@@ -795,7 +809,7 @@ window.updateAllocPreview = function() {
   }
 
   // === OWNER ZONES ===
-  var hasOwnerItems = ownerZones.length > 0 || temperedZones.length > 0 || timeWeightedSplits.some(function(z) { return z.payer === 'tenant'; });
+  var hasOwnerItems = ownerZones.length > 0 || temperedZones.length > 0 || timeWeightedSplits.some(function(z) { return z.payer === 'tenant' && z.emptyRule !== 'exclude' && z.ownerEffArea > 0; });
 
   if (hasOwnerItems) {
     html += '<div class="border-t border-orange-200 mt-2 pt-2">' +
@@ -819,7 +833,8 @@ window.updateAllocPreview = function() {
     }).join('');
 
     // Time-weighted empty portions (from tenant zones with partial occupation)
-    html += timeWeightedSplits.filter(function(z) { return z.payer === 'tenant'; }).map(function(z) {
+    // Only show for 'owner' and 'owner_temper' rules, NOT for 'exclude'
+    html += timeWeightedSplits.filter(function(z) { return z.payer === 'tenant' && z.emptyRule !== 'exclude' && z.ownerEffArea > 0; }).map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       var pct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
@@ -1220,8 +1235,10 @@ window.saveExpense = async function() {
         var zones = window.getSelectedAllocZones();
 
         var catSel = document.getElementById('exp-category');
-        var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
-        var isHeating = selectedCatName === 'Vykurovanie';
+        var selectedOpt = catSel ? catSel.options[catSel.selectedIndex] : null;
+        var selectedCatName = selectedOpt ? selectedOpt.text : '';
+        var emptyRule = selectedOpt ? (selectedOpt.getAttribute('data-empty-rule') || 'owner') : 'owner';
+        var isHeating = emptyRule === 'owner_temper';
         var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
 
         // Get time-weighted info for checked zones
@@ -1235,12 +1252,13 @@ window.saveExpense = async function() {
           if (isNaN(monthsOcc)) monthsOcc = totalMonths;
           if (monthsOcc < totalMonths) {
             var monthsEmpty = totalMonths - monthsOcc;
-            var ownerWeight = isHeating ? (temper / 100) : 1;
+            var ownerWeight = emptyRule === 'exclude' ? 0 : (emptyRule === 'owner_temper' ? (temper / 100) : 1);
             z.isTimeWeighted = true;
             z.monthsOcc = monthsOcc;
             z.monthsEmpty = monthsEmpty;
             z.tenantEffArea = z.area * monthsOcc / totalMonths;
             z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
+            z.emptyRule = emptyRule;
           }
           var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
           z.payer = sel ? sel.value : 'tenant';
