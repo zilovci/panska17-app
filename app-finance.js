@@ -256,7 +256,7 @@ async function loadMeters() {
   // Zone checkboxes in meter modal
   var mtrZones = document.getElementById('mtr-zones');
   if (mtrZones) {
-    mtrZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+    mtrZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory'; }).map(function(z) {
       return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
         '<input type="checkbox" value="' + z.id + '" class="mtr-zone-cb rounded">' +
         '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
@@ -270,6 +270,15 @@ async function loadMeters() {
     mtrParent.innerHTML = '<option value="">— žiadny —</option>' +
       meters.filter(function(m) { return m.is_main; }).map(function(m) {
         return '<option value="' + m.id + '">' + m.name + '</option>';
+      }).join('');
+  }
+
+  // Category override dropdown
+  var mtrCat = document.getElementById('mtr-category');
+  if (mtrCat) {
+    mtrCat.innerHTML = '<option value="">— podľa typu merača —</option>' +
+      allCategories.map(function(c) {
+        return '<option value="' + c.id + '">' + c.name + '</option>';
       }).join('');
   }
 
@@ -293,6 +302,10 @@ async function loadMeters() {
     var consumption = (last && prev) ? (parseFloat(last.value) - parseFloat(prev.value)).toFixed(2) : null;
     var badges = (m.is_main ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">HLAVNÝ</span> ' : '') +
       (m.parent_meter_id ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">SUB</span> ' : '');
+    if (m.cost_category_id) {
+      var cat = allCategories.find(function(c) { return c.id === m.cost_category_id; });
+      if (cat) badges += '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600">→ ' + cat.name + '</span> ';
+    }
 
     return '<div class="bg-slate-50 rounded-xl p-4">' +
       '<div class="flex items-center justify-between mb-2">' +
@@ -349,6 +362,7 @@ window.showAddMeter = function() {
   document.getElementById('mtr-is-main').checked = false;
   document.getElementById('mtr-parent').value = '';
   document.getElementById('mtr-number').value = '';
+  document.getElementById('mtr-category').value = '';
   document.getElementById('mtr-note').value = '';
   document.getElementById('modal-meter').classList.remove('hidden');
 };
@@ -363,6 +377,7 @@ window.editMeter = async function(id) {
   document.getElementById('mtr-is-main').checked = m.is_main || false;
   document.getElementById('mtr-parent').value = m.parent_meter_id || '';
   document.getElementById('mtr-number').value = m.meter_number || '';
+  document.getElementById('mtr-category').value = m.cost_category_id || '';
   document.getElementById('mtr-note').value = m.note || '';
 
   // Load zone assignments
@@ -385,6 +400,7 @@ window.saveMeter = async function() {
     is_main: document.getElementById('mtr-is-main').checked,
     parent_meter_id: document.getElementById('mtr-parent').value || null,
     meter_number: document.getElementById('mtr-number').value.trim() || null,
+    cost_category_id: document.getElementById('mtr-category').value || null,
     note: document.getElementById('mtr-note').value.trim() || null
   };
   if (!data.name) { alert('Vyplňte názov.'); return; }
@@ -952,18 +968,25 @@ window.calcMeterAllocation = async function() {
   // Determine meter type from category
   var catSel = document.getElementById('exp-category');
   var catName = catSel ? catSel.options[catSel.selectedIndex].text : '';
+  var catId = catSel ? catSel.value : '';
   var meterType = catMeterType[catName];
 
-  if (!meterType) {
-    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">Pre túto kategóriu nie sú merače. Použite rozpočítanie podľa plochy.</p>';
-    preview.classList.add('hidden');
-    return;
+  // Load meters: those assigned to this category, OR default type without category override
+  var meters = [];
+  if (catId) {
+    var { data: catMeters = [] } = await sb.from('meters').select('*').eq('cost_category_id', catId);
+    meters = meters.concat(catMeters);
+  }
+  if (meterType) {
+    var { data: typeMeters = [] } = await sb.from('meters').select('*').eq('type', meterType).is('cost_category_id', null);
+    typeMeters.forEach(function(m) {
+      if (!meters.find(function(em) { return em.id === m.id; })) meters.push(m);
+    });
   }
 
-  // Load meters of this type
-  var { data: meters = [] } = await sb.from('meters').select('*').eq('type', meterType);
   if (meters.length === 0) {
-    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">Žiadne ' + meterType + ' merače. Pridajte merače v sekcii Merače.</p>';
+    var hint = meterType ? ('Žiadne ' + meterType + ' merače.') : 'Pre túto kategóriu nie sú merače.';
+    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">' + hint + ' Pridajte merače v sekcii Merače alebo nastavte kategóriu na merači.</p>';
     preview.classList.add('hidden');
     return;
   }

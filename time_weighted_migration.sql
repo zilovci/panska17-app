@@ -24,6 +24,11 @@ UPDATE cost_categories SET empty_zone_rule = 'owner' WHERE name IN ('EPS a PO', 
 -- Elektrina ide podľa merača
 UPDATE cost_categories SET allocation_method = 'meter' WHERE name = 'Elektrina' AND (allocation_method IS NULL OR allocation_method = 'area');
 
+-- Merač môže patriť do inej kategórie než default podľa typu
+-- Napr. elektromer v kotolni → Vykurovanie, vodomer na dvore → Upratovanie
+ALTER TABLE meters
+ADD COLUMN IF NOT EXISTS cost_category_id uuid REFERENCES cost_categories(id) DEFAULT NULL;
+
 -- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov
