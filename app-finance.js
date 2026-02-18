@@ -48,7 +48,15 @@ async function loadFinance() {
     expCat.innerHTML = cats.map(function(c) {
       return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '" data-empty-rule="' + (c.empty_zone_rule || 'owner') + '">' + c.name + '</option>';
     }).join('');
-    expCat.onchange = function() { window.loadCategoryPreset(this.value); window.updateAllocPreview(); if (window.updateMonthsVisibility) window.updateMonthsVisibility(); };
+    expCat.onchange = function() {
+      // Auto-switch allocation method based on category
+      var opt = this.options[this.selectedIndex];
+      var method = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+      window.setAllocMethod(method);
+      window.loadCategoryPreset(this.value);
+      window.updateAllocPreview();
+      if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+    };
   }
 
   // Zone checkboxes
@@ -618,7 +626,12 @@ window.showAddExpense = function() {
   var monthsWraps = document.querySelectorAll('.alloc-months-wrap');
   for (var mw = 0; mw < monthsWraps.length; mw++) { monthsWraps[mw].classList.add('hidden'); }
   var catSel = document.getElementById('exp-category');
-  if (catSel && catSel.value) window.loadCategoryPreset(catSel.value);
+  if (catSel && catSel.value) {
+    var opt = catSel.options[catSel.selectedIndex];
+    var method = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+    window.setAllocMethod(method);
+    window.loadCategoryPreset(catSel.value);
+  }
   document.getElementById('modal-expense').classList.remove('hidden');
 };
 

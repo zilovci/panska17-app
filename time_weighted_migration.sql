@@ -21,6 +21,9 @@ UPDATE cost_categories SET empty_zone_rule = 'owner_temper' WHERE name = 'Vykuro
 UPDATE cost_categories SET empty_zone_rule = 'exclude' WHERE name IN ('Odvoz smetí', 'Voda a kanalizácia', 'Upratovanie');
 UPDATE cost_categories SET empty_zone_rule = 'owner' WHERE name IN ('EPS a PO', 'Správa', 'Náklady na budovu', 'Údržba', 'Ostatné');
 
+-- Elektrina ide podľa merača
+UPDATE cost_categories SET allocation_method = 'meter' WHERE name = 'Elektrina' AND (allocation_method IS NULL OR allocation_method = 'area');
+
 -- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov
