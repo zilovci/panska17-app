@@ -43,6 +43,13 @@ ADD COLUMN IF NOT EXISTS cost_type text DEFAULT 'operating';
 ALTER TABLE expenses
 ADD COLUMN IF NOT EXISTS amort_years smallint DEFAULT NULL;
 
+-- Fakturačná plocha (ak iná než plocha v rozpočte budovy)
+-- Napr. restaurácia: area_m2 = 120 (pôvodná stavba),
+-- billing_area_m2 = 345 (celý priestor vrátane prístavby čiernej stavby)
+-- Pool/denominator vždy používa area_m2, numerátor/faktúra billing_area_m2
+ALTER TABLE zones
+ADD COLUMN IF NOT EXISTS billing_area_m2 numeric(10,2) DEFAULT NULL;
+
 -- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov

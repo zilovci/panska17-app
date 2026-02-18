@@ -19,8 +19,8 @@ async function loadFinance() {
     zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory'; }).map(function(z) {
       var label = z.tenant_name || z.name;
       var temper = z.tempering_pct || 0;
-      var excluded = z.exclude_from_shared || false;
-      return '<div class="bg-slate-50 rounded-xl px-3 py-2' + (excluded ? ' border-2 border-red-300 bg-red-50' : '') + '">' +
+      var hasBillingArea = z.billing_area_m2 && z.billing_area_m2 !== z.area_m2;
+      return '<div class="bg-slate-50 rounded-xl px-3 py-2' + (hasBillingArea ? ' border-2 border-amber-300' : '') + '">' +
         '<div class="flex items-center space-x-2">' +
           '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
           '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-14 text-right border border-slate-200 rounded-lg px-1 py-1 text-[10px] font-bold">' +
@@ -31,10 +31,11 @@ async function loadFinance() {
           '<input type="number" step="1" min="0" max="100" value="' + temper + '" data-temper-zone="' + z.id + '" class="zone-temper-input w-10 text-right border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold">' +
           '<span class="text-[8px] text-slate-400">%</span>' +
         '</div>' +
-        '<label class="flex items-center space-x-1 mt-1 cursor-pointer">' +
-          '<input type="checkbox" data-exclude-zone="' + z.id + '" class="zone-exclude-cb rounded text-red-500"' + (excluded ? ' checked' : '') + '>' +
-          '<span class="text-[7px] font-bold text-red-400">Vylúčiť zo spoločných nákladov</span>' +
-        '</label>' +
+        '<div class="flex items-center space-x-1 mt-1">' +
+          '<span class="text-[8px] text-amber-500">Fakturačná plocha</span>' +
+          '<input type="number" step="0.01" value="' + (z.billing_area_m2 || '') + '" data-billing-zone="' + z.id + '" class="zone-billing-input w-14 text-right border border-amber-200 rounded px-1 py-0.5 text-[9px] font-bold" placeholder="—">' +
+          '<span class="text-[8px] text-amber-400">m²</span>' +
+        '</div>' +
       '</div>';
     }).join('');
   }
@@ -67,14 +68,15 @@ async function loadFinance() {
   // Zone checkboxes
   var zoneChecks = document.getElementById('exp-zone-checks');
   if (zoneChecks) {
-    zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor' && !z.exclude_from_shared; }).map(function(z) {
+    zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
       var temper = z.tempering_pct || 0;
       var lease = z.tenant_id ? tenantLeaseMap[z.tenant_id] : null;
       var leaseFrom = (lease && lease.lease_from) ? lease.lease_from : '';
       var leaseTo = (lease && lease.lease_to) ? lease.lease_to : '';
+      var billingArea = z.billing_area_m2 || z.area_m2 || 0;
       return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-billing-area="' + billingArea + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
         '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
@@ -614,17 +616,17 @@ window.saveZoneAreas = async function() {
     var area = parseFloat(inputs[i].value) || 0;
     var temperInput = document.querySelector('[data-temper-zone="' + zoneId + '"]');
     var temperPct = temperInput ? (parseFloat(temperInput.value) || 0) : 0;
-    var excludeCb = document.querySelector('[data-exclude-zone="' + zoneId + '"]');
-    var excluded = excludeCb ? excludeCb.checked : false;
-    await sb.from('zones').update({ area_m2: area, tempering_pct: temperPct, exclude_from_shared: excluded }).eq('id', zoneId);
+    var billingInput = document.querySelector('[data-billing-zone="' + zoneId + '"]');
+    var billingArea = billingInput && billingInput.value ? parseFloat(billingInput.value) : null;
+    await sb.from('zones').update({ area_m2: area, tempering_pct: temperPct, billing_area_m2: billingArea }).eq('id', zoneId);
   }
   for (var j = 0; j < allZones.length; j++) {
     var inp = document.querySelector('[data-zone-id="' + allZones[j].id + '"]');
     if (inp) allZones[j].area_m2 = parseFloat(inp.value) || 0;
     var tmp = document.querySelector('[data-temper-zone="' + allZones[j].id + '"]');
     if (tmp) allZones[j].tempering_pct = parseFloat(tmp.value) || 0;
-    var excl = document.querySelector('[data-exclude-zone="' + allZones[j].id + '"]');
-    if (excl) allZones[j].exclude_from_shared = excl.checked;
+    var bil = document.querySelector('[data-billing-zone="' + allZones[j].id + '"]');
+    if (bil) allZones[j].billing_area_m2 = bil.value ? parseFloat(bil.value) : null;
   }
   alert('Uložené.');
 };
@@ -727,7 +729,9 @@ window.getSelectedAllocZones = function() {
   var cbs = document.querySelectorAll('.alloc-zone-cb:checked');
   var zones = [];
   for (var i = 0; i < cbs.length; i++) {
-    zones.push({ id: cbs[i].value, area: parseFloat(cbs[i].getAttribute('data-area')) || 0 });
+    var area = parseFloat(cbs[i].getAttribute('data-area')) || 0;
+    var billingArea = parseFloat(cbs[i].getAttribute('data-billing-area')) || area;
+    zones.push({ id: cbs[i].value, area: area, billingArea: billingArea });
   }
   return zones;
 };
@@ -804,13 +808,14 @@ window.updateAllocPreview = function() {
     if (monthsOcc < totalMonths) {
       var monthsEmpty = totalMonths - monthsOcc;
       z.tenantEffArea = z.area * monthsOcc / totalMonths;
+      z.tenantEffBilling = z.billingArea * monthsOcc / totalMonths;
       
-      // Owner portion depends on rule
+      // Owner portion depends on rule (uses pool area, not billing)
       if (emptyRule === 'exclude') {
-        z.ownerEffArea = 0; // nobody pays for empty months
+        z.ownerEffArea = 0;
       } else if (emptyRule === 'owner_temper') {
         z.ownerEffArea = z.area * (temper / 100) * monthsEmpty / totalMonths;
-      } else { // 'owner'
+      } else {
         z.ownerEffArea = z.area * monthsEmpty / totalMonths;
       }
       
@@ -842,13 +847,13 @@ window.updateAllocPreview = function() {
     }
   }
 
-  // Calculate total effective area
+  // Calculate total effective area (pool = building area, NOT billing area)
   var totalArea = 0;
   checkedZones.forEach(function(z) {
     if (z.isTimeWeighted) {
       totalArea += z.tenantEffArea + z.ownerEffArea;
     } else {
-      totalArea += z.area;
+      totalArea += z.area; // pool uses building area
     }
   });
   totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
@@ -866,13 +871,15 @@ window.updateAllocPreview = function() {
     html += tenantZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
-      var effArea = z.isTimeWeighted ? z.tenantEffArea : z.area;
+      // Billing area for numerator (what tenant gets charged for)
+      var effArea = z.isTimeWeighted ? (z.tenantEffBilling || z.tenantEffArea) : z.billingArea;
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
       tenantTotal += amt;
       var timeNote = z.isTimeWeighted ? ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>' : '';
+      var billingNote = (z.billingArea && z.billingArea !== z.area) ? ' <span class="text-amber-500">[fakt. ' + z.billingArea.toFixed(0) + 'm²]</span>' : '';
       return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
-        '<span class="font-bold text-slate-600 truncate flex-1">' + label + timeNote + '</span>' +
+        '<span class="font-bold text-slate-600 truncate flex-1">' + label + timeNote + billingNote + '</span>' +
         '<span class="text-slate-400 w-14 text-right">' + effArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-blue-600 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-slate-800 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
@@ -1346,6 +1353,7 @@ window.saveExpense = async function() {
             z.monthsOcc = monthsOcc;
             z.monthsEmpty = monthsEmpty;
             z.tenantEffArea = z.area * monthsOcc / totalMonths;
+            z.tenantEffBilling = z.billingArea * monthsOcc / totalMonths;
             z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
             z.emptyRule = emptyRule;
           }
@@ -1381,7 +1389,9 @@ window.saveExpense = async function() {
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
             // Split into tenant and owner allocations
-            var tenantPct = totalArea > 0 ? (z.tenantEffArea / totalArea * 100) : 0;
+            // Tenant: uses billing area for amount, pool area for percentage
+            var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
+            var tenantPct = totalArea > 0 ? (tenantBilling / totalArea * 100) : 0;
             var ownerPct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
             allocs.push({
               expense_id: expenseId,
@@ -1404,7 +1414,9 @@ window.saveExpense = async function() {
               });
             }
           } else {
-            var pct = totalArea > 0 ? (z.area / totalArea * 100) : (100 / zones.length);
+            // Use billing area for tenant charge, pool area for denominator
+            var chargeArea = z.billingArea || z.area;
+            var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
             allocs.push({
               expense_id: expenseId,
               zone_id: z.id,
