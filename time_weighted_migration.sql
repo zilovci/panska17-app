@@ -29,6 +29,10 @@ UPDATE cost_categories SET allocation_method = 'meter' WHERE name = 'Elektrina' 
 ALTER TABLE meters
 ADD COLUMN IF NOT EXISTS cost_category_id uuid REFERENCES cost_categories(id) DEFAULT NULL;
 
+-- Vlastník budovy ako nájomca
+ALTER TABLE tenants
+ADD COLUMN IF NOT EXISTS is_owner boolean DEFAULT false;
+
 -- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov

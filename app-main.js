@@ -140,7 +140,7 @@ window.loadTenants = async function() {
     var zoneNames = tZones.map(function(z) { return z.tenant_name || z.name; }).join(', ');
     return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
       '<div class="flex-1 min-w-0">' +
-        '<p class="text-sm font-bold text-slate-800">' + (t.company_name || t.name) + '</p>' +
+        '<p class="text-sm font-bold text-slate-800">' + (t.is_owner ? '👑 ' : '') + (t.company_name || t.name) + '</p>' +
         '<p class="text-[9px] text-slate-400">' +
           (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
           (t.lease_from ? fmtD(t.lease_from) + ' – ' + (t.lease_to ? fmtD(t.lease_to) : '∞') + ' • ' : '') +
@@ -164,17 +164,30 @@ window.showAddTenant = function() {
   ['ten-name','ten-company','ten-ico','ten-dic','ten-icdph','ten-address','ten-city','ten-zip','ten-email','ten-phone','ten-lease-from','ten-lease-to','ten-iban','ten-rent','ten-advance','ten-note'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
-  // Zone checkboxes
-  var tenZones = document.getElementById('ten-zones');
-  if (tenZones) {
-    tenZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
-      return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
-        '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded">' +
-        '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
-      '</label>';
-    }).join('');
-  }
+  document.getElementById('ten-is-owner').checked = false;
+  // Zone checkboxes - render all, hide Spoločné/Dvor for non-owner
+  window.renderTenantZones();
   document.getElementById('modal-tenant').classList.remove('hidden');
+};
+
+window.renderTenantZones = function(checkedIds) {
+  var isOwner = document.getElementById('ten-is-owner').checked;
+  var tenZones = document.getElementById('ten-zones');
+  if (!tenZones) return;
+  // If no checkedIds passed, read from current checkboxes
+  if (!checkedIds) {
+    checkedIds = [];
+    document.querySelectorAll('.ten-zone-cb:checked').forEach(function(cb) { checkedIds.push(cb.value); });
+  }
+  tenZones.innerHTML = allZones.map(function(z) {
+    var isCommon = z.name === 'Spoločné priestory' || z.name === 'Dvor';
+    if (isCommon && !isOwner) return '';
+    var checked = checkedIds.indexOf(z.id) >= 0 ? ' checked' : '';
+    return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
+      '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded"' + checked + '>' +
+      '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
+    '</label>';
+  }).join('');
 };
 
 window.closeTenantModal = function() {
@@ -198,7 +211,8 @@ window.saveTenant = async function() {
     iban: document.getElementById('ten-iban').value.trim() || null,
     monthly_rent: parseFloat(document.getElementById('ten-rent').value) || 0,
     monthly_advance: parseFloat(document.getElementById('ten-advance').value) || 0,
-    note: document.getElementById('ten-note').value.trim() || null
+    note: document.getElementById('ten-note').value.trim() || null,
+    is_owner: document.getElementById('ten-is-owner').checked
   };
 
   if (!data.name) { alert('Vyplňte meno.'); return; }
@@ -252,18 +266,11 @@ window.editTenant = async function(id) {
   document.getElementById('ten-rent').value = t.monthly_rent || '';
   document.getElementById('ten-advance').value = t.monthly_advance || '';
   document.getElementById('ten-note').value = t.note || '';
+  document.getElementById('ten-is-owner').checked = t.is_owner || false;
 
   // Zone checkboxes
-  var tenZones = document.getElementById('ten-zones');
-  if (tenZones) {
-    tenZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
-      var checked = z.tenant_id === id ? ' checked' : '';
-      return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
-        '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded"' + checked + '>' +
-        '<span class="text-[9px] font-bold text-slate-600">' + (z.tenant_name || z.name) + '</span>' +
-      '</label>';
-    }).join('');
-  }
+  var assignedZoneIds = allZones.filter(function(z) { return z.tenant_id === id; }).map(function(z) { return z.id; });
+  window.renderTenantZones(assignedZoneIds);
 
   document.getElementById('modal-tenant').classList.remove('hidden');
 };
