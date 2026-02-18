@@ -19,7 +19,8 @@ async function loadFinance() {
     zonesGrid.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory'; }).map(function(z) {
       var label = z.tenant_name || z.name;
       var temper = z.tempering_pct || 0;
-      return '<div class="bg-slate-50 rounded-xl px-3 py-2">' +
+      var excluded = z.exclude_from_shared || false;
+      return '<div class="bg-slate-50 rounded-xl px-3 py-2' + (excluded ? ' border-2 border-red-300 bg-red-50' : '') + '">' +
         '<div class="flex items-center space-x-2">' +
           '<span class="text-[9px] font-bold text-slate-600 flex-1 truncate">' + label + '</span>' +
           '<input type="number" step="0.01" value="' + (z.area_m2 || 0) + '" data-zone-id="' + z.id + '" class="zone-area-input w-14 text-right border border-slate-200 rounded-lg px-1 py-1 text-[10px] font-bold">' +
@@ -30,6 +31,10 @@ async function loadFinance() {
           '<input type="number" step="1" min="0" max="100" value="' + temper + '" data-temper-zone="' + z.id + '" class="zone-temper-input w-10 text-right border border-slate-200 rounded px-1 py-0.5 text-[9px] font-bold">' +
           '<span class="text-[8px] text-slate-400">%</span>' +
         '</div>' +
+        '<label class="flex items-center space-x-1 mt-1 cursor-pointer">' +
+          '<input type="checkbox" data-exclude-zone="' + z.id + '" class="zone-exclude-cb rounded text-red-500"' + (excluded ? ' checked' : '') + '>' +
+          '<span class="text-[7px] font-bold text-red-400">Vylúčiť zo spoločných nákladov</span>' +
+        '</label>' +
       '</div>';
     }).join('');
   }
@@ -62,7 +67,7 @@ async function loadFinance() {
   // Zone checkboxes
   var zoneChecks = document.getElementById('exp-zone-checks');
   if (zoneChecks) {
-    zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
+    zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor' && !z.exclude_from_shared; }).map(function(z) {
       var label = z.tenant_name || z.name;
       var temper = z.tempering_pct || 0;
       var lease = z.tenant_id ? tenantLeaseMap[z.tenant_id] : null;
@@ -609,13 +614,17 @@ window.saveZoneAreas = async function() {
     var area = parseFloat(inputs[i].value) || 0;
     var temperInput = document.querySelector('[data-temper-zone="' + zoneId + '"]');
     var temperPct = temperInput ? (parseFloat(temperInput.value) || 0) : 0;
-    await sb.from('zones').update({ area_m2: area, tempering_pct: temperPct }).eq('id', zoneId);
+    var excludeCb = document.querySelector('[data-exclude-zone="' + zoneId + '"]');
+    var excluded = excludeCb ? excludeCb.checked : false;
+    await sb.from('zones').update({ area_m2: area, tempering_pct: temperPct, exclude_from_shared: excluded }).eq('id', zoneId);
   }
   for (var j = 0; j < allZones.length; j++) {
     var inp = document.querySelector('[data-zone-id="' + allZones[j].id + '"]');
     if (inp) allZones[j].area_m2 = parseFloat(inp.value) || 0;
     var tmp = document.querySelector('[data-temper-zone="' + allZones[j].id + '"]');
     if (tmp) allZones[j].tempering_pct = parseFloat(tmp.value) || 0;
+    var excl = document.querySelector('[data-exclude-zone="' + allZones[j].id + '"]');
+    if (excl) allZones[j].exclude_from_shared = excl.checked;
   }
   alert('Uložené.');
 };
