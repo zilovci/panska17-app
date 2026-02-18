@@ -8,6 +8,11 @@ async function loadFinance() {
   var { data: cats = [] } = await sb.from('cost_categories').select('*').order('sort_order', { ascending: true });
   allCategories = cats;
 
+  // Load tenant lease dates for time-weighted allocation
+  var { data: tenantList = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
+  var tenantLeaseMap = {};
+  tenantList.forEach(function(t) { tenantLeaseMap[t.id] = t; });
+
   // Zones grid - metraže
   var zonesGrid = document.getElementById('fin-zones-grid');
   if (zonesGrid) {
@@ -52,8 +57,11 @@ async function loadFinance() {
     zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
       var label = z.tenant_name || z.name;
       var temper = z.tempering_pct || 0;
+      var lease = z.tenant_id ? tenantLeaseMap[z.tenant_id] : null;
+      var leaseFrom = (lease && lease.lease_from) ? lease.lease_from : '';
+      var leaseTo = (lease && lease.lease_to) ? lease.lease_to : '';
       return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
         '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
@@ -78,31 +86,87 @@ async function loadFinance() {
     return Math.max(1, Math.min(36, months));
   };
 
-  // Show/hide months inputs based on category and period
+  // Calculate overlap months between lease and expense period
+  window.calcLeaseOverlapMonths = function(leaseFrom, leaseTo, periodFrom, periodTo) {
+    if (!periodFrom || !periodTo) return null; // no period = can't calc
+    if (!leaseFrom) return null; // no lease start = assume always active
+    // Effective ranges
+    var pf = new Date(periodFrom), pt = new Date(periodTo);
+    var lf = new Date(leaseFrom);
+    var lt = leaseTo ? new Date(leaseTo) : new Date('2099-12-31');
+    // Overlap: max(start) to min(end)
+    var overlapStart = lf > pf ? lf : pf;
+    var overlapEnd = lt < pt ? lt : pt;
+    if (overlapStart > overlapEnd) return 0; // no overlap
+    // Count months (inclusive of partial months)
+    var months = (overlapEnd.getFullYear() - overlapStart.getFullYear()) * 12 
+      + (overlapEnd.getMonth() - overlapStart.getMonth()) + 1;
+    return Math.max(0, Math.min(months, window.getPeriodMonths()));
+  };
+
+  // Show/hide months inputs based on period and lease dates
   window.updateMonthsVisibility = function() {
-    var catSel = document.getElementById('exp-category');
-    var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
-    var isHeating = selectedCatName === 'Vykurovanie';
     var totalMonths = window.getPeriodMonths();
+    var periodFrom = document.getElementById('exp-period-from').value;
+    var periodTo = document.getElementById('exp-period-to').value;
+    var hasPeriod = periodFrom && periodTo;
 
     var monthsWraps = document.querySelectorAll('.alloc-months-wrap');
     for (var m = 0; m < monthsWraps.length; m++) {
       var zoneId = monthsWraps[m].getAttribute('data-months-zone');
       var cb = document.querySelector('.alloc-zone-cb[value="' + zoneId + '"]');
-      var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
       var isChecked = cb ? cb.checked : false;
-      // Show only for heating, checked zones with tempering > 0
-      var show = isHeating && isChecked && temper > 0;
-      monthsWraps[m].classList.toggle('hidden', !show);
-      // Update total label and default value
+
+      if (!isChecked || !hasPeriod) {
+        monthsWraps[m].classList.add('hidden');
+        continue;
+      }
+
+      // Auto-calculate from lease dates
+      var leaseFrom = cb.getAttribute('data-lease-from') || '';
+      var leaseTo = cb.getAttribute('data-lease-to') || '';
+      var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+      
+      // Update total label
       var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
       if (totalLabel) totalLabel.textContent = '/' + totalMonths + ' mes.';
       var inp = monthsWraps[m].querySelector('.alloc-months-input');
       if (inp) {
         inp.max = totalMonths;
-        // If input is empty or exceeds total, set to total (full occupation)
-        if (!inp.value || parseInt(inp.value) > totalMonths) inp.value = totalMonths;
+        // Auto-fill if: no value yet, or user hasn't manually edited
+        if (!inp.value || inp.getAttribute('data-auto') === 'true') {
+          if (autoMonths !== null) {
+            inp.value = autoMonths;
+          } else {
+            inp.value = totalMonths;
+          }
+          inp.setAttribute('data-auto', 'true');
+        }
+        // Clamp
+        if (parseInt(inp.value) > totalMonths) inp.value = totalMonths;
       }
+
+      // Show if months < total (partial occupation) 
+      var currentVal = inp ? parseInt(inp.value) : totalMonths;
+      var show = currentVal < totalMonths;
+      // Also show if lease dates indicate partial overlap
+      if (autoMonths !== null && autoMonths < totalMonths) show = true;
+      monthsWraps[m].classList.toggle('hidden', !show);
+
+      // Warning if manual != auto
+      if (inp && autoMonths !== null && parseInt(inp.value) !== autoMonths) {
+        inp.classList.add('border-red-500', 'bg-red-50');
+        inp.title = 'Z nájomnej zmluvy: ' + autoMonths + ' mes. (lease: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')';
+      } else {
+        inp.classList.remove('border-red-500', 'bg-red-50');
+        inp.title = '';
+      }
+    }
+
+    // Mark manual edit
+    var allMonthsInputs = document.querySelectorAll('.alloc-months-input');
+    for (var mi = 0; mi < allMonthsInputs.length; mi++) {
+      allMonthsInputs[mi].onfocus = function() { this.setAttribute('data-auto', 'false'); };
     }
   };
 
@@ -642,39 +706,41 @@ window.updateAllocPreview = function() {
     z.payer = sel ? sel.value : 'tenant';
   });
 
-  // Tempering only for Vykurovanie
+  // Category info
   var catSel = document.getElementById('exp-category');
   var selectedCatName = catSel ? catSel.options[catSel.selectedIndex].text : '';
   var isHeating = selectedCatName === 'Vykurovanie';
   var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
 
-  // === TIME-WEIGHTED ALLOCATION ===
-  // For each checked zone: check if it has partial occupation (months < totalMonths)
-  // If so, split into tenant portion and owner-tempered portion
-  var timeWeightedSplits = []; // { zoneId, tenantEffArea, ownerEffArea, temper, monthsOcc, totalMonths }
+  // === TIME-WEIGHTED ALLOCATION (all area-based categories) ===
+  // For each checked zone: check if months occupied < total months
+  // Heating: empty months → owner pays at tempering %
+  // Other (smetie, voda, elektrina...): empty months → owner pays at 100% area
+  var timeWeightedSplits = [];
 
-  if (isHeating) {
-    checkedZones.forEach(function(z) {
-      var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
-      var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
-      if (temper > 0) {
-        var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
-        var monthsOcc = monthsInput ? (parseInt(monthsInput.value) || totalMonths) : totalMonths;
-        if (monthsOcc < totalMonths) {
-          var monthsTemp = totalMonths - monthsOcc;
-          z.tenantEffArea = z.area * monthsOcc / totalMonths;
-          z.ownerEffArea = z.area * (temper / 100) * monthsTemp / totalMonths;
-          z.monthsOcc = monthsOcc;
-          z.monthsTemp = monthsTemp;
-          z.temper = temper;
-          z.isTimeWeighted = true;
-          timeWeightedSplits.push(z);
-        }
-      }
-    });
-  }
+  checkedZones.forEach(function(z) {
+    var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+    var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+    var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
+    var monthsOcc = monthsInput && monthsInput.value ? (parseInt(monthsInput.value)) : totalMonths;
+    if (isNaN(monthsOcc)) monthsOcc = totalMonths;
+    
+    if (monthsOcc < totalMonths) {
+      var monthsEmpty = totalMonths - monthsOcc;
+      z.tenantEffArea = z.area * monthsOcc / totalMonths;
+      // Heating: owner portion weighted by tempering %. Non-heating: owner pays 100% of area for empty months
+      var ownerWeight = isHeating ? (temper / 100) : 1;
+      z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
+      z.monthsOcc = monthsOcc;
+      z.monthsEmpty = monthsEmpty;
+      z.temper = temper;
+      z.isTimeWeighted = true;
+      z.ownerLabel = isHeating ? ('kúr.' + temper + '% × ' + monthsEmpty + ' mes.') : ('prázdna ' + monthsEmpty + ' mes.');
+      timeWeightedSplits.push(z);
+    }
+  });
 
-  // Unchecked zones with tempering (full period tempered, owner pays)
+  // Unchecked zones with tempering (full period tempered, owner pays) - heating only
   var temperedZones = [];
   if (isHeating) {
     for (var i = 0; i < allCbs.length; i++) {
@@ -729,7 +795,6 @@ window.updateAllocPreview = function() {
   }
 
   // === OWNER ZONES ===
-  // Collect all owner items: explicit owner zones + time-weighted tempered portions + unchecked tempered
   var hasOwnerItems = ownerZones.length > 0 || temperedZones.length > 0 || timeWeightedSplits.some(function(z) { return z.payer === 'tenant'; });
 
   if (hasOwnerItems) {
@@ -753,7 +818,7 @@ window.updateAllocPreview = function() {
       '</div>';
     }).join('');
 
-    // Time-weighted tempered portions (from tenant zones with partial occupation)
+    // Time-weighted empty portions (from tenant zones with partial occupation)
     html += timeWeightedSplits.filter(function(z) { return z.payer === 'tenant'; }).map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
@@ -761,14 +826,14 @@ window.updateAllocPreview = function() {
       var amt = amount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
-        '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' <span class="text-orange-400">(kúr.' + z.temper + '% × ' + z.monthsTemp + ' mes.)</span></span>' +
+        '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' <span class="text-orange-400">(' + z.ownerLabel + ')</span></span>' +
         '<span class="text-orange-400 w-14 text-right">' + z.ownerEffArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
       '</div>';
     }).join('');
 
-    // Unchecked tempered zones (full period)
+    // Unchecked tempered zones (full period, heating only)
     html += temperedZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
@@ -1165,16 +1230,17 @@ window.saveExpense = async function() {
           var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
           z.temper = temper;
           z.isTimeWeighted = false;
-          if (isHeating && temper > 0) {
-            var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
-            var monthsOcc = monthsInput ? (parseInt(monthsInput.value) || totalMonths) : totalMonths;
-            if (monthsOcc < totalMonths) {
-              z.isTimeWeighted = true;
-              z.monthsOcc = monthsOcc;
-              z.monthsTemp = totalMonths - monthsOcc;
-              z.tenantEffArea = z.area * monthsOcc / totalMonths;
-              z.ownerEffArea = z.area * (temper / 100) * z.monthsTemp / totalMonths;
-            }
+          var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
+          var monthsOcc = monthsInput && monthsInput.value ? (parseInt(monthsInput.value)) : totalMonths;
+          if (isNaN(monthsOcc)) monthsOcc = totalMonths;
+          if (monthsOcc < totalMonths) {
+            var monthsEmpty = totalMonths - monthsOcc;
+            var ownerWeight = isHeating ? (temper / 100) : 1;
+            z.isTimeWeighted = true;
+            z.monthsOcc = monthsOcc;
+            z.monthsEmpty = monthsEmpty;
+            z.tenantEffArea = z.area * monthsOcc / totalMonths;
+            z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
           }
           var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
           z.payer = sel ? sel.value : 'tenant';
