@@ -33,6 +33,16 @@ ADD COLUMN IF NOT EXISTS cost_category_id uuid REFERENCES cost_categories(id) DE
 ALTER TABLE tenants
 ADD COLUMN IF NOT EXISTS is_owner boolean DEFAULT false;
 
+-- Typ nákladu a amortizácia
+ALTER TABLE expenses
+ADD COLUMN IF NOT EXISTS cost_type text DEFAULT 'operating';
+-- 'operating'  = bežný prevádzkový (rozpočíta sa v roku vzniku)
+-- 'amortized'  = amortizovaný (rozpočíta sa na X rokov)
+-- 'investment' = investičný (platí vlastník, nerozpočítava sa)
+
+ALTER TABLE expenses
+ADD COLUMN IF NOT EXISTS amort_years smallint DEFAULT NULL;
+
 -- Komentár:
 -- months_occupied = NULL → štandardná alokácia (celé obdobie)
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov

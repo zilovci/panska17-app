@@ -171,7 +171,6 @@ window.showAddTenant = function() {
 };
 
 window.renderTenantZones = function(checkedIds) {
-  var isOwner = document.getElementById('ten-is-owner').checked;
   var tenZones = document.getElementById('ten-zones');
   if (!tenZones) return;
   // If no checkedIds passed, read from current checkboxes
@@ -179,9 +178,7 @@ window.renderTenantZones = function(checkedIds) {
     checkedIds = [];
     document.querySelectorAll('.ten-zone-cb:checked').forEach(function(cb) { checkedIds.push(cb.value); });
   }
-  tenZones.innerHTML = allZones.map(function(z) {
-    var isCommon = z.name === 'Spoločné priestory' || z.name === 'Dvor';
-    if (isCommon && !isOwner) return '';
+  tenZones.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
     var checked = checkedIds.indexOf(z.id) >= 0 ? ' checked' : '';
     return '<label class="flex items-center space-x-1.5 bg-slate-50 rounded-lg px-2 py-1.5 cursor-pointer hover:bg-blue-50">' +
       '<input type="checkbox" value="' + z.id + '" class="ten-zone-cb rounded"' + checked + '>' +

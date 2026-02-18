@@ -368,6 +368,21 @@
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Suma (€)</label>
                                 <input type="number" step="0.01" id="exp-amount" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="0.00">
                             </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Typ nákladu</label>
+                                    <select id="exp-cost-type" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" onchange="window.toggleAmortFields()">
+                                        <option value="operating">Prevádzkový</option>
+                                        <option value="amortized">Amortizovaný (na X rokov)</option>
+                                        <option value="investment">Investičný (vlastník)</option>
+                                    </select>
+                                </div>
+                                <div id="amort-years-wrap" class="hidden">
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Počet rokov amortizácie</label>
+                                    <input type="number" min="1" max="30" step="1" id="exp-amort-years" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="5" onchange="window.updateAllocPreview()" oninput="window.updateAllocPreview()">
+                                    <p id="amort-yearly-hint" class="text-[8px] text-amber-500 font-bold mt-1 hidden"></p>
+                                </div>
+                            </div>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Zóna (ak sa týka konkrétnej)</label>
                                 <select id="exp-zone" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1 hidden">
@@ -509,7 +524,7 @@
                                 </div>
                             </div>
                             <label class="flex items-center space-x-2 cursor-pointer">
-                                <input type="checkbox" id="ten-is-owner" class="rounded" onchange="window.renderTenantZones()">
+                                <input type="checkbox" id="ten-is-owner" class="rounded">
                                 <span class="text-[9px] font-black text-amber-600 uppercase">👑 Vlastník budovy</span>
                             </label>
                             <div class="grid grid-cols-3 gap-3">

@@ -574,11 +574,15 @@ window.loadExpenses = async function() {
       zoneName = 'Celá budova';
     }
     var catName = e.cost_categories ? e.cost_categories.name : '--';
+    var costTypeBadge = '';
+    if (e.cost_type === 'amortized') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">⏱ ' + (e.amort_years || '?') + 'r</span>';
+    else if (e.cost_type === 'investment') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">💰 INV</span>';
     return '<div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">' +
       '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center space-x-2">' +
           '<span class="text-[8px] font-black text-slate-400 uppercase">' + fmtD(e.date) + '</span>' +
           '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
+          costTypeBadge +
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
         '</div>' +
         '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
@@ -616,12 +620,23 @@ window.saveZoneAreas = async function() {
   alert('Uložené.');
 };
 
+window.toggleAmortFields = function() {
+  var costType = document.getElementById('exp-cost-type').value;
+  var amortWrap = document.getElementById('amort-years-wrap');
+  amortWrap.classList.toggle('hidden', costType !== 'amortized');
+  window.updateAllocPreview();
+};
+
 window.showAddExpense = function() {
   editingExpenseId = null;
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-supplier').value = '';
   document.getElementById('exp-amount').value = '';
+  document.getElementById('exp-cost-type').value = 'operating';
+  document.getElementById('exp-amort-years').value = '';
+  document.getElementById('amort-years-wrap').classList.add('hidden');
+  document.getElementById('amort-yearly-hint').classList.add('hidden');
   document.getElementById('exp-invoice').value = '';
   document.getElementById('exp-period-from').value = '';
   document.getElementById('exp-period-to').value = '';
@@ -723,6 +738,27 @@ window.updateAllocPreview = function() {
   var preview = document.getElementById('exp-alloc-preview');
   var rows = document.getElementById('exp-alloc-rows');
   var amount = parseFloat(document.getElementById('exp-amount').value) || 0;
+  var costType = document.getElementById('exp-cost-type').value || 'operating';
+  var amortYears = parseInt(document.getElementById('exp-amort-years').value) || 0;
+  
+  // Update amort hint (without recursion)
+  var hintEl = document.getElementById('amort-yearly-hint');
+  if (costType === 'amortized' && amortYears > 0 && amount > 0) {
+    hintEl.textContent = 'Ročná splátka: ' + (amount / amortYears).toFixed(2) + ' € × ' + amortYears + ' rokov';
+    hintEl.classList.remove('hidden');
+  } else {
+    hintEl.classList.add('hidden');
+  }
+  
+  // For amortized: preview shows yearly amount
+  var displayAmount = amount;
+  var amortNote = '';
+  if (costType === 'amortized' && amortYears > 0) {
+    displayAmount = amount / amortYears;
+    amortNote = '<div class="text-[8px] font-bold text-amber-600 mb-2">⏱ Amortizácia: ' + amount.toFixed(2) + ' € ÷ ' + amortYears + ' rokov = <span class="text-amber-800">' + displayAmount.toFixed(2) + ' €/rok</span></div>';
+  } else if (costType === 'investment') {
+    amortNote = '<div class="text-[8px] font-bold text-purple-600 mb-2">💰 Investičný náklad – platí vlastník, nerozpočítava sa nájomcom</div>';
+  }
 
   if (checkedZones.length === 0 && amount === 0) {
     preview.classList.add('hidden');
@@ -823,7 +859,7 @@ window.updateAllocPreview = function() {
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       var effArea = z.isTimeWeighted ? z.tenantEffArea : z.area;
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
-      var amt = amount * pct / 100;
+      var amt = displayAmount * pct / 100;
       tenantTotal += amt;
       var timeNote = z.isTimeWeighted ? ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>' : '';
       return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
@@ -851,7 +887,7 @@ window.updateAllocPreview = function() {
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
-      var amt = amount * pct / 100;
+      var amt = displayAmount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
         '<span class="font-bold text-orange-600 truncate flex-1">' + label + '</span>' +
@@ -867,7 +903,7 @@ window.updateAllocPreview = function() {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       var pct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
-      var amt = amount * pct / 100;
+      var amt = displayAmount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
         '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' <span class="text-orange-400">(' + z.ownerLabel + ')</span></span>' +
@@ -882,7 +918,7 @@ window.updateAllocPreview = function() {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       var pct = totalArea > 0 ? (z.effectiveArea / totalArea * 100) : 0;
-      var amt = amount * pct / 100;
+      var amt = displayAmount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
         '<span class="font-bold text-orange-600 truncate flex-1">' + label + ' (kúrenie ' + z.temper + '%)</span>' +
@@ -902,19 +938,19 @@ window.updateAllocPreview = function() {
     var grandTotal = 0;
     checkedZones.forEach(function(z) {
       var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
-      grandTotal += amount * (totalArea > 0 ? effArea / totalArea * 100 : 0) / 100;
+      grandTotal += displayAmount * (totalArea > 0 ? effArea / totalArea * 100 : 0) / 100;
     });
     temperedZones.forEach(function(z) {
-      grandTotal += amount * (totalArea > 0 ? z.effectiveArea / totalArea * 100 : 0) / 100;
+      grandTotal += displayAmount * (totalArea > 0 ? z.effectiveArea / totalArea * 100 : 0) / 100;
     });
-    var unallocated = amount - grandTotal;
+    var unallocated = displayAmount - grandTotal;
     if (Math.abs(unallocated) > 0.01) {
       html += '<div class="flex justify-between text-[9px] font-black text-red-500 px-2 pt-2 border-t border-red-200 mt-2">' +
         '<span>Nerozpočítané</span><span>' + unallocated.toFixed(2) + ' €</span></div>';
     }
   }
 
-  rows.innerHTML = html;
+  rows.innerHTML = amortNote + html;
   preview.classList.remove('hidden');
 };
 
@@ -1206,6 +1242,8 @@ window.saveExpense = async function() {
     period_from: document.getElementById('exp-period-from').value || null,
     period_to: document.getElementById('exp-period-to').value || null,
     note: document.getElementById('exp-note').value.trim() || null,
+    cost_type: document.getElementById('exp-cost-type').value || 'operating',
+    amort_years: parseInt(document.getElementById('exp-amort-years').value) || null,
     created_by: currentUserId
   };
 
@@ -1277,6 +1315,12 @@ window.saveExpense = async function() {
         var isHeating = emptyRule === 'owner_temper';
         var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
 
+        // For amortized: allocations use yearly amount
+        var saveAmount = data.amount;
+        if (data.cost_type === 'amortized' && data.amort_years > 0) {
+          saveAmount = data.amount / data.amort_years;
+        }
+
         // Get time-weighted info for checked zones
         zones.forEach(function(z) {
           var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
@@ -1334,7 +1378,7 @@ window.saveExpense = async function() {
               expense_id: expenseId,
               zone_id: z.id,
               percentage: parseFloat(tenantPct.toFixed(2)),
-              amount: parseFloat((data.amount * tenantPct / 100).toFixed(2)),
+              amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
               payer: z.payer,
               months_occupied: z.monthsOcc,
               months_total: totalMonths
@@ -1344,7 +1388,7 @@ window.saveExpense = async function() {
                 expense_id: expenseId,
                 zone_id: z.id,
                 percentage: parseFloat(ownerPct.toFixed(2)),
-                amount: parseFloat((data.amount * ownerPct / 100).toFixed(2)),
+                amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
                 payer: 'owner',
                 months_occupied: 0,
                 months_total: totalMonths
@@ -1356,7 +1400,7 @@ window.saveExpense = async function() {
               expense_id: expenseId,
               zone_id: z.id,
               percentage: parseFloat(pct.toFixed(2)),
-              amount: parseFloat((data.amount * pct / 100).toFixed(2)),
+              amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
               payer: z.payer
             });
           }
@@ -1367,7 +1411,7 @@ window.saveExpense = async function() {
             expense_id: expenseId,
             zone_id: z.id,
             percentage: parseFloat(pct.toFixed(2)),
-            amount: parseFloat((data.amount * pct / 100).toFixed(2)),
+            amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
             payer: 'owner'
           });
         });
@@ -1406,6 +1450,9 @@ window.editExpense = async function(id) {
   document.getElementById('exp-period-from').value = e.period_from || '';
   document.getElementById('exp-period-to').value = e.period_to || '';
   document.getElementById('exp-note').value = e.note || '';
+  document.getElementById('exp-cost-type').value = e.cost_type || 'operating';
+  document.getElementById('exp-amort-years').value = e.amort_years || '';
+  window.toggleAmortFields();
 
   // Load existing allocations
   var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer').eq('expense_id', id);
