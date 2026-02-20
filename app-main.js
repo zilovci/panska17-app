@@ -605,8 +605,10 @@ window.editPayment = async function(payId) {
   document.getElementById('pay-type').value = pay.type || 'advance';
   document.getElementById('pay-amount').value = pay.amount || '';
   document.getElementById('pay-date').value = pay.paid_date || '';
-  document.getElementById('pay-period-from').value = pay.period_from ? pay.period_from.substring(0, 7) : pay.month ? pay.month.substring(0, 7) : '';
-  document.getElementById('pay-period-to').value = pay.period_to ? pay.period_to.substring(0, 7) : '';
+  var pfVal = pay.period_from ? pay.period_from.substring(0, 7) : pay.month ? pay.month.substring(0, 7) : '';
+  var ptVal = pay.period_to ? pay.period_to.substring(0, 7) : pfVal;
+  document.getElementById('pay-period-from').value = pfVal;
+  document.getElementById('pay-period-to').value = ptVal;
   document.getElementById('pay-note').value = pay.note || '';
 
   document.getElementById('pay-modal-title').innerText = 'Upraviť platbu';
@@ -624,13 +626,15 @@ window.deletePayment = async function() {
 };
 
 window.togglePayment = async function(payId, newPaid) {
-  var update = { paid: newPaid };
   if (newPaid) {
-    update.paid_date = new Date().toISOString().split('T')[0];
+    // Only set paid_date if not already set
+    var { data: existing } = await sb.from('tenant_payments').select('paid_date').eq('id', payId).single();
+    var update = { paid: true };
+    if (!existing || !existing.paid_date) update.paid_date = new Date().toISOString().split('T')[0];
+    await sb.from('tenant_payments').update(update).eq('id', payId);
   } else {
-    update.paid_date = null;
+    await sb.from('tenant_payments').update({ paid: false }).eq('id', payId);
   }
-  await sb.from('tenant_payments').update(update).eq('id', payId);
   await window.loadPayments();
 };
 
