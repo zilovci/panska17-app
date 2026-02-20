@@ -165,7 +165,8 @@ window.showAddTenant = function() {
     document.getElementById(id).value = '';
   });
   document.getElementById('ten-is-owner').checked = false;
-  document.getElementById('ten-payment-account').value = '';
+  document.getElementById('ten-rent-account').value = '';
+  document.getElementById('ten-service-account').value = '';
   document.getElementById('ten-no-billing').checked = false;
   // Zone checkboxes - render all, hide Spoločné/Dvor for non-owner
   window.renderTenantZones();
@@ -212,7 +213,8 @@ window.saveTenant = async function() {
     monthly_advance: parseFloat(document.getElementById('ten-advance').value) || 0,
     note: document.getElementById('ten-note').value.trim() || null,
     is_owner: document.getElementById('ten-is-owner').checked,
-    payment_account: document.getElementById('ten-payment-account').value || null,
+    payment_account: document.getElementById('ten-rent-account').value || null,
+    service_account: document.getElementById('ten-service-account').value || null,
     no_billing: document.getElementById('ten-no-billing').checked
   };
 
@@ -268,7 +270,8 @@ window.editTenant = async function(id) {
   document.getElementById('ten-advance').value = t.monthly_advance || '';
   document.getElementById('ten-note').value = t.note || '';
   document.getElementById('ten-is-owner').checked = t.is_owner || false;
-  document.getElementById('ten-payment-account').value = t.payment_account || '';
+  document.getElementById('ten-rent-account').value = t.payment_account || '';
+  document.getElementById('ten-service-account').value = t.service_account || '';
   document.getElementById('ten-no-billing').checked = t.no_billing || false;
 
   // Zone checkboxes

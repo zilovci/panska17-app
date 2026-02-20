@@ -55,9 +55,17 @@ ADD COLUMN IF NOT EXISTS billing_area_m2 numeric(10,2) DEFAULT NULL;
 -- months_occupied = 7, months_total = 12 → nájomca obsadil 7 z 12 mesiacov
 -- empty_zone_rule určuje čo sa stane so zvyšnými 5 mesiacmi
 
--- Nájomca: účet pre platby (B054/B155) a bez vyúčtovania (paušál)
+-- Nájomca: účty pre platby (nájom + služby) a bez vyúčtovania (paušál)
 ALTER TABLE tenants
 ADD COLUMN IF NOT EXISTS payment_account text DEFAULT NULL;
 
 ALTER TABLE tenants
+ADD COLUMN IF NOT EXISTS service_account text DEFAULT NULL;
+
+ALTER TABLE tenants
 ADD COLUMN IF NOT EXISTS no_billing boolean DEFAULT false;
+
+-- Nová kategória EZS
+INSERT INTO cost_categories (name, empty_zone_rule)
+SELECT 'EZS', 'owner'
+WHERE NOT EXISTS (SELECT 1 FROM cost_categories WHERE name = 'EZS');
