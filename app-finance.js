@@ -1517,6 +1517,7 @@ window.saveExpense = async function() {
 
   window.closeExpenseModal();
   await loadExpenses();
+  if (window.loadOverview) await window.loadOverview();
 };
 
 window.editExpense = async function(id) {
@@ -1617,6 +1618,7 @@ window.deleteExpense = async function(id) {
   if (!confirm('Vymazať tento náklad?')) return;
   await sb.from('expenses').delete().eq('id', id);
   await loadExpenses();
+  if (window.loadOverview) await window.loadOverview();
 };
 
 window.duplicateExpense = async function(id) {
