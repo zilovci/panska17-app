@@ -297,13 +297,13 @@ window.loadOverview = async function() {
 
   // Get all allocations for this year's expenses (by period)
   var { data: expenses = [] } = await sb.from('expenses')
-    .select('id, amount, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .select('id, amount, supplier, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
     .lte('period_from', year + '-12-31')
     .gte('period_to', year + '-01-01');
 
   // Also get expenses without period but with date in year
   var { data: expenses2 = [] } = await sb.from('expenses')
-    .select('id, amount, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .select('id, amount, supplier, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
     .is('period_from', null)
     .gte('date', year + '-01-01')
     .lte('date', year + '-12-31');
@@ -401,6 +401,75 @@ window.loadOverview = async function() {
   html += '</tr></tbody></table>';
 
   table.innerHTML = html;
+
+  // ===== SUPPLIER BREAKDOWN TABLE =====
+  var supplierMatrix = {};
+  var supplierCatTotals = {};
+
+  allExp.forEach(function(e) {
+    var catName = e.cost_categories ? e.cost_categories.name : 'Ostatné';
+    var supplier = e.supplier ? e.supplier.trim() : 'Bez dodávateľa';
+    var amt = parseFloat(e.amount) || 0;
+    if (amt === 0) return;
+
+    if (!supplierMatrix[supplier]) supplierMatrix[supplier] = {};
+    if (!supplierMatrix[supplier][catName]) supplierMatrix[supplier][catName] = 0;
+    supplierMatrix[supplier][catName] += amt;
+
+    if (!supplierCatTotals[catName]) supplierCatTotals[catName] = 0;
+    supplierCatTotals[catName] += amt;
+  });
+
+  var supplierNames = Object.keys(supplierMatrix).sort(function(a, b) {
+    if (a === 'Bez dodávateľa') return 1;
+    if (b === 'Bez dodávateľa') return -1;
+    return a.localeCompare(b, 'sk');
+  });
+
+  if (supplierNames.length > 0) {
+    var shtml = '<div class="mt-6 pt-4 border-t-2 border-slate-200">' +
+      '<h4 class="text-[10px] font-black text-slate-400 uppercase mb-2">Náklady podľa dodávateľa</h4>' +
+      '<table class="w-full text-[9px]">' +
+      '<thead><tr class="border-b-2 border-slate-200">' +
+      '<th class="text-left py-2 font-black text-slate-400 uppercase">Dodávateľ</th>' +
+      catNames.map(function(c) { return '<th class="text-right py-2 font-black text-slate-400 uppercase px-2">' + c + '</th>'; }).join('') +
+      '<th class="text-right py-2 font-black text-slate-800 uppercase px-2">Spolu</th>' +
+      '</tr></thead><tbody>';
+
+    var sGrandTotals = {};
+    catNames.forEach(function(c) { sGrandTotals[c] = 0; });
+    var sGrandTotal = 0;
+
+    supplierNames.forEach(function(s) {
+      var rowTotal = 0;
+      var isNone = s === 'Bez dodávateľa';
+      shtml += '<tr class="border-b border-slate-100' + (isNone ? ' bg-slate-50 italic' : '') + '">' +
+        '<td class="py-2 font-bold ' + (isNone ? 'text-slate-400' : 'text-slate-700') + '">' + s + '</td>';
+
+      catNames.forEach(function(c) {
+        var val = (supplierMatrix[s] && supplierMatrix[s][c]) || 0;
+        rowTotal += val;
+        sGrandTotals[c] += val;
+        shtml += '<td class="text-right py-2 px-2 ' + (val > 0 ? 'text-slate-600' : 'text-slate-200') + '">' +
+          (val > 0 ? val.toFixed(2) : '–') + '</td>';
+      });
+
+      sGrandTotal += rowTotal;
+      shtml += '<td class="text-right py-2 px-2 font-black text-slate-800">' + rowTotal.toFixed(2) + ' €</td>';
+      shtml += '</tr>';
+    });
+
+    // Supplier totals row
+    shtml += '<tr class="border-t-2 border-slate-300 bg-slate-50">' +
+      '<td class="py-2 font-black text-slate-800 uppercase">Celkom</td>';
+    catNames.forEach(function(c) {
+      shtml += '<td class="text-right py-2 px-2 font-black text-slate-800">' + (sGrandTotals[c] || 0).toFixed(2) + '</td>';
+    });
+    shtml += '<td class="text-right py-2 px-2 font-black text-slate-900">' + sGrandTotal.toFixed(2) + ' €</td>';
+    shtml += '</tr></tbody></table></div>';
+
+    table.innerHTML += shtml;
+  }
 };
 
 // ============ ZÁLOHY ============
