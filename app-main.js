@@ -669,17 +669,25 @@ window.saveManualPayment = async function() {
     month = periodFrom + '-01';
   }
 
-  await sb.from('tenant_payments').insert({
+  var row = {
     tenant_id: tenantId,
     month: month,
     amount: amount,
     type: type,
-    paid: true,
-    paid_date: paidDate || null,
-    period_from: periodFrom + '-01',
-    period_to: (periodTo || periodFrom) + '-01',
-    note: note
-  });
+    paid: true
+  };
+  // Only add optional fields if they have values (in case migration not run yet)
+  if (paidDate) row.paid_date = paidDate;
+  if (periodFrom) row.period_from = periodFrom + '-01';
+  if (periodTo) row.period_to = (periodTo || periodFrom) + '-01';
+  if (note) row.note = note;
+
+  var { error } = await sb.from('tenant_payments').insert(row);
+  if (error) {
+    alert('Chyba pri ukladaní: ' + error.message);
+    console.error('Payment insert error:', error);
+    return;
+  }
 
   document.getElementById('modal-payment').classList.add('hidden');
   await window.loadPayments();
