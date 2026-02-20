@@ -439,10 +439,13 @@ window.loadPayments = async function() {
 
     var types = [];
     if (t.monthly_rent > 0) types.push({ type: 'rent', label: 'Nájomné', cls: 'text-indigo-500' });
-    types.push({ type: 'advance', label: 'Zálohy', cls: 'text-blue-500' });
-    // Check if tenant has settlement payments
+    // Show advance row if tenant has advance amount OR has advance payments in DB
+    var hasAdvancePayments = payments.some(function(p) { return p.tenant_id === t.id && (p.type === 'advance' || !p.type); });
+    if (t.monthly_advance > 0 || hasAdvancePayments) types.push({ type: 'advance', label: 'Zálohy', cls: 'text-blue-500' });
+    // Show settlement row if tenant has settlement payments
     var hasSettlement = payments.some(function(p) { return p.tenant_id === t.id && p.type === 'settlement'; });
     if (hasSettlement) types.push({ type: 'settlement', label: 'Vyúčtovanie', cls: 'text-orange-500' });
+    if (types.length === 0) return;
 
     // Tenant header
     html += '<tr class="border-t-2 border-slate-200"><td colspan="15" class="pt-3 pb-1 font-black text-slate-700">' + tLabel + '</td></tr>';
@@ -532,8 +535,7 @@ window.generatePayments = async function() {
   tenants.forEach(function(t) {
     var amounts = [];
     if (t.monthly_rent > 0) amounts.push({ type: 'rent', amount: t.monthly_rent });
-    // Always generate advance row (even if 0) so payments can be recorded
-    amounts.push({ type: 'advance', amount: t.monthly_advance || 0 });
+    if (t.monthly_advance > 0) amounts.push({ type: 'advance', amount: t.monthly_advance });
 
     amounts.forEach(function(a) {
       for (var m = 0; m < 12; m++) {
