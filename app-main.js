@@ -297,13 +297,13 @@ window.loadOverview = async function() {
 
   // Get all allocations for this year's expenses (by period)
   var { data: expenses = [] } = await sb.from('expenses')
-    .select('id, amount, supplier, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .select('id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
     .lte('period_from', year + '-12-31')
     .gte('period_to', year + '-01-01');
 
   // Also get expenses without period but with date in year
   var { data: expenses2 = [] } = await sb.from('expenses')
-    .select('id, amount, supplier, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
+    .select('id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
     .is('period_from', null)
     .gte('date', year + '-01-01')
     .lte('date', year + '-12-31');
@@ -402,8 +402,9 @@ window.loadOverview = async function() {
 
   table.innerHTML = html;
 
-  // ===== SUPPLIER BREAKDOWN TABLE =====
+  // ===== SUPPLIER BREAKDOWN TABLE WITH ACCORDION =====
   var supplierMatrix = {};
+  var supplierItems = {}; // supplier -> catName -> [expense items]
   var supplierCatTotals = {};
 
   allExp.forEach(function(e) {
@@ -416,6 +417,18 @@ window.loadOverview = async function() {
     if (!supplierMatrix[supplier][catName]) supplierMatrix[supplier][catName] = 0;
     supplierMatrix[supplier][catName] += amt;
 
+    if (!supplierItems[supplier]) supplierItems[supplier] = {};
+    if (!supplierItems[supplier][catName]) supplierItems[supplier][catName] = [];
+    supplierItems[supplier][catName].push({
+      id: e.id,
+      description: e.description || '',
+      date: e.date,
+      amount: amt,
+      invoice_number: e.invoice_number || '',
+      period_from: e.period_from,
+      period_to: e.period_to
+    });
+
     if (!supplierCatTotals[catName]) supplierCatTotals[catName] = 0;
     supplierCatTotals[catName] += amt;
   });
@@ -427,6 +440,7 @@ window.loadOverview = async function() {
   });
 
   if (supplierNames.length > 0) {
+    var colCount = catNames.length + 2;
     var shtml = '<div class="mt-6 pt-4 border-t-2 border-slate-200">' +
       '<h4 class="text-[10px] font-black text-slate-400 uppercase mb-2">Náklady podľa dodávateľa</h4>' +
       '<table class="w-full text-[9px]">' +
@@ -439,12 +453,21 @@ window.loadOverview = async function() {
     var sGrandTotals = {};
     catNames.forEach(function(c) { sGrandTotals[c] = 0; });
     var sGrandTotal = 0;
+    var suppIdx = 0;
 
     supplierNames.forEach(function(s) {
       var rowTotal = 0;
       var isNone = s === 'Bez dodávateľa';
-      shtml += '<tr class="border-b border-slate-100' + (isNone ? ' bg-slate-50 italic' : '') + '">' +
-        '<td class="py-2 font-bold ' + (isNone ? 'text-slate-400' : 'text-slate-700') + '">' + s + '</td>';
+      var sid = 'supp-' + suppIdx++;
+
+      // Collect all items for this supplier across all categories
+      var hasItems = false;
+      catNames.forEach(function(c) {
+        if (supplierItems[s] && supplierItems[s][c] && supplierItems[s][c].length > 0) hasItems = true;
+      });
+
+      shtml += '<tr class="border-b border-slate-100 cursor-pointer hover:bg-blue-50 transition-colors' + (isNone ? ' bg-slate-50 italic' : '') + '" onclick="var rows=document.querySelectorAll(\'.' + sid + '\');var open=rows[0]&&rows[0].style.display!==\'none\';rows.forEach(function(r){r.style.display=open?\'none\':\'table-row\'});this.querySelector(\'.supp-arrow\').textContent=open?\'▸\':\'▾\'">' +
+        '<td class="py-2 font-bold ' + (isNone ? 'text-slate-400' : 'text-slate-700') + '"><span class="supp-arrow text-[8px] text-slate-400 mr-1">▸</span>' + s + '</td>';
 
       catNames.forEach(function(c) {
         var val = (supplierMatrix[s] && supplierMatrix[s][c]) || 0;
@@ -457,6 +480,46 @@ window.loadOverview = async function() {
       sGrandTotal += rowTotal;
       shtml += '<td class="text-right py-2 px-2 font-black text-slate-800">' + rowTotal.toFixed(2) + ' €</td>';
       shtml += '</tr>';
+
+      // Detail rows (hidden by default) - one row per expense item
+      if (hasItems) {
+        // Collect all items sorted by date
+        var allItems = [];
+        catNames.forEach(function(c) {
+          if (supplierItems[s] && supplierItems[s][c]) {
+            supplierItems[s][c].forEach(function(item) {
+              allItems.push({ catName: c, item: item });
+            });
+          }
+        });
+        allItems.sort(function(a, b) { return (a.item.date || '').localeCompare(b.item.date || ''); });
+
+        allItems.forEach(function(entry) {
+          var item = entry.item;
+          var period = '';
+          if (item.period_from && item.period_to) {
+            period = item.period_from.substring(5, 7) + '/' + item.period_from.substring(0, 4) + '–' + item.period_to.substring(5, 7) + '/' + item.period_to.substring(0, 4);
+          }
+          var label = item.description || '';
+          if (item.invoice_number) label += (label ? ' • ' : '') + item.invoice_number;
+          if (period) label += (label ? ' • ' : '') + period;
+          if (item.date) label = item.date.substring(8, 10) + '.' + item.date.substring(5, 7) + '. ' + label;
+
+          shtml += '<tr class="' + sid + ' border-b border-dashed border-slate-100 bg-blue-50/30" style="display:none">' +
+            '<td class="py-1 pl-6 text-[8px] text-slate-500">' + label + '</td>';
+
+          catNames.forEach(function(c) {
+            if (c === entry.catName) {
+              shtml += '<td class="text-right py-1 px-2 text-[8px] text-blue-600">' + item.amount.toFixed(2) + '</td>';
+            } else {
+              shtml += '<td class="text-right py-1 px-2 text-slate-200">–</td>';
+            }
+          });
+
+          shtml += '<td class="text-right py-1 px-2 text-[8px] font-bold text-slate-500">' + item.amount.toFixed(2) + ' €</td>';
+          shtml += '</tr>';
+        });
+      }
     });
 
     // Supplier totals row
