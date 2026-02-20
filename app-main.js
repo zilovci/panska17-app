@@ -540,8 +540,8 @@ window.generatePayments = async function() {
     amounts.forEach(function(a) {
       for (var m = 0; m < 12; m++) {
         var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
-        if (t.lease_from && monthStr < t.lease_from.substring(0, 7) + '-01') return;
-        if (t.lease_to && monthStr > t.lease_to.substring(0, 7) + '-01') return;
+        if (t.lease_from && monthStr < t.lease_from.substring(0, 7) + '-01') continue;
+        if (t.lease_to && monthStr > t.lease_to.substring(0, 7) + '-01') continue;
 
         toInsert.push({
           tenant_id: t.id,
@@ -563,7 +563,11 @@ window.generatePayments = async function() {
     .gte('month', year + '-01-01').lte('month', year + '-12-01');
 
   var existingMap = {};
-  existing.forEach(function(e) { existingMap[e.tenant_id + '|' + e.month + '|' + (e.type || 'advance')] = e; });
+  existing.forEach(function(e) {
+    // Normalize month to YYYY-MM-DD (DB may return with time portion)
+    var normMonth = (e.month || '').substring(0, 10);
+    existingMap[e.tenant_id + '|' + normMonth + '|' + (e.type || 'advance')] = e;
+  });
 
   var newOnly = [];
   var updated = 0;
