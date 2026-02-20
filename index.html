@@ -478,7 +478,7 @@
                 <!-- MODAL - Nová platba -->
                 <div id="modal-payment" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
                     <div class="bg-white rounded-[2rem] p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
-                        <h3 class="font-black text-lg uppercase tracking-tighter mb-6">Nová platba</h3>
+                        <h3 class="font-black text-lg uppercase tracking-tighter mb-6" id="pay-modal-title">Nová platba</h3>
                         <div class="space-y-4">
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Nájomca</label>
@@ -520,6 +520,7 @@
                         <div class="flex space-x-3 mt-6">
                             <button onclick="window.saveManualPayment()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase">Uložiť</button>
                             <button onclick="document.getElementById('modal-payment').classList.add('hidden')" class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl text-[10px] font-black uppercase">Zrušiť</button>
+                            <button onclick="window.deletePayment()" id="pay-delete-btn" class="hidden bg-red-50 text-red-500 py-3 px-4 rounded-xl text-[10px] font-black uppercase"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>
                 </div>
