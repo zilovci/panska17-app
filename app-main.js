@@ -522,7 +522,8 @@ window.generatePayments = async function() {
   tenants.forEach(function(t) {
     var amounts = [];
     if (t.monthly_rent > 0) amounts.push({ type: 'rent', amount: t.monthly_rent });
-    if (t.monthly_advance > 0) amounts.push({ type: 'advance', amount: t.monthly_advance });
+    // Always generate advance row (even if 0) so payments can be recorded
+    amounts.push({ type: 'advance', amount: t.monthly_advance || 0 });
 
     amounts.forEach(function(a) {
       for (var m = 0; m < 12; m++) {
