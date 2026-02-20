@@ -653,7 +653,18 @@ window.showAddExpense = function() {
   document.getElementById('exp-period-to').value = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-receipt').value = '';
-  document.getElementById('exp-receipt-preview').classList.add('hidden');
+  var receiptPreview = document.getElementById('exp-receipt-preview');
+  receiptPreview.classList.add('hidden');
+  // Restore img element if destroyed by PDF innerHTML
+  var receiptImg = document.getElementById('exp-receipt-img');
+  if (!receiptImg) {
+    receiptPreview.innerHTML = '<img id="exp-receipt-img" class="max-h-32 rounded-lg cursor-pointer hidden" onclick="window.open(this.src)">';
+  } else {
+    receiptImg.src = '';
+    receiptImg.classList.add('hidden');
+    var oldLink = receiptPreview.querySelector('.receipt-pdf-link');
+    if (oldLink) oldLink.remove();
+  }
   document.getElementById('btn-ai-extract').classList.add('hidden');
   var status = document.getElementById('ai-extract-status');
   status.classList.add('hidden');
@@ -1503,6 +1514,48 @@ window.editExpense = async function(id) {
   var savedMethod = e.alloc_method || 'area';
   window.setAllocMethod(savedMethod);
 
+  // Reset file input and show saved receipt
+  document.getElementById('exp-receipt').value = '';
+  var preview = document.getElementById('exp-receipt-preview');
+  var img = document.getElementById('exp-receipt-img');
+  var aiBtn = document.getElementById('btn-ai-extract');
+  // Restore img element if it was replaced by PDF innerHTML
+  if (!img) {
+    preview.innerHTML = '<img id="exp-receipt-img" class="max-h-32 rounded-lg cursor-pointer hidden" onclick="window.open(this.src)">';
+    img = document.getElementById('exp-receipt-img');
+  }
+  if (e.receipt_url) {
+    if (e.receipt_url.match(/\.pdf$/i)) {
+      img.classList.add('hidden');
+      img.src = '';
+      var pdfLink = document.createElement('a');
+      pdfLink.href = e.receipt_url;
+      pdfLink.target = '_blank';
+      pdfLink.className = 'flex items-center space-x-2 bg-red-50 rounded-lg p-2 hover:bg-red-100 mt-1 receipt-pdf-link';
+      pdfLink.innerHTML = '<i class="fa-solid fa-file-pdf text-red-500 text-xl"></i><span class="text-xs font-bold text-slate-600">Uložený doklad (PDF)</span>';
+      // Remove old PDF link if any
+      var oldLink = preview.querySelector('.receipt-pdf-link');
+      if (oldLink) oldLink.remove();
+      preview.appendChild(pdfLink);
+      preview.classList.remove('hidden');
+    } else {
+      // Remove old PDF link if any
+      var oldLink = preview.querySelector('.receipt-pdf-link');
+      if (oldLink) oldLink.remove();
+      img.src = e.receipt_url;
+      img.classList.remove('hidden');
+      preview.classList.remove('hidden');
+    }
+    aiBtn.classList.remove('hidden');
+  } else {
+    var oldLink = preview.querySelector('.receipt-pdf-link');
+    if (oldLink) oldLink.remove();
+    img.src = '';
+    img.classList.add('hidden');
+    preview.classList.add('hidden');
+    aiBtn.classList.add('hidden');
+  }
+
   document.getElementById('modal-expense').classList.remove('hidden');
 };
 
@@ -1521,6 +1574,9 @@ if (expReceipt) expReceipt.addEventListener('change', function(e) {
   var aiBtn = document.getElementById('btn-ai-extract');
 
   if (file) {
+    // Remove old PDF link if any
+    var oldLink = preview.querySelector('.receipt-pdf-link');
+    if (oldLink) oldLink.remove();
     if (file.type.startsWith('image/')) {
       var reader = new FileReader();
       reader.onload = function(ev) {
@@ -1531,8 +1587,12 @@ if (expReceipt) expReceipt.addEventListener('change', function(e) {
       reader.readAsDataURL(file);
     } else if (file.type === 'application/pdf') {
       img.classList.add('hidden');
+      img.src = '';
+      var pdfDiv = document.createElement('div');
+      pdfDiv.className = 'flex items-center space-x-2 bg-red-50 rounded-lg p-2 receipt-pdf-link';
+      pdfDiv.innerHTML = '<i class="fa-solid fa-file-pdf text-red-500 text-xl"></i><span class="text-xs font-bold text-slate-600">' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)</span>';
+      preview.appendChild(pdfDiv);
       preview.classList.remove('hidden');
-      preview.innerHTML = '<div class="flex items-center space-x-2 bg-red-50 rounded-lg p-2"><i class="fa-solid fa-file-pdf text-red-500 text-xl"></i><span class="text-xs font-bold text-slate-600">' + file.name + ' (' + (file.size / 1024).toFixed(0) + ' KB)</span></div>';
     } else {
       preview.classList.add('hidden');
     }
