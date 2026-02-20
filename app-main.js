@@ -547,19 +547,38 @@ window.generatePayments = async function() {
     return;
   }
 
-  var { data: existing = [] } = await sb.from('tenant_payments').select('tenant_id, month, type')
+  var { data: existing = [] } = await sb.from('tenant_payments').select('id, tenant_id, month, type, paid')
     .gte('month', year + '-01-01').lte('month', year + '-12-01');
 
-  var existingKeys = {};
-  existing.forEach(function(e) { existingKeys[e.tenant_id + '|' + e.month + '|' + (e.type || 'advance')] = true; });
+  var existingMap = {};
+  existing.forEach(function(e) { existingMap[e.tenant_id + '|' + e.month + '|' + (e.type || 'advance')] = e; });
 
-  var newOnly = toInsert.filter(function(p) { return !existingKeys[p.tenant_id + '|' + p.month + '|' + p.type]; });
+  var newOnly = [];
+  var updated = 0;
+  for (var i = 0; i < toInsert.length; i++) {
+    var p = toInsert[i];
+    var key = p.tenant_id + '|' + p.month + '|' + p.type;
+    var ex = existingMap[key];
+    if (!ex) {
+      newOnly.push(p);
+    } else if (!ex.paid) {
+      // Update unpaid with current amount
+      await sb.from('tenant_payments').update({ amount: p.amount }).eq('id', ex.id);
+      updated++;
+    }
+    // paid → skip
+  }
 
-  if (newOnly.length === 0) {
-    alert('Platby pre rok ' + year + ' už existujú.');
-  } else {
+  var msgs = [];
+  if (newOnly.length > 0) {
     await sb.from('tenant_payments').insert(newOnly);
-    alert('Vygenerovaných ' + newOnly.length + ' platieb.');
+    msgs.push(newOnly.length + ' nových');
+  }
+  if (updated > 0) msgs.push(updated + ' aktualizovaných');
+  if (msgs.length === 0) {
+    alert('Platby pre rok ' + year + ' už existujú (potvrdené sa nemenia).');
+  } else {
+    alert('Platby: ' + msgs.join(', ') + '.');
   }
 
   await window.loadPayments();
