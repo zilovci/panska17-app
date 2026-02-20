@@ -54,10 +54,16 @@ async function loadFinance() {
     expCat.innerHTML = cats.map(function(c) {
       return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '" data-empty-rule="' + (c.empty_zone_rule || 'owner') + '">' + c.name + '</option>';
     }).join('');
-    expCat.onchange = function() {
-      // Auto-switch allocation method based on category
+    expCat.onchange = async function() {
+      // Check last expense for this category to reuse its method
+      var catId = this.value;
       var opt = this.options[this.selectedIndex];
-      var method = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+      var defaultMethod = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+      var method = defaultMethod;
+      try {
+        var { data: lastExp } = await sb.from('expenses').select('alloc_method').eq('category_id', catId).order('date', { ascending: false }).limit(1).single();
+        if (lastExp && lastExp.alloc_method) method = lastExp.alloc_method;
+      } catch(e) {}
       window.setAllocMethod(method);
       window.loadCategoryPreset(this.value);
       window.updateAllocPreview();
@@ -78,7 +84,7 @@ async function loadFinance() {
       return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
         '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-billing-area="' + billingArea + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
-        '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.updateAllocPreview()">' +
+        '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.onPayerChange(this);window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
           '<option value="owner">vlastník</option>' +
         '</select>' +
@@ -90,6 +96,21 @@ async function loadFinance() {
       '</div>';
     }).join('');
   }
+
+  // Style payer select: red for owner, default for tenant
+  window.onPayerChange = function(sel) {
+    if (sel.value === 'owner') {
+      sel.className = 'alloc-payer-sel text-[8px] border border-red-300 rounded px-1 py-0.5 bg-red-50 text-red-600 font-bold';
+    } else {
+      sel.className = 'alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5';
+    }
+  };
+  window.styleAllPayerSelects = function() {
+    var sels = document.querySelectorAll('.alloc-payer-sel');
+    for (var i = 0; i < sels.length; i++) {
+      if (!sels[i].classList.contains('hidden')) window.onPayerChange(sels[i]);
+    }
+  };
 
   // Helper: calculate total months in billing period
   window.getPeriodMonths = function() {
@@ -638,7 +659,7 @@ window.toggleAmortFields = function() {
   window.updateAllocPreview();
 };
 
-window.showAddExpense = function() {
+window.showAddExpense = async function() {
   editingExpenseId = null;
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('exp-desc').value = '';
@@ -672,7 +693,7 @@ window.showAddExpense = function() {
   // Reset checkboxes, payer selectors, and load preset for first category
   window.clearAllocChecks();
   var payerSels = document.querySelectorAll('.alloc-payer-sel');
-  for (var p = 0; p < payerSels.length; p++) { payerSels[p].value = 'tenant'; payerSels[p].classList.add('hidden'); }
+  for (var p = 0; p < payerSels.length; p++) { payerSels[p].value = 'tenant'; payerSels[p].classList.add('hidden'); payerSels[p].className = 'alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden'; }
   // Reset months inputs
   var monthsInputs = document.querySelectorAll('.alloc-months-input');
   for (var mi = 0; mi < monthsInputs.length; mi++) { monthsInputs[mi].value = ''; }
@@ -681,7 +702,12 @@ window.showAddExpense = function() {
   var catSel = document.getElementById('exp-category');
   if (catSel && catSel.value) {
     var opt = catSel.options[catSel.selectedIndex];
-    var method = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+    var defaultMethod = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+    var method = defaultMethod;
+    try {
+      var { data: lastExp } = await sb.from('expenses').select('alloc_method').eq('category_id', catSel.value).order('date', { ascending: false }).limit(1).single();
+      if (lastExp && lastExp.alloc_method) method = lastExp.alloc_method;
+    } catch(e) {}
     window.setAllocMethod(method);
     window.loadCategoryPreset(catSel.value);
   }
@@ -752,7 +778,10 @@ window.updateAllocPreview = function() {
   var allCbs = document.querySelectorAll('.alloc-zone-cb');
   for (var k = 0; k < allCbs.length; k++) {
     var payerSel = document.querySelector('[data-payer-zone="' + allCbs[k].value + '"]');
-    if (payerSel) payerSel.classList.toggle('hidden', !allCbs[k].checked);
+    if (payerSel) {
+      payerSel.classList.toggle('hidden', !allCbs[k].checked);
+      if (allCbs[k].checked) window.onPayerChange(payerSel);
+    }
   }
 
   // Update months visibility for heating
@@ -1498,7 +1527,10 @@ window.editExpense = async function(id) {
     var payerSel = document.querySelector('[data-payer-zone="' + cbs[i].value + '"]');
     if (payerSel) {
       payerSel.classList.toggle('hidden', !isAlloc);
-      if (isAlloc) payerSel.value = allocMap[cbs[i].value].payer || 'tenant';
+      if (isAlloc) {
+        payerSel.value = allocMap[cbs[i].value].payer || 'tenant';
+        window.onPayerChange(payerSel);
+      }
     }
     // Restore months if time-weighted
     var allocData = allocMap[cbs[i].value];
