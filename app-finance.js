@@ -658,6 +658,19 @@ window.saveZoneAreas = async function() {
   alert('Uložené.');
 };
 
+window.addZone = async function() {
+  var name = prompt('Názov novej zóny:');
+  if (!name || !name.trim()) return;
+  var maxSort = allZones.reduce(function(m, z) { return Math.max(m, z.sort_order || 0); }, 0);
+  var { data: inserted, error } = await sb.from('zones').insert({ name: name.trim(), area_m2: 0, sort_order: maxSort + 1 }).select('*').single();
+  if (error) { alert('Chyba: ' + error.message); return; }
+  // Reload zones
+  var { data: z2 } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
+  allZones = z2 || [];
+  await window.loadFinanceSection();
+  alert('Zóna "' + name.trim() + '" pridaná.');
+};
+
 window.toggleAmortFields = function() {
   var costType = document.getElementById('exp-cost-type').value;
   var amortWrap = document.getElementById('amort-years-wrap');

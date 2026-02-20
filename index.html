@@ -204,7 +204,10 @@
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Zóny – Metraže</h3>
-                        <button onclick="window.saveZoneAreas()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Uložiť</button>
+                        <div class="flex gap-2">
+                            <button onclick="window.addZone()" class="bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Zóna</button>
+                            <button onclick="window.saveZoneAreas()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Uložiť</button>
+                        </div>
                     </div>
                     <div id="fin-zones-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
                 </div>
@@ -221,8 +224,8 @@
                 </div>
 
                 <!-- MODAL - Nový merač -->
-                <div id="modal-meter" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
-                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-md">
+                <div id="modal-meter" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-6" id="meter-modal-title">Nový merač</h3>
                         <div class="space-y-4">
                             <div>
@@ -276,8 +279,8 @@
                 </div>
 
                 <!-- MODAL - Nové odčítanie -->
-                <div id="modal-reading" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
-                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-md">
+                <div id="modal-reading" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-2">Odčítanie</h3>
                         <p class="text-[10px] font-bold text-slate-400 mb-6" id="reading-meter-name"></p>
                         <div id="reading-prev-info" class="bg-slate-50 rounded-xl p-3 mb-4 hidden">
@@ -335,7 +338,7 @@
                 </div>
 
                 <!-- MODAL - Pridať náklad -->
-                <div id="modal-expense" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
+                <div id="modal-expense" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)window.closeExpenseModal()">
                     <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-6">Nový náklad</h3>
                         <div class="space-y-4">
@@ -510,7 +513,7 @@
                 </div>
 
                 <!-- MODAL - Detail vyúčtovania -->
-                <div id="modal-invoice" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
+                <div id="modal-invoice" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)window.closeInvoiceModal()">
                     <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-6" id="inv-modal-title">Vyúčtovanie</h3>
                         <div id="inv-modal-body" class="space-y-4 text-sm"></div>
@@ -525,7 +528,7 @@
                 </div>
 
                 <!-- MODAL - Nájomca -->
-                <div id="modal-tenant" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4">
+                <div id="modal-tenant" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)window.closeTenantModal()">
                     <div class="bg-white rounded-[2rem] p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h3 class="font-black text-lg uppercase tracking-tighter mb-6" id="tenant-modal-title">Nový nájomca</h3>
                         <div class="space-y-4">
