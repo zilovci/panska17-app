@@ -210,12 +210,14 @@
                 </div>
 
                 <!-- MERAČE -->
-                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Merače</h3>
-                        <button onclick="window.showAddMeter()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Merač</button>
+                <div class="bg-white rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center p-6 md:p-8 cursor-pointer" onclick="var b=document.getElementById('meters-body');var i=document.getElementById('meters-chevron');b.classList.toggle('hidden');i.classList.toggle('fa-chevron-down');i.classList.toggle('fa-chevron-up');">
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest"><i id="meters-chevron" class="fa-solid fa-chevron-down text-[10px] mr-2"></i>Merače</h3>
+                        <button onclick="event.stopPropagation();window.showAddMeter()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Merač</button>
                     </div>
-                    <div id="fin-meters-list"></div>
+                    <div id="meters-body" class="hidden px-6 md:px-8 pb-6 md:pb-8">
+                        <div id="fin-meters-list"></div>
+                    </div>
                 </div>
 
                 <!-- MODAL - Nový merač -->
