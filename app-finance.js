@@ -1788,6 +1788,19 @@ window.aiExtractReceipt = async function() {
       if (cat) document.getElementById('exp-category').value = cat.id;
     }
 
+    // Trigger recalculation of tenant allocations after AI fill
+    var expCatEl = document.getElementById('exp-category');
+    if (expCatEl && expCatEl.onchange) {
+      await expCatEl.onchange.call(expCatEl);
+    } else {
+      // Fallback: at least recalc with current method
+      if (currentAllocMethod === 'meter') {
+        window.calcMeterAllocation();
+      } else {
+        window.updateAllocPreview();
+      }
+    }
+
     status.innerText = 'Hotovo – skontrolujte údaje';
     if (result.consumption) {
       status.innerText = 'Hotovo • Spotreba: ' + result.consumption + ' ' + (result.consumption_unit || '') + (result.meter_number ? ' • Merač: ' + result.meter_number : '');
