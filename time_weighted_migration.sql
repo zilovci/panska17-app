@@ -77,3 +77,10 @@ ADD COLUMN IF NOT EXISTS alloc_method text DEFAULT 'area';
 -- Referenčné číslo pre krížovú kontrolu s Excelom
 ALTER TABLE expenses
 ADD COLUMN IF NOT EXISTS ref_number text DEFAULT NULL;
+
+-- Platby: dátum úhrady a poznámka
+ALTER TABLE tenant_payments
+ADD COLUMN IF NOT EXISTS paid_date date DEFAULT NULL;
+
+ALTER TABLE tenant_payments
+ADD COLUMN IF NOT EXISTS note text DEFAULT NULL;

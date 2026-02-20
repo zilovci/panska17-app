@@ -439,8 +439,10 @@ window.loadPayments = async function() {
 
     var types = [];
     if (t.monthly_rent > 0) types.push({ type: 'rent', label: 'Nájomné', cls: 'text-indigo-500' });
-    if (t.monthly_advance > 0) types.push({ type: 'advance', label: 'Zálohy', cls: 'text-blue-500' });
-    if (types.length === 0) return;
+    types.push({ type: 'advance', label: 'Zálohy', cls: 'text-blue-500' });
+    // Check if tenant has settlement payments
+    var hasSettlement = payments.some(function(p) { return p.tenant_id === t.id && p.type === 'settlement'; });
+    if (hasSettlement) types.push({ type: 'settlement', label: 'Vyúčtovanie', cls: 'text-orange-500' });
 
     // Tenant header
     html += '<tr class="border-t-2 border-slate-200"><td colspan="15" class="pt-3 pb-1 font-black text-slate-700">' + tLabel + '</td></tr>';
@@ -455,13 +457,16 @@ window.loadPayments = async function() {
         var pay = payments.find(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
 
         if (pay) {
-          var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' : 'bg-blue-50 text-blue-400 hover:bg-blue-100';
+          var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' :
+            tp.type === 'settlement' ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' :
+            'bg-blue-50 text-blue-400 hover:bg-blue-100';
           var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
           var cls = pay.paid ? paidCls : unpaidCls;
           rowTotal += parseFloat(pay.amount) || 0;
+          var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') + (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = zmeniť sumu';
           html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
             'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
-            'title="Klik = zaplatené, Dvojklik = zmeniť sumu">' +
+            'title="' + tooltip + '">' +
             parseFloat(pay.amount).toFixed(0) +
             (pay.paid ? ' ✓' : '') +
           '</div></td>';
@@ -620,6 +625,48 @@ window.togglePayment = async function(payId, newPaid) {
     update.paid_date = null;
   }
   await sb.from('tenant_payments').update(update).eq('id', payId);
+  await window.loadPayments();
+};
+
+window.showAddPayment = async function() {
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name').order('name');
+  var sel = document.getElementById('pay-tenant');
+  sel.innerHTML = '<option value="">-- Vyberte --</option>' +
+    tenants.map(function(t) { return '<option value="' + t.id + '">' + (t.company_name || t.name) + '</option>'; }).join('');
+  document.getElementById('pay-type').value = 'settlement';
+  document.getElementById('pay-amount').value = '';
+  document.getElementById('pay-date').value = new Date().toISOString().split('T')[0];
+  var yearSel = document.getElementById('fin-pay-year');
+  var year = yearSel ? yearSel.value : new Date().getFullYear();
+  document.getElementById('pay-month').value = year + '-01';
+  document.getElementById('pay-note').value = '';
+  document.getElementById('modal-payment').classList.remove('hidden');
+};
+
+window.saveManualPayment = async function() {
+  var tenantId = document.getElementById('pay-tenant').value;
+  var type = document.getElementById('pay-type').value;
+  var amount = parseFloat(document.getElementById('pay-amount').value) || 0;
+  var paidDate = document.getElementById('pay-date').value;
+  var monthVal = document.getElementById('pay-month').value;
+  var note = document.getElementById('pay-note').value.trim() || null;
+
+  if (!tenantId) { alert('Vyberte nájomcu.'); return; }
+  if (!monthVal) { alert('Vyplňte mesiac.'); return; }
+
+  var month = monthVal + '-01';
+
+  await sb.from('tenant_payments').insert({
+    tenant_id: tenantId,
+    month: month,
+    amount: amount,
+    type: type,
+    paid: true,
+    paid_date: paidDate || null,
+    note: note
+  });
+
+  document.getElementById('modal-payment').classList.add('hidden');
   await window.loadPayments();
 };
 
