@@ -69,3 +69,7 @@ ADD COLUMN IF NOT EXISTS no_billing boolean DEFAULT false;
 INSERT INTO cost_categories (name, empty_zone_rule)
 SELECT 'EZS', 'owner'
 WHERE NOT EXISTS (SELECT 1 FROM cost_categories WHERE name = 'EZS');
+
+-- Metóda alokácie - pamätá si area/meter pre každý náklad
+ALTER TABLE expenses
+ADD COLUMN IF NOT EXISTS alloc_method text DEFAULT 'area';

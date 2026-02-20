@@ -1260,6 +1260,7 @@ window.saveExpense = async function() {
     note: document.getElementById('exp-note').value.trim() || null,
     cost_type: document.getElementById('exp-cost-type').value || 'operating',
     amort_years: parseInt(document.getElementById('exp-amort-years').value) || null,
+    alloc_method: currentAllocMethod || 'area',
     created_by: currentUserId
   };
 
@@ -1476,9 +1477,9 @@ window.editExpense = async function(id) {
   window.toggleAmortFields();
 
   // Load existing allocations
-  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer').eq('expense_id', id);
+  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer, months_occupied, months_total').eq('expense_id', id);
   var allocMap = {};
-  allocs.forEach(function(a) { allocMap[a.zone_id] = a.payer || 'tenant'; });
+  allocs.forEach(function(a) { allocMap[a.zone_id] = a; });
   var cbs = document.querySelectorAll('.alloc-zone-cb');
   for (var i = 0; i < cbs.length; i++) {
     var isAlloc = allocMap.hasOwnProperty(cbs[i].value);
@@ -1486,10 +1487,21 @@ window.editExpense = async function(id) {
     var payerSel = document.querySelector('[data-payer-zone="' + cbs[i].value + '"]');
     if (payerSel) {
       payerSel.classList.toggle('hidden', !isAlloc);
-      if (isAlloc) payerSel.value = allocMap[cbs[i].value];
+      if (isAlloc) payerSel.value = allocMap[cbs[i].value].payer || 'tenant';
+    }
+    // Restore months if time-weighted
+    var allocData = allocMap[cbs[i].value];
+    if (allocData && allocData.months_occupied != null && allocData.months_total) {
+      var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
+      var monthsWrap = document.querySelector('[data-months-zone="' + cbs[i].value + '"]');
+      if (monthsInput) monthsInput.value = allocData.months_occupied;
+      if (monthsWrap) monthsWrap.classList.remove('hidden');
     }
   }
-  window.updateAllocPreview();
+
+  // Restore allocation method (area or meter)
+  var savedMethod = e.alloc_method || 'area';
+  window.setAllocMethod(savedMethod);
 
   document.getElementById('modal-expense').classList.remove('hidden');
 };
