@@ -494,7 +494,13 @@
                         </button>
                     </div>
                     <div id="fin-inv-preview" class="hidden bg-slate-50 rounded-xl p-4 text-[10px] font-mono whitespace-pre-wrap"></div>
-                    <div id="fin-inv-list" class="mt-4"></div>
+                    <div class="flex items-center gap-2 mt-4 mb-2">
+                        <label class="text-[9px] font-black text-slate-400 uppercase">Rok</label>
+                        <select id="fin-inv-year" onchange="window.loadInvoices()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                            <option value="">Všetky roky</option>
+                        </select>
+                    </div>
+                    <div id="fin-inv-list"></div>
                 </div>
 
                 <!-- MODAL - Detail vyúčtovania -->
@@ -505,6 +511,7 @@
                         <div class="flex flex-wrap gap-2 mt-6">
                             <button onclick="window.saveInvoiceAmounts()" class="flex-1 bg-green-600 text-white py-3 rounded-xl text-[10px] font-black uppercase"><i class="fa-solid fa-save mr-1"></i> Uložiť</button>
                             <button onclick="window.redownloadInvoiceFromModal()" class="flex-1 bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase"><i class="fa-solid fa-file-pdf mr-1"></i> Stiahnuť PDF</button>
+                            <button onclick="window.duplicateInvoice()" class="bg-blue-50 text-blue-500 py-3 px-4 rounded-xl text-[10px] font-black uppercase hover:bg-blue-100"><i class="fa-solid fa-copy"></i></button>
                             <button onclick="window.closeInvoiceModal()" class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl text-[10px] font-black uppercase">Zavrieť</button>
                             <button onclick="window.deleteInvoiceFromModal()" class="bg-red-50 text-red-400 py-3 px-4 rounded-xl text-[10px] font-black uppercase hover:bg-red-100"><i class="fa-solid fa-trash"></i></button>
                         </div>

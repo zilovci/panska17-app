@@ -939,6 +939,32 @@ window.loadInvoices = async function() {
     .select('*, tenants(name, company_name)')
     .order('created_at', { ascending: false });
 
+  // Populate year filter
+  var yearSel = document.getElementById('fin-inv-year');
+  if (yearSel) {
+    var years = {};
+    invoices.forEach(function(inv) {
+      if (inv.period_from) years[inv.period_from.substring(0, 4)] = true;
+      if (inv.period_to) years[inv.period_to.substring(0, 4)] = true;
+    });
+    var currentVal = yearSel.value;
+    var opts = '<option value="">Všetky roky</option>';
+    Object.keys(years).sort().reverse().forEach(function(y) {
+      opts += '<option value="' + y + '"' + (currentVal === y ? ' selected' : '') + '>' + y + '</option>';
+    });
+    yearSel.innerHTML = opts;
+    if (currentVal) yearSel.value = currentVal;
+  }
+
+  // Filter by year
+  var filterYear = yearSel ? yearSel.value : '';
+  if (filterYear) {
+    invoices = invoices.filter(function(inv) {
+      return (inv.period_from && inv.period_from.substring(0, 4) === filterYear) ||
+             (inv.period_to && inv.period_to.substring(0, 4) === filterYear);
+    });
+  }
+
   if (invoices.length === 0) {
     list.innerHTML = '<p class="text-sm text-slate-300 mt-3">Žiadne vyúčtovania</p>';
     return;
@@ -1070,6 +1096,33 @@ window.deleteInvoiceFromModal = async function() {
   await sb.from('invoices').delete().eq('id', currentInvoiceId);
   window.closeInvoiceModal();
   await window.loadInvoices();
+};
+
+window.duplicateInvoice = async function() {
+  if (!currentInvoiceId) return;
+  var { data: orig } = await sb.from('invoices').select('*').eq('id', currentInvoiceId).single();
+  if (!orig) return;
+
+  var newNum = orig.invoice_number + '-KÓPIA';
+  var copy = {
+    tenant_id: orig.tenant_id,
+    invoice_number: newNum,
+    period_from: orig.period_from,
+    period_to: orig.period_to,
+    total_costs: orig.total_costs,
+    total_advances: orig.total_advances,
+    balance: orig.balance,
+    due_date: orig.due_date,
+    status: 'draft',
+    created_by: currentUserId
+  };
+
+  var { data: inserted } = await sb.from('invoices').insert(copy).select('id').single();
+  if (inserted) {
+    window.closeInvoiceModal();
+    await window.loadInvoices();
+    await window.showInvoiceDetail(inserted.id);
+  }
 };
 
 async function init() {
