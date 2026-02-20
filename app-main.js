@@ -454,24 +454,28 @@ window.loadPayments = async function() {
 
       for (var m = 0; m < 12; m++) {
         var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
-        var pay = payments.find(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
+        var cellPays = payments.filter(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
 
-        if (pay) {
-          var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' :
-            tp.type === 'settlement' ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' :
-            'bg-blue-50 text-blue-400 hover:bg-blue-100';
-          var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
-          var cls = pay.paid ? paidCls : unpaidCls;
-          rowTotal += parseFloat(pay.amount) || 0;
-          var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') +
-            (pay.period_from && pay.period_to ? ' • Obdobie: ' + pay.period_from.substring(0,7) + ' – ' + pay.period_to.substring(0,7) : '') +
-            (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = upraviť';
-          html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
-            'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
-            'title="' + tooltip + '">' +
-            parseFloat(pay.amount).toFixed(0) +
-            (pay.paid ? ' ✓' : '') +
-          '</div></td>';
+        if (cellPays.length > 0) {
+          html += '<td class="text-center py-1"><div class="flex flex-col gap-0.5">';
+          cellPays.forEach(function(pay) {
+            var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' :
+              tp.type === 'settlement' ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' :
+              'bg-blue-50 text-blue-400 hover:bg-blue-100';
+            var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
+            var cls = pay.paid ? paidCls : unpaidCls;
+            rowTotal += parseFloat(pay.amount) || 0;
+            var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') +
+              (pay.period_from && pay.period_to ? ' • Obdobie: ' + pay.period_from.substring(0,7) + ' – ' + pay.period_to.substring(0,7) : '') +
+              (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = upraviť';
+            html += '<div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
+              'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
+              'title="' + tooltip + '">' +
+              parseFloat(pay.amount).toFixed(0) +
+              (pay.paid ? ' ✓' : '') +
+            '</div>';
+          });
+          html += '</div></td>';
         } else {
           html += '<td class="text-center py-1"><span class="text-slate-200">–</span></td>';
         }
@@ -677,18 +681,8 @@ window.saveManualPayment = async function() {
   if (!tenantId) { alert('Vyberte nájomcu.'); return; }
   if (!periodFrom) { alert('Vyplňte obdobie od.'); return; }
 
-  var month;
-  if (type === 'settlement' && periodFrom) {
-    month = periodFrom + '-01';
-  } else if (paidDate) {
-    month = paidDate.substring(0, 7) + '-01';
-  } else {
-    month = periodFrom + '-01';
-  }
-
   var row = {
     tenant_id: tenantId,
-    month: month,
     amount: amount,
     type: type,
     paid: true
@@ -700,9 +694,12 @@ window.saveManualPayment = async function() {
 
   var error;
   if (editingPaymentId) {
+    // NEVER change month on edit - keep grid position
     var res = await sb.from('tenant_payments').update(row).eq('id', editingPaymentId);
     error = res.error;
   } else {
+    // New payment: month = period_from (grid position = obdobie)
+    row.month = periodFrom + '-01';
     var res = await sb.from('tenant_payments').insert(row);
     error = res.error;
   }
