@@ -290,25 +290,53 @@ window.deleteTenant = async function(id) {
 
 // ============ PREHĽAD NÁKLADOV ============
 
+var overviewMode = 'period'; // 'period' or 'payment'
+
+window.setOverviewMode = function(mode) {
+  overviewMode = mode;
+  var btns = document.querySelectorAll('#fin-overview-mode button');
+  btns.forEach(function(btn) {
+    if (btn.getAttribute('data-mode') === mode) {
+      btn.className = 'px-2 py-1 rounded-md bg-white text-slate-800 shadow-sm';
+    } else {
+      btn.className = 'px-2 py-1 rounded-md text-slate-400';
+    }
+  });
+  window.loadOverview();
+};
+
 window.loadOverview = async function() {
   var yearSel = document.getElementById('fin-overview-year');
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  // Get all allocations for this year's expenses (by period)
-  var { data: expenses = [] } = await sb.from('expenses')
-    .select('id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
-    .lte('period_from', year + '-12-31')
-    .gte('period_to', year + '-01-01');
+  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var allExp = [];
 
-  // Also get expenses without period but with date in year
-  var { data: expenses2 = [] } = await sb.from('expenses')
-    .select('id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))')
-    .is('period_from', null)
-    .gte('date', year + '-01-01')
-    .lte('date', year + '-12-31');
+  if (overviewMode === 'payment') {
+    // By payment date (date field)
+    var { data: exp1 = [] } = await sb.from('expenses')
+      .select(selectFields)
+      .gte('date', year + '-01-01')
+      .lte('date', year + '-12-31');
+    allExp = exp1;
+  } else {
+    // By billing period (period_from/period_to)
+    var { data: expenses = [] } = await sb.from('expenses')
+      .select(selectFields)
+      .lte('period_from', year + '-12-31')
+      .gte('period_to', year + '-01-01');
 
-  var allExp = expenses.concat(expenses2);
+    // Also get expenses without period but with date in year
+    var { data: expenses2 = [] } = await sb.from('expenses')
+      .select(selectFields)
+      .is('period_from', null)
+      .gte('date', year + '-01-01')
+      .lte('date', year + '-12-31');
+
+    allExp = expenses.concat(expenses2);
+  }
+
   // Deduplicate by id
   var seen = {};
   allExp = allExp.filter(function(e) {
@@ -356,12 +384,15 @@ window.loadOverview = async function() {
   var table = document.getElementById('fin-overview-table');
   if (!table) return;
 
+  var modeLabel = overviewMode === 'payment' ? 'Rok zaplatenia: ' + year : 'Zúčtovacie obdobie: ' + year;
+
   if (catNames.length === 0) {
-    table.innerHTML = '<p class="text-sm text-slate-300">Žiadne dáta pre tento rok</p>';
+    table.innerHTML = '<p class="text-sm text-slate-300">Žiadne dáta pre ' + modeLabel.toLowerCase() + '</p>';
     return;
   }
 
-  var html = '<table class="w-full text-[9px]">' +
+  var html = '<p class="text-[9px] text-slate-400 mb-2">' + modeLabel + ' • ' + allExp.length + ' položiek</p>' +
+    '<table class="w-full text-[9px]">' +
     '<thead><tr class="border-b-2 border-slate-200">' +
     '<th class="text-left py-2 font-black text-slate-400 uppercase">Nájomca</th>' +
     catNames.map(function(c) { return '<th class="text-right py-2 font-black text-slate-400 uppercase px-2">' + c + '</th>'; }).join('') +

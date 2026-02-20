@@ -529,7 +529,13 @@
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Prehľad nákladov</h3>
-                        <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                        <div class="flex items-center gap-2">
+                            <div id="fin-overview-mode" class="flex bg-slate-100 rounded-lg p-0.5 text-[9px] font-bold">
+                                <button onclick="window.setOverviewMode('period')" data-mode="period" class="px-2 py-1 rounded-md bg-white text-slate-800 shadow-sm">Podľa obdobia</button>
+                                <button onclick="window.setOverviewMode('payment')" data-mode="payment" class="px-2 py-1 rounded-md text-slate-400">Podľa zaplatenia</button>
+                            </div>
+                            <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                        </div>
                     </div>
                     <div id="fin-overview-table" class="overflow-x-auto"></div>
                 </div>
