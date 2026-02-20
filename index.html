@@ -590,8 +590,19 @@
                                     <label class="text-[9px] font-black text-slate-400 uppercase">Mesačná záloha €</label>
                                     <input type="number" step="0.01" id="ten-advance" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="0.00">
                                 </div>
-                                <div></div>
+                                <div>
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Účet pre platby</label>
+                                    <select id="ten-payment-account" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                                        <option value="">—</option>
+                                        <option value="B154">B154 – nájmy</option>
+                                        <option value="B055">B055 – služby</option>
+                                    </select>
+                                </div>
                             </div>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="ten-no-billing" class="rounded">
+                                <span class="text-[9px] font-black text-slate-400 uppercase">Bez vyúčtovania (paušál, žiadne zúčtovacie faktúry)</span>
+                            </label>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Zóny</label>
                                 <div id="ten-zones" class="grid grid-cols-2 sm:grid-cols-3 gap-1 mt-1"></div>
