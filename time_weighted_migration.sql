@@ -73,3 +73,7 @@ WHERE NOT EXISTS (SELECT 1 FROM cost_categories WHERE name = 'EZS');
 -- Metóda alokácie - pamätá si area/meter pre každý náklad
 ALTER TABLE expenses
 ADD COLUMN IF NOT EXISTS alloc_method text DEFAULT 'area';
+
+-- Referenčné číslo pre krížovú kontrolu s Excelom
+ALTER TABLE expenses
+ADD COLUMN IF NOT EXISTS ref_number text DEFAULT NULL;

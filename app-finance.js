@@ -613,6 +613,7 @@ window.loadExpenses = async function() {
       '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center space-x-2">' +
           '<span class="text-[8px] font-black text-slate-400 uppercase">' + fmtD(e.date) + '</span>' +
+          (e.ref_number ? '<span class="text-[8px] font-bold text-amber-500">#' + e.ref_number + '</span>' : '') +
           '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
           costTypeBadge +
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
@@ -678,6 +679,7 @@ window.showAddExpense = async function() {
   document.getElementById('exp-period-from').value = '';
   document.getElementById('exp-period-to').value = '';
   document.getElementById('exp-note').value = '';
+  document.getElementById('exp-ref').value = '';
   document.getElementById('exp-receipt').value = '';
   var receiptPreview = document.getElementById('exp-receipt-preview');
   receiptPreview.classList.add('hidden');
@@ -1306,6 +1308,7 @@ window.saveExpense = async function() {
     cost_type: document.getElementById('exp-cost-type').value || 'operating',
     amort_years: parseInt(document.getElementById('exp-amort-years').value) || null,
     alloc_method: currentAllocMethod || 'area',
+    ref_number: document.getElementById('exp-ref').value.trim() || null,
     created_by: currentUserId
   };
 
@@ -1517,6 +1520,7 @@ window.editExpense = async function(id) {
   document.getElementById('exp-period-from').value = e.period_from || '';
   document.getElementById('exp-period-to').value = e.period_to || '';
   document.getElementById('exp-note').value = e.note || '';
+  document.getElementById('exp-ref').value = e.ref_number || '';
   document.getElementById('exp-cost-type').value = e.cost_type || 'operating';
   document.getElementById('exp-amort-years').value = e.amort_years || '';
   window.toggleAmortFields();
