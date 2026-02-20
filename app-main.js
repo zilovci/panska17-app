@@ -627,10 +627,16 @@ window.deletePayment = async function() {
 
 window.togglePayment = async function(payId, newPaid) {
   if (newPaid) {
-    // Only set paid_date if not already set
-    var { data: existing } = await sb.from('tenant_payments').select('paid_date').eq('id', payId).single();
+    var { data: existing } = await sb.from('tenant_payments').select('paid_date, month, type').eq('id', payId).single();
     var update = { paid: true };
-    if (!existing || !existing.paid_date) update.paid_date = new Date().toISOString().split('T')[0];
+    if (!existing || !existing.paid_date) {
+      // For monthly payments, default to 1st of that month
+      if (existing && existing.month && (existing.type === 'rent' || existing.type === 'advance')) {
+        update.paid_date = existing.month;
+      } else {
+        update.paid_date = new Date().toISOString().split('T')[0];
+      }
+    }
     await sb.from('tenant_payments').update(update).eq('id', payId);
   } else {
     await sb.from('tenant_payments').update({ paid: false }).eq('id', payId);
