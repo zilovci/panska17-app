@@ -209,9 +209,10 @@ async function loadFinance() {
   // Year dropdown
   var yearSel = document.getElementById('fin-year');
   if (yearSel && yearSel.options.length === 0) {
+    yearSel.innerHTML = '<option value="">Všetky roky</option>';
     var curYear = new Date().getFullYear();
     for (var y = curYear; y >= 2020; y--) {
-      yearSel.innerHTML += '<option value="' + y + '">' + y + '</option>';
+      yearSel.innerHTML += '<option value="' + y + '"' + (y === curYear ? ' selected' : '') + '>' + y + '</option>';
     }
   }
 
@@ -545,17 +546,18 @@ window.deleteReading = async function(id) {
 };
 
 window.loadExpenses = async function() {
-  var year = document.getElementById('fin-year').value || new Date().getFullYear();
+  var year = document.getElementById('fin-year').value;
   var catFilter = document.getElementById('fin-cat-filter').value;
   var dateMode = document.getElementById('fin-date-mode').value;
 
   var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, payer, zones(name, tenant_name))');
 
-  if (dateMode === 'period') {
-    // Obdobie sa prekrýva s rokom: period_from <= koniec roka AND period_to >= začiatok roka
-    query = query.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
-  } else {
-    query = query.gte('date', year + '-01-01').lte('date', year + '-12-31');
+  if (year) {
+    if (dateMode === 'period') {
+      query = query.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+    } else {
+      query = query.gte('date', year + '-01-01').lte('date', year + '-12-31');
+    }
   }
 
   query = query.order('date', { ascending: false });
@@ -569,10 +571,12 @@ window.loadExpenses = async function() {
   if (result.error) {
     console.warn('Expenses query error, trying without allocations:', result.error);
     var q2 = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name)');
-    if (dateMode === 'period') {
-      q2 = q2.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
-    } else {
-      q2 = q2.gte('date', year + '-01-01').lte('date', year + '-12-31');
+    if (year) {
+      if (dateMode === 'period') {
+        q2 = q2.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+      } else {
+        q2 = q2.gte('date', year + '-01-01').lte('date', year + '-12-31');
+      }
     }
     q2 = q2.order('date', { ascending: false });
     if (catFilter !== 'all') q2 = q2.eq('category_id', catFilter);
@@ -621,6 +625,7 @@ window.loadExpenses = async function() {
           '<a href="' + e.receipt_url + '" target="_blank" class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center border border-red-200 hover:border-red-400 cursor-pointer shrink-0"><i class="fa-solid fa-file-pdf text-red-500"></i></a>' :
           '<img src="' + e.receipt_url + '" onclick="window.open(\'' + e.receipt_url + '\')" class="w-10 h-10 object-cover rounded-lg cursor-pointer border border-slate-200 hover:border-blue-400 shrink-0">') : '') +
         '<span class="text-sm font-black text-slate-900 whitespace-nowrap">' + parseFloat(e.amount).toFixed(2) + ' €</span>' +
+        '<button onclick="event.stopPropagation();window.duplicateExpense(\'' + e.id + '\')" class="text-blue-300 hover:text-blue-500 text-xs" title="Duplikát"><i class="fa-solid fa-copy"></i></button>' +
         '<button onclick="window.editExpense(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-xs"><i class="fa-solid fa-pen"></i></button>' +
         '<button onclick="window.deleteExpense(\'' + e.id + '\')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>' +
       '</div>' +
@@ -1595,6 +1600,53 @@ window.deleteExpense = async function(id) {
   if (!confirm('Vymazať tento náklad?')) return;
   await sb.from('expenses').delete().eq('id', id);
   await loadExpenses();
+};
+
+window.duplicateExpense = async function(id) {
+  var { data: orig } = await sb.from('expenses').select('*').eq('id', id).single();
+  if (!orig) return;
+
+  var copy = {
+    date: orig.date,
+    category_id: orig.category_id,
+    description: orig.description,
+    supplier: orig.supplier,
+    amount: orig.amount,
+    zone_id: orig.zone_id,
+    invoice_number: orig.invoice_number ? orig.invoice_number + '-KÓPIA' : null,
+    period_from: orig.period_from,
+    period_to: orig.period_to,
+    note: orig.note,
+    cost_type: orig.cost_type,
+    amort_years: orig.amort_years,
+    alloc_method: orig.alloc_method,
+    created_by: currentUserId
+  };
+
+  var { data: inserted } = await sb.from('expenses').insert(copy).select('id').single();
+  if (!inserted) return;
+
+  // Copy allocations
+  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, percentage, amount, payer, consumption, consumption_unit, months_occupied, months_total').eq('expense_id', id);
+  if (allocs.length > 0) {
+    var newAllocs = allocs.map(function(a) {
+      return {
+        expense_id: inserted.id,
+        zone_id: a.zone_id,
+        percentage: a.percentage,
+        amount: a.amount,
+        payer: a.payer,
+        consumption: a.consumption,
+        consumption_unit: a.consumption_unit,
+        months_occupied: a.months_occupied,
+        months_total: a.months_total
+      };
+    });
+    await sb.from('expense_allocations').insert(newAllocs);
+  }
+
+  await loadExpenses();
+  await window.editExpense(inserted.id);
 };
 
 // Receipt file preview
