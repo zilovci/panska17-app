@@ -78,9 +78,15 @@ ADD COLUMN IF NOT EXISTS alloc_method text DEFAULT 'area';
 ALTER TABLE expenses
 ADD COLUMN IF NOT EXISTS ref_number text DEFAULT NULL;
 
--- Platby: dátum úhrady a poznámka
+-- Platby: dátum úhrady, obdobie a poznámka
 ALTER TABLE tenant_payments
 ADD COLUMN IF NOT EXISTS paid_date date DEFAULT NULL;
+
+ALTER TABLE tenant_payments
+ADD COLUMN IF NOT EXISTS period_from date DEFAULT NULL;
+
+ALTER TABLE tenant_payments
+ADD COLUMN IF NOT EXISTS period_to date DEFAULT NULL;
 
 ALTER TABLE tenant_payments
 ADD COLUMN IF NOT EXISTS note text DEFAULT NULL;

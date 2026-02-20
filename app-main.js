@@ -463,7 +463,9 @@ window.loadPayments = async function() {
           var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
           var cls = pay.paid ? paidCls : unpaidCls;
           rowTotal += parseFloat(pay.amount) || 0;
-          var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') + (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = zmeniť sumu';
+          var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') +
+            (pay.period_from && pay.period_to ? ' • Obdobie: ' + pay.period_from.substring(0,7) + ' – ' + pay.period_to.substring(0,7) : '') +
+            (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = zmeniť sumu';
           html += '<td class="text-center py-1"><div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
             'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
             'title="' + tooltip + '">' +
@@ -638,7 +640,8 @@ window.showAddPayment = async function() {
   document.getElementById('pay-date').value = new Date().toISOString().split('T')[0];
   var yearSel = document.getElementById('fin-pay-year');
   var year = yearSel ? yearSel.value : new Date().getFullYear();
-  document.getElementById('pay-month').value = year + '-01';
+  document.getElementById('pay-period-from').value = year + '-01';
+  document.getElementById('pay-period-to').value = year + '-12';
   document.getElementById('pay-note').value = '';
   document.getElementById('modal-payment').classList.remove('hidden');
 };
@@ -648,13 +651,15 @@ window.saveManualPayment = async function() {
   var type = document.getElementById('pay-type').value;
   var amount = parseFloat(document.getElementById('pay-amount').value) || 0;
   var paidDate = document.getElementById('pay-date').value;
-  var monthVal = document.getElementById('pay-month').value;
+  var periodFrom = document.getElementById('pay-period-from').value;
+  var periodTo = document.getElementById('pay-period-to').value;
   var note = document.getElementById('pay-note').value.trim() || null;
 
   if (!tenantId) { alert('Vyberte nájomcu.'); return; }
-  if (!monthVal) { alert('Vyplňte mesiac.'); return; }
+  if (!periodFrom) { alert('Vyplňte obdobie od.'); return; }
 
-  var month = monthVal + '-01';
+  // Use paid_date month for grid placement, fallback to period_from
+  var month = paidDate ? paidDate.substring(0, 7) + '-01' : periodFrom + '-01';
 
   await sb.from('tenant_payments').insert({
     tenant_id: tenantId,
@@ -663,6 +668,8 @@ window.saveManualPayment = async function() {
     type: type,
     paid: true,
     paid_date: paidDate || null,
+    period_from: periodFrom + '-01',
+    period_to: (periodTo || periodFrom) + '-01',
     note: note
   });
 
