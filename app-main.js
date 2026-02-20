@@ -658,8 +658,16 @@ window.saveManualPayment = async function() {
   if (!tenantId) { alert('Vyberte nájomcu.'); return; }
   if (!periodFrom) { alert('Vyplňte obdobie od.'); return; }
 
-  // Use paid_date month for grid placement, fallback to period_from
-  var month = paidDate ? paidDate.substring(0, 7) + '-01' : periodFrom + '-01';
+  // For settlements: place in grid by period_from (that's the year you're looking at)
+  // For regular payments: place by paid_date month or period_from
+  var month;
+  if (type === 'settlement' && periodFrom) {
+    month = periodFrom + '-01';
+  } else if (paidDate) {
+    month = paidDate.substring(0, 7) + '-01';
+  } else {
+    month = periodFrom + '-01';
+  }
 
   await sb.from('tenant_payments').insert({
     tenant_id: tenantId,
