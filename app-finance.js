@@ -88,10 +88,12 @@ async function loadFinance() {
           '<option value="tenant">nájomca</option>' +
           '<option value="owner">vlastník</option>' +
         '</select>' +
-        '<span data-months-zone="' + z.id + '" class="alloc-months-wrap hidden flex items-center gap-0.5">' +
-          '<span class="text-[7px] text-orange-500 font-bold">obsadené</span>' +
-          '<input type="number" min="0" max="12" step="1" data-months-input="' + z.id + '" class="alloc-months-input w-7 text-center border border-orange-300 rounded px-0.5 py-0 text-[9px] font-bold text-orange-600" onchange="window.updateAllocPreview()" oninput="window.updateAllocPreview()">' +
-          '<span class="text-[7px] text-orange-400 font-bold alloc-months-total">/12 mes.</span>' +
+        '<span data-months-zone="' + z.id + '" class="alloc-months-wrap hidden flex flex-col gap-0">' +
+          '<span class="flex items-center gap-0.5">' +
+            '<input type="number" min="0" max="12" step="1" data-months-input="' + z.id + '" class="alloc-months-input w-7 text-center border border-orange-300 rounded px-0.5 py-0 text-[9px] font-bold text-orange-600" onchange="window.updateAllocPreview()" oninput="window.updateAllocPreview()">' +
+            '<span class="text-[7px] text-orange-400 font-bold alloc-months-total">/12 mes.</span>' +
+          '</span>' +
+          '<span class="alloc-months-detail text-[7px] text-slate-400 leading-tight"></span>' +
         '</span>' +
       '</div>';
     }).join('');
@@ -112,12 +114,19 @@ async function loadFinance() {
     }
   };
 
+  // Timezone-safe date parsing (avoids UTC vs local issues with new Date('YYYY-MM-DD'))
+  function parseDate(str) {
+    if (!str) return null;
+    var parts = str.split('-');
+    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2] || '1'));
+  }
+
   // Helper: calculate total months in billing period
   window.getPeriodMonths = function() {
     var pf = document.getElementById('exp-period-from').value;
     var pt = document.getElementById('exp-period-to').value;
     if (!pf || !pt) return 12;
-    var d1 = new Date(pf), d2 = new Date(pt);
+    var d1 = parseDate(pf), d2 = parseDate(pt);
     var months = (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth()) + 1;
     return Math.max(1, Math.min(36, months));
   };
@@ -127,9 +136,9 @@ async function loadFinance() {
     if (!periodFrom || !periodTo) return null; // no period = can't calc
     if (!leaseFrom) return null; // no lease start = assume always active
     // Effective ranges
-    var pf = new Date(periodFrom), pt = new Date(periodTo);
-    var lf = new Date(leaseFrom);
-    var lt = leaseTo ? new Date(leaseTo) : new Date('2099-12-31');
+    var pf = parseDate(periodFrom), pt = parseDate(periodTo);
+    var lf = parseDate(leaseFrom);
+    var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
     // Overlap: max(start) to min(end)
     var overlapStart = lf > pf ? lf : pf;
     var overlapEnd = lt < pt ? lt : pt;
@@ -139,6 +148,8 @@ async function loadFinance() {
       + (overlapEnd.getMonth() - overlapStart.getMonth()) + 1;
     return Math.max(0, Math.min(months, window.getPeriodMonths()));
   };
+
+  var monthNamesShort = ['jan','feb','mar','apr','máj','jún','júl','aug','sep','okt','nov','dec'];
 
   // Show/hide months inputs based on period and lease dates
   window.updateMonthsVisibility = function() {
@@ -163,7 +174,7 @@ async function loadFinance() {
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
       
-      // Update total label
+      // Update total label - ALWAYS from current period
       var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
       if (totalLabel) totalLabel.textContent = '/' + totalMonths + ' mes.';
       var inp = monthsWraps[m].querySelector('.alloc-months-input');
@@ -178,8 +189,31 @@ async function loadFinance() {
           }
           inp.setAttribute('data-auto', 'true');
         }
-        // Clamp
+        // Clamp to current period total
         if (parseInt(inp.value) > totalMonths) inp.value = totalMonths;
+      }
+
+      // Build detail text showing where the number comes from
+      var detailEl = monthsWraps[m].querySelector('.alloc-months-detail');
+      if (detailEl) {
+        var detailText = '';
+        if (leaseFrom) {
+          // Show overlap range
+          var pf = parseDate(periodFrom), pt = parseDate(periodTo);
+          var lf = parseDate(leaseFrom);
+          var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
+          var overlapStart = lf > pf ? lf : pf;
+          var overlapEnd = lt < pt ? lt : pt;
+          if (overlapStart <= overlapEnd) {
+            var startLabel = monthNamesShort[overlapStart.getMonth()] + ' ' + overlapStart.getFullYear();
+            var endLabel = monthNamesShort[overlapEnd.getMonth()] + ' ' + overlapEnd.getFullYear();
+            detailText = 'zmluva od ' + monthNamesShort[lf.getMonth()] + ' ' + lf.getFullYear();
+            if (autoMonths !== null && autoMonths < totalMonths) {
+              detailText += ' → ' + startLabel + '–' + endLabel;
+            }
+          }
+        }
+        detailEl.textContent = detailText;
       }
 
       // Show if months < total (partial occupation) 
@@ -192,7 +226,7 @@ async function loadFinance() {
       // Warning if manual != auto
       if (inp && autoMonths !== null && parseInt(inp.value) !== autoMonths) {
         inp.classList.add('border-red-500', 'bg-red-50');
-        inp.title = 'Z nájomnej zmluvy: ' + autoMonths + ' mes. (lease: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')';
+        inp.title = 'Podľa zmluvy by malo byť ' + autoMonths + ' mes. (zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')';
       } else {
         inp.classList.remove('border-red-500', 'bg-red-50');
         inp.title = '';
@@ -946,7 +980,19 @@ window.updateAllocPreview = function() {
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
       tenantTotal += amt;
-      var timeNote = z.isTimeWeighted ? ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>' : '';
+      var timeNote = '';
+      if (z.isTimeWeighted) {
+        var pFrom = document.getElementById('exp-period-from').value;
+        var lFrom = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+        var leaseStart = lFrom ? lFrom.getAttribute('data-lease-from') : '';
+        if (leaseStart && pFrom) {
+          var ls = parseDate(leaseStart), ps = parseDate(pFrom);
+          var startM = ls > ps ? ls : ps;
+          timeNote = ' <span class="text-orange-500">(' + monthNamesShort[startM.getMonth()] + '–' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
+        } else {
+          timeNote = ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
+        }
+      }
       var billingNote = (z.billingArea && z.billingArea !== z.area) ? ' <span class="text-amber-500">[fakt. ' + z.billingArea.toFixed(0) + 'm²]</span>' : '';
       return '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-2 py-1">' +
         '<span class="font-bold text-slate-600 truncate flex-1">' + label + timeNote + billingNote + '</span>' +
