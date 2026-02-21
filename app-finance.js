@@ -629,7 +629,7 @@ window.loadExpenses = async function() {
   var catFilter = document.getElementById('fin-cat-filter').value;
   var dateMode = document.getElementById('fin-date-mode').value;
 
-  var query = sb.from('expenses').select('*, cost_categories(name), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, payer, zones(name, tenant_name))');
+  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, payer, tempering_used, zones(name, tenant_name))');
 
   if (year) {
     if (dateMode === 'period') {
@@ -638,6 +638,8 @@ window.loadExpenses = async function() {
       query = query.gte('date', year + '-01-01').lte('date', year + '-12-31');
     }
   }
+
+  if (catFilter !== 'all') query = query.eq('category_id', catFilter);
 
   var result = await query;
   var expenses = result.data || [];
@@ -707,6 +709,10 @@ window.loadExpenses = async function() {
     return;
   }
 
+  // Build zone tempering map for mismatch detection
+  var zoneTemperMap = {};
+  allZones.forEach(function(z) { zoneTemperMap[z.id] = z.tempering_pct || 0; });
+
   var total = 0;
   list.innerHTML = '<div class="space-y-2">' + expenses.map(function(e) {
     total += parseFloat(e.amount) || 0;
@@ -725,6 +731,31 @@ window.loadExpenses = async function() {
     var costTypeBadge = '';
     if (e.cost_type === 'amortized') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">⏱ ' + (e.amort_years || '?') + 'r</span>';
     else if (e.cost_type === 'investment') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">💰 INV</span>';
+
+    // Tempering mismatch detection
+    var temperWarning = '';
+    var isHeatingCat = e.cost_categories && e.cost_categories.empty_zone_rule === 'owner_temper';
+    if (isHeatingCat && allocCount > 0) {
+      var mismatches = [];
+      var hasNoTemperData = false;
+      e.expense_allocations.forEach(function(a) {
+        var currentTemper = zoneTemperMap[a.zone_id] || 0;
+        if (a.tempering_used != null) {
+          if (parseFloat(a.tempering_used) !== currentTemper) {
+            var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : a.zone_id;
+            mismatches.push(zName + ': ' + a.tempering_used + '% → ' + currentTemper + '%');
+          }
+        } else {
+          hasNoTemperData = true;
+        }
+      });
+      if (mismatches.length > 0) {
+        temperWarning = '<button onclick="event.stopPropagation();window.recalcExpense(\'' + e.id + '\')" class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer" title="Temperovanie zmenené: ' + mismatches.join(', ') + '">⚠️ temp</button>';
+      } else if (hasNoTemperData) {
+        temperWarning = '<button onclick="event.stopPropagation();window.recalcExpense(\'' + e.id + '\')" class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-600 hover:bg-yellow-200 cursor-pointer" title="Chýba tempering info – otvorte a uložte pre aktualizáciu">🔄 temp</button>';
+      }
+    }
+
     return '<div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3">' +
       '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center space-x-2">' +
@@ -732,6 +763,7 @@ window.loadExpenses = async function() {
           (e.ref_number ? '<span class="text-[8px] font-bold text-amber-500">#' + e.ref_number + '</span>' : '') +
           '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
           costTypeBadge +
+          temperWarning +
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
         '</div>' +
         '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
@@ -750,6 +782,12 @@ window.loadExpenses = async function() {
   }).join('') + '</div>';
 
   document.getElementById('fin-total-amount').innerText = total.toFixed(2) + ' €';
+};
+
+// Recalculate expense with current zone settings (tempering, areas)
+window.recalcExpense = async function(id) {
+  if (!confirm('Otvoriť náklad na prepočítanie s aktuálnym temperovaním?\n\nPo otvorení skontrolujte náhľad a kliknite Uložiť.')) return;
+  await window.editExpense(id);
 };
 
 window.saveZoneAreas = async function() {
@@ -1624,7 +1662,8 @@ window.saveExpense = async function() {
               amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
               payer: z.payer,
               months_occupied: z.monthsOcc,
-              months_total: totalMonths
+              months_total: totalMonths,
+              tempering_used: isHeating ? (z.temper || 0) : null
             });
             if (z.payer === 'tenant' && ownerPct > 0) {
               allocs.push({
@@ -1634,7 +1673,8 @@ window.saveExpense = async function() {
                 amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
                 payer: 'owner',
                 months_occupied: 0,
-                months_total: totalMonths
+                months_total: totalMonths,
+                tempering_used: isHeating ? (z.temper || 0) : null
               });
             }
           } else {
@@ -1651,7 +1691,8 @@ window.saveExpense = async function() {
               zone_id: z.id,
               percentage: parseFloat(pct.toFixed(2)),
               amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
-              payer: z.payer
+              payer: z.payer,
+              tempering_used: isHeating ? (z.temper || 0) : null
             });
           }
         });
@@ -1662,7 +1703,8 @@ window.saveExpense = async function() {
             zone_id: z.id,
             percentage: parseFloat(pct.toFixed(2)),
             amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
-            payer: 'owner'
+            payer: 'owner',
+            tempering_used: z.temper
           });
         });
 
