@@ -83,7 +83,7 @@ async function loadFinance() {
       var billingArea = z.billing_area_m2 || z.area_m2 || 0;
       return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
         '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-billing-area="' + billingArea + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
-        '<span class="text-[9px] font-bold text-slate-600 truncate flex-1">' + label + '</span>' +
+        '<span class="text-[9px] font-bold text-slate-600 truncate flex-1" title="' + label + (leaseFrom ? ' • Zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') : ' • Bez dátumu zmluvy') + '">' + label + '</span>' +
         '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.onPayerChange(this);window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
           '<option value="owner">vlastník</option>' +
