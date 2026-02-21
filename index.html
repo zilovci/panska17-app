@@ -424,15 +424,15 @@
                                 </div>
                             </div>
 
-                            <!-- Riadok 4: Obdobie + Faktúra + Ref -->
+                            <!-- Riadok 4: Fakturačné obdobie (voliteľné) + Faktúra + Ref -->
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 <div>
-                                    <label class="text-[9px] font-black text-slate-400 uppercase">Obdobie od</label>
-                                    <input type="date" id="exp-period-from" class="w-full border border-slate-200 rounded-xl p-2 text-sm mt-1">
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Fakt. obdobie od</label>
+                                    <input type="date" id="exp-billing-from" class="w-full border border-slate-200 rounded-xl p-2 text-sm mt-1" onchange="window.autofillAccountingPeriod()">
                                 </div>
                                 <div>
-                                    <label class="text-[9px] font-black text-slate-400 uppercase">Obdobie do</label>
-                                    <input type="date" id="exp-period-to" class="w-full border border-slate-200 rounded-xl p-2 text-sm mt-1">
+                                    <label class="text-[9px] font-black text-slate-400 uppercase">Fakt. obdobie do</label>
+                                    <input type="date" id="exp-billing-to" class="w-full border border-slate-200 rounded-xl p-2 text-sm mt-1" onchange="window.autofillAccountingPeriod()">
                                 </div>
                                 <div>
                                     <label class="text-[9px] font-black text-slate-400 uppercase">Číslo faktúry</label>
@@ -441,6 +441,21 @@
                                 <div>
                                     <label class="text-[9px] font-black text-amber-500 uppercase">Ref. č. ✏️</label>
                                     <input type="text" id="exp-ref" class="w-full border border-amber-300 bg-amber-50 rounded-xl p-2 text-sm mt-1 font-bold" placeholder="1, 2, 3...">
+                                </div>
+                            </div>
+
+                            <!-- Riadok 5: Zúčtovacie obdobie (pre výpočty) -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="text-[9px] font-black text-blue-500 uppercase">Zúčt. obdobie od 📊</label>
+                                    <input type="date" id="exp-period-from" class="w-full border border-blue-200 bg-blue-50 rounded-xl p-2 text-sm mt-1 font-bold" onchange="window.updateMonthsVisibility();window.updateAllocPreview()">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-black text-blue-500 uppercase">Zúčt. obdobie do 📊</label>
+                                    <input type="date" id="exp-period-to" class="w-full border border-blue-200 bg-blue-50 rounded-xl p-2 text-sm mt-1 font-bold" onchange="window.updateMonthsVisibility();window.updateAllocPreview()">
+                                </div>
+                                <div class="sm:col-span-2 flex items-end">
+                                    <p id="period-hint" class="text-[8px] text-blue-400 font-bold pb-2"></p>
                                 </div>
                             </div>
 
@@ -876,8 +891,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260221i"></script>
-    <script src="app-finance.js?v=20260221i"></script>
-    <script src="app-main.js?v=20260221i"></script>
+    <script src="app-core.js?v=20260221j"></script>
+    <script src="app-finance.js?v=20260221j"></script>
+    <script src="app-main.js?v=20260221j"></script>
 </body>
 </html>

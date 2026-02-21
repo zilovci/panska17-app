@@ -767,7 +767,16 @@ window.loadExpenses = async function() {
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
         '</div>' +
         '<p class="text-xs font-bold text-slate-700 truncate">' + e.description + '</p>' +
-        (e.supplier ? '<p class="text-[8px] text-slate-400">' + e.supplier + (e.invoice_number ? ' • ' + e.invoice_number : '') + (e.period_from ? ' • ' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) : '') + '</p>' : (e.period_from ? '<p class="text-[8px] text-slate-400">' + fmtD(e.period_from) + ' – ' + fmtD(e.period_to) + '</p>' : '')) +
+        (function() {
+          var parts = [];
+          if (e.supplier) parts.push(e.supplier);
+          if (e.invoice_number) parts.push(e.invoice_number);
+          if (e.billing_period_from && e.billing_period_from !== e.period_from) {
+            parts.push('fakt: ' + fmtD(e.billing_period_from) + '–' + fmtD(e.billing_period_to));
+          }
+          if (e.period_from) parts.push('zúčt: ' + fmtD(e.period_from) + '–' + fmtD(e.period_to));
+          return parts.length ? '<p class="text-[8px] text-slate-400">' + parts.join(' • ') + '</p>' : '';
+        })() +
       '</div>' +
       '<div class="flex items-center space-x-3 ml-3">' +
         (e.receipt_url ? (e.receipt_url.match(/\.pdf$/i) ?
@@ -1002,6 +1011,51 @@ window.toggleAmortFields = function() {
   window.updateAllocPreview();
 };
 
+// Auto-fill accounting period from billing period
+window.autofillAccountingPeriod = function() {
+  var billingFrom = document.getElementById('exp-billing-from').value;
+  var billingTo = document.getElementById('exp-billing-to').value;
+  var periodFrom = document.getElementById('exp-period-from');
+  var periodTo = document.getElementById('exp-period-to');
+  var hint = document.getElementById('period-hint');
+
+  if (billingFrom) {
+    // Accounting period = full year of billing period
+    var year = billingFrom.substring(0, 4);
+    if (!periodFrom.value || periodFrom.getAttribute('data-auto') === 'true') {
+      periodFrom.value = year + '-01-01';
+      periodFrom.setAttribute('data-auto', 'true');
+    }
+    if (!periodTo.value || periodTo.getAttribute('data-auto') === 'true') {
+      periodTo.value = year + '-12-31';
+      periodTo.setAttribute('data-auto', 'true');
+    }
+    if (hint) {
+      if (billingFrom === periodFrom.value && billingTo === periodTo.value) {
+        hint.textContent = '';
+      } else {
+        hint.textContent = 'Zúčt. obdobie ≠ fakturačné (prepísané na celý rok)';
+      }
+    }
+  }
+
+  // Trigger recalculations
+  if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+  window.updateAllocPreview();
+};
+
+// When accounting period is manually changed, mark as non-auto
+document.getElementById('exp-period-from').addEventListener('input', function() {
+  this.setAttribute('data-auto', 'false');
+  var hint = document.getElementById('period-hint');
+  if (hint) hint.textContent = hint.textContent ? 'Zúčt. obdobie manuálne upravené' : '';
+});
+document.getElementById('exp-period-to').addEventListener('input', function() {
+  this.setAttribute('data-auto', 'false');
+  var hint = document.getElementById('period-hint');
+  if (hint) hint.textContent = hint.textContent ? 'Zúčt. obdobie manuálne upravené' : '';
+});
+
 window.showAddExpense = async function() {
   // Refresh lease dates from DB
   await window.refreshZoneLeaseDates();
@@ -1017,8 +1071,13 @@ window.showAddExpense = async function() {
   document.getElementById('amort-years-wrap').classList.add('hidden');
   document.getElementById('amort-yearly-hint').classList.add('hidden');
   document.getElementById('exp-invoice').value = '';
+  document.getElementById('exp-billing-from').value = '';
+  document.getElementById('exp-billing-to').value = '';
   document.getElementById('exp-period-from').value = '';
+  document.getElementById('exp-period-from').setAttribute('data-auto', 'true');
   document.getElementById('exp-period-to').value = '';
+  document.getElementById('exp-period-to').setAttribute('data-auto', 'true');
+  document.getElementById('period-hint').textContent = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-ref').value = '';
   document.getElementById('exp-receipt').value = '';
@@ -1681,6 +1740,8 @@ window.saveExpense = async function() {
     amount: parseFloat(document.getElementById('exp-amount').value) || 0,
     zone_id: null,
     invoice_number: document.getElementById('exp-invoice').value.trim() || null,
+    billing_period_from: document.getElementById('exp-billing-from').value || null,
+    billing_period_to: document.getElementById('exp-billing-to').value || null,
     period_from: document.getElementById('exp-period-from').value || null,
     period_to: document.getElementById('exp-period-to').value || null,
     note: document.getElementById('exp-note').value.trim() || null,
@@ -1914,8 +1975,19 @@ window.editExpense = async function(id) {
   document.getElementById('exp-supplier').value = e.supplier || '';
   document.getElementById('exp-amount').value = e.amount;
   document.getElementById('exp-invoice').value = e.invoice_number || '';
+  document.getElementById('exp-billing-from').value = e.billing_period_from || '';
+  document.getElementById('exp-billing-to').value = e.billing_period_to || '';
   document.getElementById('exp-period-from').value = e.period_from || '';
+  document.getElementById('exp-period-from').setAttribute('data-auto', 'false');
   document.getElementById('exp-period-to').value = e.period_to || '';
+  document.getElementById('exp-period-to').setAttribute('data-auto', 'false');
+  // Show hint if billing ≠ accounting period
+  var hint = document.getElementById('period-hint');
+  if (e.billing_period_from && e.period_from && (e.billing_period_from !== e.period_from || e.billing_period_to !== e.period_to)) {
+    hint.textContent = 'Zúčt. obdobie ≠ fakturačné';
+  } else {
+    hint.textContent = '';
+  }
   document.getElementById('exp-note').value = e.note || '';
   document.getElementById('exp-ref').value = e.ref_number || '';
   document.getElementById('exp-cost-type').value = e.cost_type || 'operating';
@@ -2033,8 +2105,13 @@ window.duplicateExpense = async function(id) {
   document.getElementById('exp-supplier').value = orig.supplier || '';
   document.getElementById('exp-amount').value = orig.amount || '';
   document.getElementById('exp-invoice').value = orig.invoice_number ? orig.invoice_number + '-KÓPIA' : '';
+  document.getElementById('exp-billing-from').value = orig.billing_period_from || '';
+  document.getElementById('exp-billing-to').value = orig.billing_period_to || '';
   document.getElementById('exp-period-from').value = orig.period_from || '';
+  document.getElementById('exp-period-from').setAttribute('data-auto', 'false');
   document.getElementById('exp-period-to').value = orig.period_to || '';
+  document.getElementById('exp-period-to').setAttribute('data-auto', 'false');
+  document.getElementById('period-hint').textContent = '';
   document.getElementById('exp-note').value = orig.note || '';
   document.getElementById('exp-ref').value = '';
   document.getElementById('exp-cost-type').value = orig.cost_type || 'operating';
@@ -2198,8 +2275,24 @@ window.aiExtractReceipt = async function() {
     if (result.supplier) document.getElementById('exp-supplier').value = result.supplier;
     if (result.amount) document.getElementById('exp-amount').value = result.amount;
     if (result.invoice_number) document.getElementById('exp-invoice').value = result.invoice_number;
-    if (result.period_from) document.getElementById('exp-period-from').value = result.period_from;
-    if (result.period_to) document.getElementById('exp-period-to').value = result.period_to;
+    // AI-extracted period goes to billing period (what's on the invoice)
+    if (result.period_from) document.getElementById('exp-billing-from').value = result.period_from;
+    if (result.period_to) document.getElementById('exp-billing-to').value = result.period_to;
+    // Accounting period = full year of billing period (or invoice date)
+    var refDate = result.period_from || result.date || '';
+    if (refDate) {
+      var refYear = refDate.substring(0, 4);
+      document.getElementById('exp-period-from').value = refYear + '-01-01';
+      document.getElementById('exp-period-from').setAttribute('data-auto', 'true');
+      document.getElementById('exp-period-to').value = refYear + '-12-31';
+      document.getElementById('exp-period-to').setAttribute('data-auto', 'true');
+      var hint = document.getElementById('period-hint');
+      if (result.period_from && (result.period_from !== refYear + '-01-01' || result.period_to !== refYear + '-12-31')) {
+        hint.textContent = 'Zúčt. obdobie = celý rok ' + refYear + ' (fakt. obdobie: ' + result.period_from + ' – ' + result.period_to + ')';
+      } else {
+        hint.textContent = '';
+      }
+    }
 
     // Auto-fill note with consumption and meter info
     var noteparts = [];
