@@ -134,14 +134,18 @@ window.loadTenants = async function() {
     var yearStart = filterYear + '-01-01';
     var yearEnd = filterYear + '-12-31';
     tenants = tenants.filter(function(t) {
-      // Tenant active in year if lease overlaps with [yearStart, yearEnd]
-      // Started before or during the year (or no start date)
       var startOk = !t.lease_from || t.lease_from <= yearEnd;
-      // Ended during or after the year (or no end date = still active)
       var endOk = !t.lease_to || t.lease_to >= yearStart;
       return startOk && endOk;
     });
   }
+
+  // Sort alphabetically by display name
+  tenants.sort(function(a, b) {
+    var na = (a.company_name || a.name || '').toLowerCase();
+    var nb = (b.company_name || b.name || '').toLowerCase();
+    return na.localeCompare(nb, 'sk');
+  });
 
   if (tenants.length === 0) {
     list.innerHTML = '<p class="text-sm text-slate-300">' + (filterYear ? 'Žiadni aktívni nájomcovia v ' + filterYear : 'Žiadni nájomcovia') + '</p>';

@@ -327,6 +327,14 @@
                         <select id="fin-cat-filter" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
                             <option value="all">Všetky</option>
                         </select>
+                        <label class="text-[9px] font-black text-slate-400 uppercase">Zoradiť:</label>
+                        <select id="fin-sort" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                            <option value="ref">Ref. číslo</option>
+                            <option value="date">Dátum faktúry</option>
+                            <option value="category">Kategória</option>
+                            <option value="supplier">Dodávateľ</option>
+                            <option value="amount">Suma</option>
+                        </select>
                     </div>
 
                     <div id="fin-expenses-list"></div>
@@ -860,8 +868,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260221e"></script>
-    <script src="app-finance.js?v=20260221e"></script>
-    <script src="app-main.js?v=20260221e"></script>
+    <script src="app-core.js?v=20260221f"></script>
+    <script src="app-finance.js?v=20260221f"></script>
+    <script src="app-main.js?v=20260221f"></script>
 </body>
 </html>

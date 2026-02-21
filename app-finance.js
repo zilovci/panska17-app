@@ -639,10 +639,6 @@ window.loadExpenses = async function() {
     }
   }
 
-  query = query.order('date', { ascending: false });
-
-  if (catFilter !== 'all') query = query.eq('category_id', catFilter);
-
   var result = await query;
   var expenses = result.data || [];
 
@@ -657,11 +653,38 @@ window.loadExpenses = async function() {
         q2 = q2.gte('date', year + '-01-01').lte('date', year + '-12-31');
       }
     }
-    q2 = q2.order('date', { ascending: false });
     if (catFilter !== 'all') q2 = q2.eq('category_id', catFilter);
     var r2 = await q2;
     expenses = r2.data || [];
   }
+
+  // Client-side sorting
+  var sortBy = document.getElementById('fin-sort') ? document.getElementById('fin-sort').value : 'ref';
+  expenses.sort(function(a, b) {
+    switch (sortBy) {
+      case 'ref':
+        var ra = a.ref_number ? parseInt(a.ref_number) : 99999;
+        var rb = b.ref_number ? parseInt(b.ref_number) : 99999;
+        if (ra !== rb) return ra - rb;
+        return (a.date || '').localeCompare(b.date || '');
+      case 'date':
+        return (b.date || '').localeCompare(a.date || '');
+      case 'category':
+        var ca = a.cost_categories ? a.cost_categories.name : '';
+        var cb = b.cost_categories ? b.cost_categories.name : '';
+        if (ca !== cb) return ca.localeCompare(cb);
+        return (a.date || '').localeCompare(b.date || '');
+      case 'supplier':
+        var sa = (a.supplier || '').toLowerCase();
+        var sb2 = (b.supplier || '').toLowerCase();
+        if (sa !== sb2) return sa.localeCompare(sb2);
+        return (a.date || '').localeCompare(b.date || '');
+      case 'amount':
+        return (parseFloat(b.amount) || 0) - (parseFloat(a.amount) || 0);
+      default:
+        return (b.date || '').localeCompare(a.date || '');
+    }
+  });
 
   var list = document.getElementById('fin-expenses-list');
   if (expenses.length === 0) {
