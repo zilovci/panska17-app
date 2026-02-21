@@ -127,20 +127,50 @@ window.loadTenants = async function() {
   var list = document.getElementById('fin-tenants-list');
   if (!list) return;
 
+  // Filter by year if selected
+  var tenYearSel = document.getElementById('fin-tenants-year');
+  var filterYear = tenYearSel ? tenYearSel.value : '';
+  if (filterYear) {
+    var yearStart = filterYear + '-01-01';
+    var yearEnd = filterYear + '-12-31';
+    tenants = tenants.filter(function(t) {
+      // Tenant active in year if lease overlaps with [yearStart, yearEnd]
+      // Started before or during the year (or no start date)
+      var startOk = !t.lease_from || t.lease_from <= yearEnd;
+      // Ended during or after the year (or no end date = still active)
+      var endOk = !t.lease_to || t.lease_to >= yearStart;
+      return startOk && endOk;
+    });
+  }
+
   if (tenants.length === 0) {
-    list.innerHTML = '<p class="text-sm text-slate-300">Žiadni nájomcovia</p>';
+    list.innerHTML = '<p class="text-sm text-slate-300">' + (filterYear ? 'Žiadni aktívni nájomcovia v ' + filterYear : 'Žiadni nájomcovia') + '</p>';
     return;
   }
 
   // Get zone assignments
   var { data: zones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
 
-  list.innerHTML = tenants.map(function(t) {
+  list.innerHTML = '<p class="text-[9px] text-slate-400 mb-2">' + tenants.length + ' nájomcov' + (filterYear ? ' aktívnych v ' + filterYear : '') + '</p>' +
+    tenants.map(function(t) {
     var tZones = zones.filter(function(z) { return z.tenant_id === t.id; });
     var zoneNames = tZones.map(function(z) { return z.tenant_name || z.name; }).join(', ');
+    // Partial year indicator
+    var partialTag = '';
+    if (filterYear) {
+      var startedMid = t.lease_from && t.lease_from > filterYear + '-01-01';
+      var endedMid = t.lease_to && t.lease_to < filterYear + '-12-31';
+      if (startedMid && endedMid) {
+        partialTag = '<span class="text-[8px] bg-orange-100 text-orange-600 font-bold px-1.5 py-0.5 rounded-full ml-2">od ' + fmtD(t.lease_from) + ' do ' + fmtD(t.lease_to) + '</span>';
+      } else if (startedMid) {
+        partialTag = '<span class="text-[8px] bg-blue-100 text-blue-600 font-bold px-1.5 py-0.5 rounded-full ml-2">od ' + fmtD(t.lease_from) + '</span>';
+      } else if (endedMid) {
+        partialTag = '<span class="text-[8px] bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full ml-2">do ' + fmtD(t.lease_to) + '</span>';
+      }
+    }
     return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
       '<div class="flex-1 min-w-0">' +
-        '<p class="text-sm font-bold text-slate-800">' + (t.is_owner ? '👑 ' : '') + (t.company_name || t.name) + '</p>' +
+        '<p class="text-sm font-bold text-slate-800">' + (t.is_owner ? '👑 ' : '') + (t.company_name || t.name) + partialTag + '</p>' +
         '<p class="text-[9px] text-slate-400">' +
           (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
           (t.lease_from ? fmtD(t.lease_from) + ' – ' + (t.lease_to ? fmtD(t.lease_to) : '∞') + ' • ' : '') +

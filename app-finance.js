@@ -234,6 +234,16 @@ async function loadFinance() {
     }
   }
 
+  // Tenant year dropdown
+  var tenYearSel = document.getElementById('fin-tenants-year');
+  if (tenYearSel && tenYearSel.options.length === 0) {
+    tenYearSel.innerHTML = '<option value="">Všetci</option>';
+    var curYear4 = new Date().getFullYear();
+    for (var y4 = curYear4; y4 >= 2020; y4--) {
+      tenYearSel.innerHTML += '<option value="' + y4 + '"' + (y4 === curYear4 ? ' selected' : '') + '>' + y4 + '</option>';
+    }
+  }
+
   // Invoice date defaults (current year)
   var invFrom = document.getElementById('fin-inv-from');
   var invTo = document.getElementById('fin-inv-to');

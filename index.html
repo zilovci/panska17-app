@@ -457,7 +457,10 @@
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Nájomcovia</h3>
-                        <button onclick="window.showAddTenant()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
+                        <div class="flex items-center gap-2">
+                            <select id="fin-tenants-year" onchange="window.loadTenants()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                            <button onclick="window.showAddTenant()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
+                        </div>
                     </div>
                     <div id="fin-tenants-list"></div>
                 </div>
