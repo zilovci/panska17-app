@@ -835,10 +835,20 @@ window.runConsistencyCheck = async function() {
     }
   }
   var { data: expenses = [] } = await query;
-  var filterLabel = year ? (year + ' (' + (dateMode === 'period' ? 'z\u00fa\u010dt. obdobie' : 'd\u00e1tum fakt\u00fary') + ')') : 'v\u0161etky roky';
+  var filterLabel = year ? (year + ', ' + (dateMode === 'period' ? 'zúčt. obdobie' : 'dátum faktúry')) : 'všetky roky';
   if (expenses.length === 0) {
-    report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">\u017diadne n\u00e1klady na kontrolu.</p>';
+    report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">Žiadne náklady na kontrolu.</p>';
     return;
+  }
+
+  // Helper: expense label
+  function expLabel(e) {
+    return e.ref_number ? '#' + e.ref_number : (e.description || '').substring(0, 25);
+  }
+  function expRef(e) {
+    var ref = e.ref_number ? '#' + e.ref_number : '(bez ref.)';
+    var amt = parseFloat(e.amount).toFixed(0) + '€';
+    return '<b>' + ref + '</b> ' + amt;
   }
 
   var issues = [];
@@ -854,65 +864,61 @@ window.runConsistencyCheck = async function() {
   expenses.forEach(function(e) {
     var isHeating = e.cost_categories && e.cost_categories.empty_zone_rule === 'owner_temper';
     if (!isHeating || !e.expense_allocations) return;
+    var mismatches = [];
     e.expense_allocations.forEach(function(a) {
       if (a.tempering_used != null) {
         var curr = zoneTemperMap[a.zone_id] || 0;
         if (parseFloat(a.tempering_used) !== curr) {
           var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
-          temperIssues.push({ zone: zName, old: a.tempering_used, new: curr });
+          mismatches.push(zName + ': ' + a.tempering_used + '% → ' + curr + '%');
         }
       }
     });
+    if (mismatches.length > 0) {
+      temperIssues.push({ ref: expRef(e), zones: mismatches.join(', ') });
+    }
   });
   if (temperIssues.length > 0) {
-    var grouped = {};
-    temperIssues.forEach(function(t) {
-      var key = t.zone + ': ' + t.old + '% \u2192 ' + t.new + '%';
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(1);
-    });
-    var details = Object.keys(grouped).map(function(k) {
-      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' fakt\u00far)';
-    }).join(', ');
-    issues.push({ type: 'danger', icon: '\u26a0\ufe0f', title: 'Temperovanie zmenen\u00e9', detail: details });
+    var details = temperIssues.map(function(t) {
+      return t.ref + ' – ' + t.zones;
+    }).join('<br>');
+    issues.push({ type: 'danger', icon: '⚠️', title: 'Temperovanie zmenené (' + temperIssues.length + ')', detail: details });
   }
 
   // 2. Area mismatches
-  var areaIssues = [];
+  var areaExpenses = [];
   expenses.forEach(function(e) {
     if (!e.expense_allocations) return;
+    var mismatches = [];
     e.expense_allocations.forEach(function(a) {
       if (a.area_used != null) {
         var curr = zoneAreaMap[a.zone_id] || 0;
         if (parseFloat(a.area_used) !== curr) {
           var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
-          areaIssues.push({ zone: zName, old: a.area_used, new: curr });
+          mismatches.push(zName + ': ' + a.area_used + ' → ' + curr + ' m²');
         }
       }
     });
+    if (mismatches.length > 0) {
+      areaExpenses.push({ ref: expRef(e), zones: mismatches.join(', ') });
+    }
   });
-  if (areaIssues.length > 0) {
-    var grouped = {};
-    areaIssues.forEach(function(t) {
-      var key = t.zone + ': ' + t.old + ' \u2192 ' + t.new + ' m\u00b2';
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(1);
-    });
-    var details = Object.keys(grouped).map(function(k) {
-      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' fakt\u00far)';
-    }).join(', ');
-    issues.push({ type: 'danger', icon: '\u26a0\ufe0f', title: 'Plocha zmenen\u00e1', detail: details });
+  if (areaExpenses.length > 0) {
+    var details = areaExpenses.map(function(t) {
+      return t.ref + ' – ' + t.zones;
+    }).join('<br>');
+    issues.push({ type: 'danger', icon: '⚠️', title: 'Plocha zmenená (' + areaExpenses.length + ')', detail: details });
   }
 
-  // 3. Missing tracking data (pre-migration)
-  var noDataCount = 0;
+  // 3. Missing tracking data (pre-migration) - list ref numbers
+  var noDataList = [];
   expenses.forEach(function(e) {
     if (!e.expense_allocations || e.expense_allocations.length === 0) return;
     var hasAny = e.expense_allocations.some(function(a) { return a.tempering_used != null || a.area_used != null; });
-    if (!hasAny) noDataCount++;
+    if (!hasAny) noDataList.push(expLabel(e));
   });
-  if (noDataCount > 0) {
-    issues.push({ type: 'warning', icon: '\ud83d\udd04', title: 'Bez sledovac\u00edch \u00fadajov', detail: noDataCount + ' fakt\u00far treba otvori\u0165 a ulo\u017ei\u0165 pre sledovanie zmien' });
+  if (noDataList.length > 0) {
+    issues.push({ type: 'warning', icon: '🔄', title: 'Bez sledovacích údajov (' + noDataList.length + ')', detail: 'Treba otvoriť a uložiť: ' + noDataList.join(', ') });
   }
 
   // 4. Same category + same period - different zone selections
@@ -933,18 +939,19 @@ window.runConsistencyCheck = async function() {
     var unique = zoneSets.filter(function(v, i, a) { return a.indexOf(v) === i; });
     if (unique.length > 1) {
       var catName = group[0].cost_categories ? group[0].cost_categories.name : '?';
-      var period = fmtD(group[0].period_from) + ' \u2013 ' + fmtD(group[0].period_to);
-      zoneDiffIssues.push({ category: catName, period: period, count: group.length });
+      var period = fmtD(group[0].period_from) + ' – ' + fmtD(group[0].period_to);
+      var refs = group.map(function(e) { return expLabel(e); }).join(', ');
+      zoneDiffIssues.push({ category: catName, period: period, refs: refs });
     }
   });
   if (zoneDiffIssues.length > 0) {
     var details = zoneDiffIssues.map(function(z) {
-      return '<span class="font-bold">' + z.category + '</span> ' + z.period + ' (' + z.count + ' fakt\u00far s r\u00f4znymi z\u00f3nami)';
+      return '<b>' + z.category + '</b> ' + z.period + '<br><span class="text-[8px]">→ ' + z.refs + '</span>';
     }).join('<br>');
-    issues.push({ type: 'info', icon: '\ud83d\udd00', title: 'R\u00f4zne z\u00f3ny v rovnakom obdob\u00ed', detail: details });
+    issues.push({ type: 'info', icon: '🔀', title: 'Rôzne zóny v rovnakom období (' + zoneDiffIssues.length + ')', detail: details });
   }
 
-  // 5. Same supplier + category + identical period
+  // 5. Same supplier + category + identical period (potential duplicates)
   var supplierMap = {};
   expenses.forEach(function(e) {
     if (!e.supplier || !e.period_from) return;
@@ -956,34 +963,38 @@ window.runConsistencyCheck = async function() {
   Object.keys(supplierMap).forEach(function(key) {
     var group = supplierMap[key];
     if (group.length < 2) return;
-    for (var i = 0; i < group.length; i++) {
-      for (var j = i + 1; j < group.length; j++) {
-        var a = group[i], b = group[j];
-        if (a.period_from && a.period_to && b.period_from && b.period_to &&
-            a.period_from === b.period_from && a.period_to === b.period_to) {
-          var catName = a.cost_categories ? a.cost_categories.name : '?';
-          overlapIssues.push({
-            supplier: a.supplier, category: catName,
-            period: fmtD(a.period_from) + ' \u2013 ' + fmtD(a.period_to),
-            amounts: [a.amount, b.amount], refs: [a.ref_number, b.ref_number]
-          });
-        }
-      }
-    }
+    // Find groups with same period
+    var periodGroups = {};
+    group.forEach(function(e) {
+      var pk = e.period_from + '|' + e.period_to;
+      if (!periodGroups[pk]) periodGroups[pk] = [];
+      periodGroups[pk].push(e);
+    });
+    Object.keys(periodGroups).forEach(function(pk) {
+      var pg = periodGroups[pk];
+      if (pg.length < 2) return;
+      var catName = pg[0].cost_categories ? pg[0].cost_categories.name : '?';
+      var period = fmtD(pg[0].period_from) + ' – ' + fmtD(pg[0].period_to);
+      var refs = pg.map(function(e) { return expRef(e); }).join(', ');
+      overlapIssues.push({ supplier: pg[0].supplier, category: catName, period: period, refs: refs });
+    });
   });
   if (overlapIssues.length > 0) {
     var details = overlapIssues.map(function(o) {
-      return '<span class="font-bold">' + o.supplier + '</span> \u2022 ' + o.category + ' \u2022 ' + o.period +
-        ' (' + (o.refs[0] ? '#' + o.refs[0] : '?') + ': ' + parseFloat(o.amounts[0]).toFixed(0) + '\u20ac, ' +
-        (o.refs[1] ? '#' + o.refs[1] : '?') + ': ' + parseFloat(o.amounts[1]).toFixed(0) + '\u20ac)';
+      return '<b>' + o.supplier + '</b> • ' + o.category + ' • ' + o.period + '<br><span class="text-[8px]">→ ' + o.refs + '</span>';
     }).join('<br>');
-    issues.push({ type: 'info', icon: '\ud83d\udccb', title: 'Rovnak\u00fd dod\u00e1vate\u013e + obdobie', detail: details });
+    issues.push({ type: 'info', icon: '📋', title: 'Rovnaký dodávateľ + obdobie (' + overlapIssues.length + ')', detail: details });
   }
 
-  // 6. Expenses without allocations
-  var noAllocCount = expenses.filter(function(e) { return !e.expense_allocations || e.expense_allocations.length === 0; }).length;
-  if (noAllocCount > 0) {
-    issues.push({ type: 'warning', icon: '\u2753', title: 'Bez rozpo\u010d\u00edtania', detail: noAllocCount + ' fakt\u00far nem\u00e1 priraden\u00e9 z\u00f3ny' });
+  // 6. Expenses without allocations - list ref numbers
+  var noAllocList = [];
+  expenses.forEach(function(e) {
+    if (!e.expense_allocations || e.expense_allocations.length === 0) {
+      noAllocList.push(expLabel(e));
+    }
+  });
+  if (noAllocList.length > 0) {
+    issues.push({ type: 'warning', icon: '❓', title: 'Bez rozpočítania (' + noAllocList.length + ')', detail: noAllocList.join(', ') });
   }
 
   // Render
