@@ -1560,8 +1560,15 @@ window.editExpense = async function(id) {
     if (allocData && allocData.months_occupied != null && allocData.months_total) {
       var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
       var monthsWrap = document.querySelector('[data-months-zone="' + cbs[i].value + '"]');
-      if (monthsInput) monthsInput.value = allocData.months_occupied;
+      if (monthsInput) {
+        monthsInput.value = allocData.months_occupied;
+        monthsInput.setAttribute('data-auto', 'false');
+      }
       if (monthsWrap) monthsWrap.classList.remove('hidden');
+    } else {
+      // No saved months - mark as auto so it recalculates from lease
+      var monthsInput2 = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
+      if (monthsInput2) monthsInput2.setAttribute('data-auto', 'true');
     }
   }
 
@@ -1612,6 +1619,10 @@ window.editExpense = async function(id) {
   }
 
   document.getElementById('modal-expense').classList.remove('hidden');
+
+  // Recalculate months visibility and allocation preview with loaded data
+  if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+  window.updateAllocPreview();
 };
 
 window.deleteExpense = async function(id) {
@@ -1791,6 +1802,13 @@ window.aiExtractReceipt = async function() {
     }
 
     // Trigger recalculation of tenant allocations after AI fill
+    // Reset months inputs to auto-recalculate from lease dates (period changed)
+    var monthsInputs = document.querySelectorAll('.alloc-months-input');
+    for (var mi = 0; mi < monthsInputs.length; mi++) {
+      monthsInputs[mi].setAttribute('data-auto', 'true');
+      monthsInputs[mi].value = '';
+    }
+
     var expCatEl = document.getElementById('exp-category');
     if (expCatEl && expCatEl.onchange) {
       await expCatEl.onchange.call(expCatEl);
@@ -1802,6 +1820,8 @@ window.aiExtractReceipt = async function() {
         window.updateAllocPreview();
       }
     }
+    // Ensure months visibility recalculates with new period
+    if (window.updateMonthsVisibility) window.updateMonthsVisibility();
 
     status.innerText = 'Hotovo – skontrolujte údaje';
     if (result.consumption) {
