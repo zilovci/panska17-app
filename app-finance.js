@@ -1624,19 +1624,39 @@ window.editExpense = async function(id) {
       }
     }
     // Restore months if time-weighted
+    // Always recalculate from lease dates - only keep manual override if period total matches
     var allocData = allocMap[cbs[i].value];
-    if (allocData && allocData.months_occupied != null && allocData.months_total) {
-      var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
-      var monthsWrap = document.querySelector('[data-months-zone="' + cbs[i].value + '"]');
-      if (monthsInput) {
-        monthsInput.value = allocData.months_occupied;
-        monthsInput.setAttribute('data-auto', 'false');
+    var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
+    if (monthsInput) {
+      var currentTotal = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+      if (allocData && allocData.months_occupied != null && allocData.months_total) {
+        if (allocData.months_total === currentTotal) {
+          // Period unchanged since last save - restore saved value
+          // Check if it was a manual override (different from auto-calculated)
+          var leaseFrom2 = cbs[i].getAttribute('data-lease-from') || '';
+          var leaseTo2 = cbs[i].getAttribute('data-lease-to') || '';
+          var periodFrom2 = document.getElementById('exp-period-from').value;
+          var periodTo2 = document.getElementById('exp-period-to').value;
+          var autoCalc = window.calcLeaseOverlapMonths(leaseFrom2, leaseTo2, periodFrom2, periodTo2);
+          if (autoCalc !== null && allocData.months_occupied !== autoCalc) {
+            // Was manually overridden - keep the manual value
+            monthsInput.value = allocData.months_occupied;
+            monthsInput.setAttribute('data-auto', 'false');
+          } else {
+            // Was auto or matches auto - mark as auto for recalculation
+            monthsInput.value = '';
+            monthsInput.setAttribute('data-auto', 'true');
+          }
+        } else {
+          // Period changed since last save - force recalculation
+          monthsInput.value = '';
+          monthsInput.setAttribute('data-auto', 'true');
+        }
+      } else {
+        // No saved months - mark as auto
+        monthsInput.value = '';
+        monthsInput.setAttribute('data-auto', 'true');
       }
-      if (monthsWrap) monthsWrap.classList.remove('hidden');
-    } else {
-      // No saved months - mark as auto so it recalculates from lease
-      var monthsInput2 = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
-      if (monthsInput2) monthsInput2.setAttribute('data-auto', 'true');
     }
   }
 
