@@ -196,24 +196,28 @@ async function loadFinance() {
       // Build detail text showing where the number comes from
       var detailEl = monthsWraps[m].querySelector('.alloc-months-detail');
       if (detailEl) {
-        var detailText = '';
-        if (leaseFrom) {
-          // Show overlap range
-          var pf = parseDate(periodFrom), pt = parseDate(periodTo);
-          var lf = parseDate(leaseFrom);
-          var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
-          var overlapStart = lf > pf ? lf : pf;
-          var overlapEnd = lt < pt ? lt : pt;
-          if (overlapStart <= overlapEnd) {
-            var startLabel = monthNamesShort[overlapStart.getMonth()] + ' ' + overlapStart.getFullYear();
-            var endLabel = monthNamesShort[overlapEnd.getMonth()] + ' ' + overlapEnd.getFullYear();
-            detailText = 'zmluva od ' + monthNamesShort[lf.getMonth()] + ' ' + lf.getFullYear();
-            if (autoMonths !== null && autoMonths < totalMonths) {
-              detailText += ' → ' + startLabel + '–' + endLabel;
+        try {
+          var detailText = '';
+          if (leaseFrom) {
+            // Show overlap range
+            var pf = parseDate(periodFrom), pt = parseDate(periodTo);
+            var lf = parseDate(leaseFrom);
+            var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
+            var overlapStart = lf > pf ? lf : pf;
+            var overlapEnd = lt < pt ? lt : pt;
+            if (overlapStart <= overlapEnd) {
+              var startLabel = monthNamesShort[overlapStart.getMonth()] + ' ' + overlapStart.getFullYear();
+              var endLabel = monthNamesShort[overlapEnd.getMonth()] + ' ' + overlapEnd.getFullYear();
+              detailText = 'zmluva od ' + monthNamesShort[lf.getMonth()] + ' ' + lf.getFullYear();
+              if (autoMonths !== null && autoMonths < totalMonths) {
+                detailText += ' → ' + startLabel + '–' + endLabel;
+              }
             }
           }
+          detailEl.textContent = detailText;
+        } catch(detErr) {
+          detailEl.textContent = '';
         }
-        detailEl.textContent = detailText;
       }
 
       // Show if months < total (partial occupation) 
@@ -227,7 +231,7 @@ async function loadFinance() {
       if (inp && autoMonths !== null && parseInt(inp.value) !== autoMonths) {
         inp.classList.add('border-red-500', 'bg-red-50');
         inp.title = 'Podľa zmluvy by malo byť ' + autoMonths + ' mes. (zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')';
-      } else {
+      } else if (inp) {
         inp.classList.remove('border-red-500', 'bg-red-50');
         inp.title = '';
       }
@@ -849,7 +853,11 @@ window.updateAllocPreview = function() {
   }
 
   // Update months visibility for heating
-  if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+  try {
+    if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+  } catch(monthsErr) {
+    console.warn('updateMonthsVisibility error:', monthsErr);
+  }
 
   var checkedZones = window.getSelectedAllocZones();
   var preview = document.getElementById('exp-alloc-preview');
@@ -982,14 +990,18 @@ window.updateAllocPreview = function() {
       tenantTotal += amt;
       var timeNote = '';
       if (z.isTimeWeighted) {
-        var pFrom = document.getElementById('exp-period-from').value;
-        var lFrom = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
-        var leaseStart = lFrom ? lFrom.getAttribute('data-lease-from') : '';
-        if (leaseStart && pFrom) {
-          var ls = parseDate(leaseStart), ps = parseDate(pFrom);
-          var startM = ls > ps ? ls : ps;
-          timeNote = ' <span class="text-orange-500">(' + monthNamesShort[startM.getMonth()] + '–' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
-        } else {
+        try {
+          var pFrom = document.getElementById('exp-period-from').value;
+          var lFrom = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+          var leaseStart = lFrom ? lFrom.getAttribute('data-lease-from') : '';
+          if (leaseStart && pFrom) {
+            var ls = parseDate(leaseStart), ps = parseDate(pFrom);
+            var startM = ls > ps ? ls : ps;
+            timeNote = ' <span class="text-orange-500">(' + monthNamesShort[startM.getMonth()] + '–' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
+          } else {
+            timeNote = ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
+          }
+        } catch(tnErr) {
           timeNote = ' <span class="text-orange-500">(' + z.monthsOcc + '/' + totalMonths + ' mes.)</span>';
         }
       }
@@ -1677,8 +1689,12 @@ window.editExpense = async function(id) {
   document.getElementById('modal-expense').classList.remove('hidden');
 
   // Recalculate months visibility and allocation preview with loaded data
-  if (window.updateMonthsVisibility) window.updateMonthsVisibility();
-  window.updateAllocPreview();
+  try {
+    if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+    window.updateAllocPreview();
+  } catch(recalcErr) {
+    console.warn('Recalc after edit error:', recalcErr);
+  }
 };
 
 window.deleteExpense = async function(id) {
