@@ -384,8 +384,9 @@ window.loadOverview = async function() {
   // Get categories
   var { data: cats = [] } = await sb.from('cost_categories').select('id, name').order('name');
 
-  // Build matrix: zone -> category -> { tenant, owner }
+  // Build matrix: zone -> category -> amount + items
   var matrix = {};
+  var zoneItems = {}; // zoneName -> catName -> [{expense info + alloc amount}]
   var catTotals = {};
   var ownerKey = '__VLASTNÍK__';
 
@@ -405,6 +406,21 @@ window.loadOverview = async function() {
       if (!matrix[key]) matrix[key] = {};
       if (!matrix[key][catName]) matrix[key][catName] = 0;
       matrix[key][catName] += parseFloat(a.amount) || 0;
+
+      // Collect items for accordion
+      if (!zoneItems[key]) zoneItems[key] = {};
+      if (!zoneItems[key][catName]) zoneItems[key][catName] = [];
+      zoneItems[key][catName].push({
+        id: e.id,
+        description: e.description || '',
+        supplier: e.supplier || '',
+        date: e.date,
+        allocAmount: parseFloat(a.amount) || 0,
+        totalAmount: parseFloat(e.amount) || 0,
+        invoice_number: e.invoice_number || '',
+        period_from: e.period_from,
+        period_to: e.period_to
+      });
 
       if (!catTotals[catName]) catTotals[catName] = 0;
       catTotals[catName] += parseFloat(a.amount) || 0;
@@ -438,12 +454,15 @@ window.loadOverview = async function() {
   var grandTotals = {};
   catNames.forEach(function(c) { grandTotals[c] = 0; });
   var grandTotal = 0;
+  var zIdx = 0;
 
   zoneNames.forEach(function(z) {
     var isOwner = z === ownerKey;
     var rowTotal = 0;
-    html += '<tr class="border-b border-slate-100' + (isOwner ? ' bg-orange-50' : '') + '">' +
-      '<td class="py-2 font-bold ' + (isOwner ? 'text-orange-600' : 'text-slate-700') + '">' + (isOwner ? 'Vlastník' : z) + '</td>';
+    var zid = 'zone-' + zIdx++;
+
+    html += '<tr class="border-b border-slate-100 cursor-pointer hover:bg-blue-50 transition-colors' + (isOwner ? ' bg-orange-50' : '') + '" onclick="var rows=document.querySelectorAll(\'.' + zid + '\');var open=rows[0]&&rows[0].style.display!==\'none\';rows.forEach(function(r){r.style.display=open?\'none\':\'table-row\'});this.querySelector(\'.zone-arrow\').textContent=open?\'▾\':\'▸\'">' +
+      '<td class="py-2 font-bold ' + (isOwner ? 'text-orange-600' : 'text-slate-700') + '"><span class="zone-arrow text-[8px] text-slate-400 mr-1">▸</span>' + (isOwner ? 'Vlastník' : z) + '</td>';
 
     catNames.forEach(function(c) {
       var val = (matrix[z] && matrix[z][c]) || 0;
@@ -456,6 +475,45 @@ window.loadOverview = async function() {
     grandTotal += rowTotal;
     html += '<td class="text-right py-2 px-2 font-black ' + (isOwner ? 'text-orange-700' : 'text-slate-800') + '">' + rowTotal.toFixed(2) + ' €</td>';
     html += '</tr>';
+
+    // Detail rows (hidden by default)
+    var allItems = [];
+    catNames.forEach(function(c) {
+      if (zoneItems[z] && zoneItems[z][c]) {
+        zoneItems[z][c].forEach(function(item) {
+          allItems.push({ catName: c, item: item });
+        });
+      }
+    });
+    allItems.sort(function(a, b) { return (a.item.date || '').localeCompare(b.item.date || ''); });
+
+    allItems.forEach(function(entry) {
+      var item = entry.item;
+      var period = '';
+      if (item.period_from && item.period_to) {
+        period = item.period_from.substring(5, 7) + '/' + item.period_from.substring(0, 4) + '–' + item.period_to.substring(5, 7) + '/' + item.period_to.substring(0, 4);
+      }
+      var label = '';
+      if (item.date) label = item.date.substring(8, 10) + '.' + item.date.substring(5, 7) + '. ';
+      if (item.supplier) label += item.supplier;
+      if (item.description) label += (item.supplier ? ' – ' : '') + item.description;
+      if (item.invoice_number) label += ' • ' + item.invoice_number;
+      if (period) label += ' • ' + period;
+
+      html += '<tr class="' + zid + ' border-b border-dashed border-slate-100 bg-blue-50/30" style="display:none">' +
+        '<td class="py-1 pl-6 text-[8px] text-slate-500">' + label + '</td>';
+
+      catNames.forEach(function(c) {
+        if (c === entry.catName) {
+          html += '<td class="text-right py-1 px-2 text-[8px] text-blue-600">' + item.allocAmount.toFixed(2) + '</td>';
+        } else {
+          html += '<td class="text-right py-1 px-2 text-slate-200">–</td>';
+        }
+      });
+
+      html += '<td class="text-right py-1 px-2 text-[8px] font-bold text-slate-500">' + item.allocAmount.toFixed(2) + ' €</td>';
+      html += '</tr>';
+    });
   });
 
   // Totals row
