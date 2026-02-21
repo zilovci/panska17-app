@@ -1772,47 +1772,74 @@ window.duplicateExpense = async function(id) {
   var { data: orig } = await sb.from('expenses').select('*').eq('id', id).single();
   if (!orig) return;
 
-  var copy = {
-    date: orig.date,
-    category_id: orig.category_id,
-    description: orig.description,
-    supplier: orig.supplier,
-    amount: orig.amount,
-    zone_id: orig.zone_id,
-    invoice_number: orig.invoice_number ? orig.invoice_number + '-KÓPIA' : null,
-    period_from: orig.period_from,
-    period_to: orig.period_to,
-    note: orig.note,
-    cost_type: orig.cost_type,
-    amort_years: orig.amort_years,
-    alloc_method: orig.alloc_method,
-    created_by: currentUserId
-  };
+  // Refresh lease dates from DB
+  await window.refreshZoneLeaseDates();
 
-  var { data: inserted } = await sb.from('expenses').insert(copy).select('id').single();
-  if (!inserted) return;
+  // Open as NEW expense (no editingExpenseId) with data pre-filled from original
+  editingExpenseId = null;
+  document.getElementById('expense-modal-title').innerText = 'Duplikát nákladu';
+  document.getElementById('exp-date').value = orig.date || new Date().toISOString().split('T')[0];
+  document.getElementById('exp-category').value = orig.category_id;
+  document.getElementById('exp-desc').value = orig.description || '';
+  document.getElementById('exp-supplier').value = orig.supplier || '';
+  document.getElementById('exp-amount').value = orig.amount || '';
+  document.getElementById('exp-invoice').value = orig.invoice_number ? orig.invoice_number + '-KÓPIA' : '';
+  document.getElementById('exp-period-from').value = orig.period_from || '';
+  document.getElementById('exp-period-to').value = orig.period_to || '';
+  document.getElementById('exp-note').value = orig.note || '';
+  document.getElementById('exp-ref').value = '';
+  document.getElementById('exp-cost-type').value = orig.cost_type || 'operating';
+  document.getElementById('exp-amort-years').value = orig.amort_years || '';
+  window.toggleAmortFields();
 
-  // Copy allocations
-  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, percentage, amount, payer, consumption, consumption_unit, months_occupied, months_total').eq('expense_id', id);
-  if (allocs.length > 0) {
-    var newAllocs = allocs.map(function(a) {
-      return {
-        expense_id: inserted.id,
-        zone_id: a.zone_id,
-        percentage: a.percentage,
-        amount: a.amount,
-        payer: a.payer,
-        consumption: a.consumption,
-        consumption_unit: a.consumption_unit,
-        months_occupied: a.months_occupied,
-        months_total: a.months_total
-      };
-    });
-    await sb.from('expense_allocations').insert(newAllocs);
+  // Load original allocations to restore zone checkboxes + payer selections
+  var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer').eq('expense_id', id);
+  var allocMap = {};
+  allocs.forEach(function(a) { allocMap[a.zone_id] = a; });
+
+  var cbs = document.querySelectorAll('.alloc-zone-cb');
+  for (var i = 0; i < cbs.length; i++) {
+    var isAlloc = allocMap.hasOwnProperty(cbs[i].value);
+    cbs[i].checked = isAlloc;
+    var payerSel = document.querySelector('[data-payer-zone="' + cbs[i].value + '"]');
+    if (payerSel) {
+      payerSel.classList.toggle('hidden', !isAlloc);
+      if (isAlloc) {
+        payerSel.value = allocMap[cbs[i].value].payer || 'tenant';
+        window.onPayerChange(payerSel);
+      }
+    }
+    // Fresh months calculation (no stale DB values)
+    var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
+    if (monthsInput) {
+      monthsInput.value = '';
+      monthsInput.setAttribute('data-auto', 'true');
+    }
   }
 
-  await loadExpenses();
-  await window.editExpense(inserted.id);
+  // Restore allocation method
+  var savedMethod = orig.alloc_method || 'area';
+  window.setAllocMethod(savedMethod);
+
+  // Clear receipt (don't copy - user uploads new one)
+  document.getElementById('exp-receipt').value = '';
+  var preview = document.getElementById('exp-receipt-preview');
+  var img = document.getElementById('exp-receipt-img');
+  if (img) { img.src = ''; img.classList.add('hidden'); }
+  var oldLink = preview.querySelector('.receipt-pdf-link');
+  if (oldLink) oldLink.remove();
+  preview.classList.add('hidden');
+  document.getElementById('btn-ai-extract').classList.add('hidden');
+
+  document.getElementById('modal-expense').classList.remove('hidden');
+
+  // Recalculate
+  try {
+    if (window.updateMonthsVisibility) window.updateMonthsVisibility();
+    window.updateAllocPreview();
+  } catch(err) {
+    console.warn('Recalc after duplicate error:', err);
+  }
 };
 
 // Receipt file preview
