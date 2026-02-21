@@ -2106,7 +2106,13 @@ window.editExpense = async function(id) {
   // Load existing allocations
   var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer, months_occupied, months_total').eq('expense_id', id);
   var allocMap = {};
-  allocs.forEach(function(a) { allocMap[a.zone_id] = a; });
+  allocs.forEach(function(a) {
+    // For time-weighted zones, there are 2 rows: tenant + owner (auto-generated).
+    // Prefer the non-owner entry as that represents the user's choice.
+    if (!allocMap[a.zone_id] || allocMap[a.zone_id].payer === 'owner') {
+      allocMap[a.zone_id] = a;
+    }
+  });
   var cbs = document.querySelectorAll('.alloc-zone-cb');
   for (var i = 0; i < cbs.length; i++) {
     var isAlloc = allocMap.hasOwnProperty(cbs[i].value);
@@ -2230,7 +2236,11 @@ window.duplicateExpense = async function(id) {
   // Load original allocations to restore zone checkboxes + payer selections
   var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer').eq('expense_id', id);
   var allocMap = {};
-  allocs.forEach(function(a) { allocMap[a.zone_id] = a; });
+  allocs.forEach(function(a) {
+    if (!allocMap[a.zone_id] || allocMap[a.zone_id].payer === 'owner') {
+      allocMap[a.zone_id] = a;
+    }
+  });
 
   var cbs = document.querySelectorAll('.alloc-zone-cb');
   for (var i = 0; i < cbs.length; i++) {
