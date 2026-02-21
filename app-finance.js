@@ -964,6 +964,12 @@ window.updateAllocPreview = function() {
   checkedZones.forEach(function(z) {
     if (z.isTimeWeighted) {
       totalArea += z.tenantEffArea + z.ownerEffArea;
+    } else if (isHeating && z.payer === 'owner') {
+      // For heating: owner zones use tempered area, not full
+      var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+      var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+      z.ownerTemperedArea = z.area * temper / 100;
+      totalArea += z.ownerTemperedArea;
     } else {
       totalArea += z.area; // pool uses building area
     }
@@ -1029,12 +1035,24 @@ window.updateAllocPreview = function() {
     html += ownerZones.map(function(z) {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
-      var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
+      var effArea;
+      var temperNote = '';
+      if (z.isTimeWeighted) {
+        effArea = z.tenantEffArea + z.ownerEffArea;
+      } else if (isHeating && z.ownerTemperedArea !== undefined) {
+        // Heating: owner pays only tempered portion
+        effArea = z.ownerTemperedArea;
+        var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+        var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
+        temperNote = ' <span class="text-orange-400">(kúr. ' + temper + '%)</span>';
+      } else {
+        effArea = z.area;
+      }
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
       ownerTotal += amt;
       return '<div class="flex items-center justify-between text-[9px] bg-orange-50 rounded-lg px-2 py-1">' +
-        '<span class="font-bold text-orange-600 truncate flex-1">' + label + '</span>' +
+        '<span class="font-bold text-orange-600 truncate flex-1">' + label + temperNote + '</span>' +
         '<span class="text-orange-400 w-14 text-right">' + effArea.toFixed(1) + ' m²</span>' +
         '<span class="font-bold text-orange-500 w-12 text-right">' + pct.toFixed(1) + '%</span>' +
         '<span class="font-black text-orange-700 w-16 text-right">' + amt.toFixed(2) + ' €</span>' +
@@ -1510,6 +1528,10 @@ window.saveExpense = async function() {
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
             totalArea += z.tenantEffArea + z.ownerEffArea;
+          } else if (isHeating && z.payer === 'owner') {
+            // For heating: owner zones use tempered area
+            z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
+            totalArea += z.ownerTemperedArea;
           } else {
             totalArea += z.area;
           }
@@ -1545,7 +1567,12 @@ window.saveExpense = async function() {
             }
           } else {
             // Use billing area for tenant charge, pool area for denominator
-            var chargeArea = z.billingArea || z.area;
+            var chargeArea;
+            if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
+              chargeArea = z.ownerTemperedArea;
+            } else {
+              chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
+            }
             var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
             allocs.push({
               expense_id: expenseId,
@@ -1623,40 +1650,12 @@ window.editExpense = async function(id) {
         window.onPayerChange(payerSel);
       }
     }
-    // Restore months if time-weighted
-    // Always recalculate from lease dates - only keep manual override if period total matches
-    var allocData = allocMap[cbs[i].value];
+    // Always recalculate months from lease dates when editing
+    // DB values were often wrong due to earlier bugs - fresh calc is always correct
     var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
     if (monthsInput) {
-      var currentTotal = window.getPeriodMonths ? window.getPeriodMonths() : 12;
-      if (allocData && allocData.months_occupied != null && allocData.months_total) {
-        if (allocData.months_total === currentTotal) {
-          // Period unchanged since last save - restore saved value
-          // Check if it was a manual override (different from auto-calculated)
-          var leaseFrom2 = cbs[i].getAttribute('data-lease-from') || '';
-          var leaseTo2 = cbs[i].getAttribute('data-lease-to') || '';
-          var periodFrom2 = document.getElementById('exp-period-from').value;
-          var periodTo2 = document.getElementById('exp-period-to').value;
-          var autoCalc = window.calcLeaseOverlapMonths(leaseFrom2, leaseTo2, periodFrom2, periodTo2);
-          if (autoCalc !== null && allocData.months_occupied !== autoCalc) {
-            // Was manually overridden - keep the manual value
-            monthsInput.value = allocData.months_occupied;
-            monthsInput.setAttribute('data-auto', 'false');
-          } else {
-            // Was auto or matches auto - mark as auto for recalculation
-            monthsInput.value = '';
-            monthsInput.setAttribute('data-auto', 'true');
-          }
-        } else {
-          // Period changed since last save - force recalculation
-          monthsInput.value = '';
-          monthsInput.setAttribute('data-auto', 'true');
-        }
-      } else {
-        // No saved months - mark as auto
-        monthsInput.value = '';
-        monthsInput.setAttribute('data-auto', 'true');
-      }
+      monthsInput.value = '';
+      monthsInput.setAttribute('data-auto', 'true');
     }
   }
 
