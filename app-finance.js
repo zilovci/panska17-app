@@ -814,7 +814,7 @@ window.loadExpenses = async function() {
 
 // Recalculate expense with current zone settings (tempering, areas)
 window.recalcExpense = async function(id) {
-  if (!confirm('Otvoriť náklad na prepočítanie s aktuálnym temperovaním?\n\nPo otvorení skontrolujte náhľad a kliknite Uložiť.')) return;
+  if (!confirm('Otvoriť náklad na prepočítanie s aktuálnymi hodnotami (plochy, temperovanie)?\n\nPo otvorení skontrolujte náhľad a kliknite Uložiť.')) return;
   await window.editExpense(id);
 };
 
@@ -835,8 +835,9 @@ window.runConsistencyCheck = async function() {
     }
   }
   var { data: expenses = [] } = await query;
+  var filterLabel = year ? (year + ' (' + (dateMode === 'period' ? 'z\u00fa\u010dt. obdobie' : 'd\u00e1tum fakt\u00fary') + ')') : 'v\u0161etky roky';
   if (expenses.length === 0) {
-    report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">Žiadne náklady na kontrolu.</p>';
+    report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">\u017diadne n\u00e1klady na kontrolu.</p>';
     return;
   }
 
@@ -858,7 +859,7 @@ window.runConsistencyCheck = async function() {
         var curr = zoneTemperMap[a.zone_id] || 0;
         if (parseFloat(a.tempering_used) !== curr) {
           var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
-          temperIssues.push({ expense: e, zone: zName, old: a.tempering_used, new: curr });
+          temperIssues.push({ zone: zName, old: a.tempering_used, new: curr });
         }
       }
     });
@@ -866,53 +867,52 @@ window.runConsistencyCheck = async function() {
   if (temperIssues.length > 0) {
     var grouped = {};
     temperIssues.forEach(function(t) {
-      var key = t.zone + ': ' + t.old + '% → ' + t.new + '%';
+      var key = t.zone + ': ' + t.old + '% \u2192 ' + t.new + '%';
       if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(t.expense);
+      grouped[key].push(1);
     });
     var details = Object.keys(grouped).map(function(k) {
-      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' faktúr)';
+      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' fakt\u00far)';
     }).join(', ');
-    issues.push({ type: 'danger', icon: '⚠️', title: 'Temperovanie zmenené', detail: details, count: temperIssues.length });
+    issues.push({ type: 'danger', icon: '\u26a0\ufe0f', title: 'Temperovanie zmenen\u00e9', detail: details });
   }
 
-  // 2. Missing tempering data (pre-migration expenses)
-  var noTempCount = 0;
-  expenses.forEach(function(e) {
-    var isHeating = e.cost_categories && e.cost_categories.empty_zone_rule === 'owner_temper';
-    if (!isHeating || !e.expense_allocations) return;
-    var hasAny = e.expense_allocations.some(function(a) { return a.tempering_used != null; });
-    if (!hasAny && e.expense_allocations.length > 0) noTempCount++;
-  });
-  if (noTempCount > 0) {
-    issues.push({ type: 'warning', icon: '🔄', title: 'Vykurovanie bez temp. údajov', detail: noTempCount + ' faktúr treba otvoriť a uložiť', count: noTempCount });
-  }
-
-  // 3. Area mismatches
+  // 2. Area mismatches
   var areaIssues = [];
   expenses.forEach(function(e) {
     if (!e.expense_allocations) return;
     e.expense_allocations.forEach(function(a) {
       if (a.area_used != null) {
-        var currArea = zoneAreaMap[a.zone_id] || 0;
-        if (parseFloat(a.area_used) !== currArea) {
+        var curr = zoneAreaMap[a.zone_id] || 0;
+        if (parseFloat(a.area_used) !== curr) {
           var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
-          areaIssues.push({ expense: e, zone: zName, old: a.area_used, new: currArea });
+          areaIssues.push({ zone: zName, old: a.area_used, new: curr });
         }
       }
     });
   });
   if (areaIssues.length > 0) {
-    var areaGrouped = {};
-    areaIssues.forEach(function(a) {
-      var key = a.zone + ': ' + a.old + ' → ' + a.new + ' m²';
-      if (!areaGrouped[key]) areaGrouped[key] = [];
-      areaGrouped[key].push(a.expense);
+    var grouped = {};
+    areaIssues.forEach(function(t) {
+      var key = t.zone + ': ' + t.old + ' \u2192 ' + t.new + ' m\u00b2';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(1);
     });
-    var areaDetails = Object.keys(areaGrouped).map(function(k) {
-      return '<span class="font-bold">' + k + '</span> (' + areaGrouped[k].length + ' faktúr)';
+    var details = Object.keys(grouped).map(function(k) {
+      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' fakt\u00far)';
     }).join(', ');
-    issues.push({ type: 'danger', icon: '⚠️', title: 'Plocha zmenená', detail: areaDetails, count: areaIssues.length });
+    issues.push({ type: 'danger', icon: '\u26a0\ufe0f', title: 'Plocha zmenen\u00e1', detail: details });
+  }
+
+  // 3. Missing tracking data (pre-migration)
+  var noDataCount = 0;
+  expenses.forEach(function(e) {
+    if (!e.expense_allocations || e.expense_allocations.length === 0) return;
+    var hasAny = e.expense_allocations.some(function(a) { return a.tempering_used != null || a.area_used != null; });
+    if (!hasAny) noDataCount++;
+  });
+  if (noDataCount > 0) {
+    issues.push({ type: 'warning', icon: '\ud83d\udd04', title: 'Bez sledovac\u00edch \u00fadajov', detail: noDataCount + ' fakt\u00far treba otvori\u0165 a ulo\u017ei\u0165 pre sledovanie zmien' });
   }
 
   // 4. Same category + same period - different zone selections
@@ -927,25 +927,24 @@ window.runConsistencyCheck = async function() {
   Object.keys(catPeriodMap).forEach(function(key) {
     var group = catPeriodMap[key];
     if (group.length < 2) return;
-    // Compare zone sets
     var zoneSets = group.map(function(e) {
       return e.expense_allocations.filter(function(a) { return a.payer !== 'owner'; }).map(function(a) { return a.zone_id; }).sort().join(',');
     });
     var unique = zoneSets.filter(function(v, i, a) { return a.indexOf(v) === i; });
     if (unique.length > 1) {
       var catName = group[0].cost_categories ? group[0].cost_categories.name : '?';
-      var period = fmtD(group[0].period_from) + ' – ' + fmtD(group[0].period_to);
-      zoneDiffIssues.push({ category: catName, period: period, count: group.length, expenses: group });
+      var period = fmtD(group[0].period_from) + ' \u2013 ' + fmtD(group[0].period_to);
+      zoneDiffIssues.push({ category: catName, period: period, count: group.length });
     }
   });
   if (zoneDiffIssues.length > 0) {
     var details = zoneDiffIssues.map(function(z) {
-      return '<span class="font-bold">' + z.category + '</span> ' + z.period + ' (' + z.count + ' faktúr s rôznymi zónami)';
+      return '<span class="font-bold">' + z.category + '</span> ' + z.period + ' (' + z.count + ' fakt\u00far s r\u00f4znymi z\u00f3nami)';
     }).join('<br>');
-    issues.push({ type: 'info', icon: '🔀', title: 'Rôzne zóny v rovnakom období', detail: details, count: zoneDiffIssues.length });
+    issues.push({ type: 'info', icon: '\ud83d\udd00', title: 'R\u00f4zne z\u00f3ny v rovnakom obdob\u00ed', detail: details });
   }
 
-  // 4. Duplicate: same supplier + same category + overlapping period
+  // 5. Same supplier + category + identical period
   var supplierMap = {};
   expenses.forEach(function(e) {
     if (!e.supplier || !e.period_from) return;
@@ -960,52 +959,45 @@ window.runConsistencyCheck = async function() {
     for (var i = 0; i < group.length; i++) {
       for (var j = i + 1; j < group.length; j++) {
         var a = group[i], b = group[j];
-        if (a.period_from && a.period_to && b.period_from && b.period_to) {
-          if (a.period_from <= b.period_to && b.period_from <= a.period_to) {
-            // Same period = expected (same invoice split differently)
-            // Only flag if periods are identical AND amounts are similar
-            if (a.period_from === b.period_from && a.period_to === b.period_to) {
-              var catName = a.cost_categories ? a.cost_categories.name : '?';
-              overlapIssues.push({
-                supplier: a.supplier,
-                category: catName,
-                period: fmtD(a.period_from) + ' – ' + fmtD(a.period_to),
-                amounts: [a.amount, b.amount],
-                refs: [a.ref_number, b.ref_number]
-              });
-            }
-          }
+        if (a.period_from && a.period_to && b.period_from && b.period_to &&
+            a.period_from === b.period_from && a.period_to === b.period_to) {
+          var catName = a.cost_categories ? a.cost_categories.name : '?';
+          overlapIssues.push({
+            supplier: a.supplier, category: catName,
+            period: fmtD(a.period_from) + ' \u2013 ' + fmtD(a.period_to),
+            amounts: [a.amount, b.amount], refs: [a.ref_number, b.ref_number]
+          });
         }
       }
     }
   });
   if (overlapIssues.length > 0) {
     var details = overlapIssues.map(function(o) {
-      return '<span class="font-bold">' + o.supplier + '</span> • ' + o.category + ' • ' + o.period +
-        ' (' + (o.refs[0] ? '#' + o.refs[0] : '?') + ': ' + parseFloat(o.amounts[0]).toFixed(0) + '€, ' +
-        (o.refs[1] ? '#' + o.refs[1] : '?') + ': ' + parseFloat(o.amounts[1]).toFixed(0) + '€)';
+      return '<span class="font-bold">' + o.supplier + '</span> \u2022 ' + o.category + ' \u2022 ' + o.period +
+        ' (' + (o.refs[0] ? '#' + o.refs[0] : '?') + ': ' + parseFloat(o.amounts[0]).toFixed(0) + '\u20ac, ' +
+        (o.refs[1] ? '#' + o.refs[1] : '?') + ': ' + parseFloat(o.amounts[1]).toFixed(0) + '\u20ac)';
     }).join('<br>');
-    issues.push({ type: 'info', icon: '📋', title: 'Rovnaký dodávateľ + obdobie', detail: details, count: overlapIssues.length });
+    issues.push({ type: 'info', icon: '\ud83d\udccb', title: 'Rovnak\u00fd dod\u00e1vate\u013e + obdobie', detail: details });
   }
 
-  // 5. Expenses without allocations
+  // 6. Expenses without allocations
   var noAllocCount = expenses.filter(function(e) { return !e.expense_allocations || e.expense_allocations.length === 0; }).length;
   if (noAllocCount > 0) {
-    issues.push({ type: 'warning', icon: '❓', title: 'Bez rozpočítania', detail: noAllocCount + ' faktúr nemá priradené zóny', count: noAllocCount });
+    issues.push({ type: 'warning', icon: '\u2753', title: 'Bez rozpo\u010d\u00edtania', detail: noAllocCount + ' fakt\u00far nem\u00e1 priraden\u00e9 z\u00f3ny' });
   }
 
-  // Render report
+  // Render
   if (issues.length === 0) {
     report.innerHTML = '<div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center">' +
-      '<span class="text-green-600 font-bold text-sm">✅ Všetko v poriadku</span>' +
-      '<p class="text-[9px] text-green-500 mt-1">' + expenses.length + ' faktúr skontrolovaných' + (year ? ' za rok ' + year : '') + '</p>' +
-      '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-[8px] text-green-400 mt-1 hover:text-green-600">zavrieť</button>' +
+      '<span class="text-green-600 font-bold text-sm">\u2705 V\u0161etko v poriadku</span>' +
+      '<p class="text-[9px] text-green-500 mt-1">' + expenses.length + ' fakt\u00far \u2013 ' + filterLabel + '</p>' +
+      '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-[8px] text-green-400 mt-1 hover:text-green-600">zavrie\u0165</button>' +
     '</div>';
   } else {
     var colors = { danger: ['bg-red-50 border-red-200', 'text-red-700', 'text-red-600'], warning: ['bg-yellow-50 border-yellow-200', 'text-yellow-700', 'text-yellow-600'], info: ['bg-blue-50 border-blue-200', 'text-blue-700', 'text-blue-600'] };
     report.innerHTML = '<div class="bg-white border border-amber-200 rounded-xl p-4 space-y-2">' +
       '<div class="flex justify-between items-center">' +
-        '<span class="text-[9px] font-black text-amber-600 uppercase">Výsledky kontroly' + (year ? ' (' + year + ', ' + (dateMode === 'period' ? 'podľa zúčt. obdobia' : 'podľa dátumu faktúry') + ')' : ' (všetky roky)') + '</span>' +
+        '<span class="text-[9px] font-black text-amber-600 uppercase">Kontrola \u2013 ' + filterLabel + '</span>' +
         '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-slate-300 hover:text-slate-500 text-sm">&times;</button>' +
       '</div>' +
       issues.map(function(issue) {
