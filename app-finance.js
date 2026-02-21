@@ -629,7 +629,7 @@ window.loadExpenses = async function() {
   var catFilter = document.getElementById('fin-cat-filter').value;
   var dateMode = document.getElementById('fin-date-mode').value;
 
-  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), zones(name, tenant_name), expense_allocations(zone_id, percentage, amount, payer, tempering_used, area_used, zones(name, tenant_name))');
+  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), zones(name, tenant_name), expense_allocations(*, zones(name, tenant_name))');
 
   if (year) {
     if (dateMode === 'period') {
@@ -826,7 +826,7 @@ window.runConsistencyCheck = async function() {
 
   var year = document.getElementById('fin-year').value;
   var dateMode = document.getElementById('fin-date-mode').value;
-  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), expense_allocations(zone_id, payer, tempering_used, area_used, zones(name, tenant_name))');
+  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), expense_allocations(*, zones(name, tenant_name))');
   if (year) {
     if (dateMode === 'period') {
       query = query.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
@@ -1824,11 +1824,37 @@ window.saveExpense = async function() {
 
   var expenseId;
   if (editingExpenseId) {
-    await sb.from('expenses').update(data).eq('id', editingExpenseId);
+    var updateResult = await sb.from('expenses').update(data).eq('id', editingExpenseId);
+    if (updateResult.error) {
+      console.warn('Expense update failed, retrying without new columns:', updateResult.error);
+      var fallbackData = {};
+      for (var k in data) {
+        if (k !== 'billing_period_from' && k !== 'billing_period_to') fallbackData[k] = data[k];
+      }
+      var retryUpdate = await sb.from('expenses').update(fallbackData).eq('id', editingExpenseId);
+      if (retryUpdate.error) {
+        alert('CHYBA: Náklad sa nepodarilo uložiť!\n\n' + retryUpdate.error.message);
+        return;
+      }
+    }
     expenseId = editingExpenseId;
   } else {
-    var { data: inserted } = await sb.from('expenses').insert(data).select('id').single();
-    expenseId = inserted ? inserted.id : null;
+    var insertResult = await sb.from('expenses').insert(data).select('id').single();
+    if (insertResult.error) {
+      console.warn('Expense insert failed, retrying without new columns:', insertResult.error);
+      var fallbackData = {};
+      for (var k in data) {
+        if (k !== 'billing_period_from' && k !== 'billing_period_to') fallbackData[k] = data[k];
+      }
+      var retryInsert = await sb.from('expenses').insert(fallbackData).select('id').single();
+      if (retryInsert.error) {
+        alert('CHYBA: Náklad sa nepodarilo vytvoriť!\n\n' + retryInsert.error.message);
+        return;
+      }
+      expenseId = retryInsert.data ? retryInsert.data.id : null;
+    } else {
+      expenseId = insertResult.data ? insertResult.data.id : null;
+    }
   }
 
   // Save allocations
@@ -2013,7 +2039,25 @@ window.saveExpense = async function() {
       }
 
       if (allocs.length > 0) {
-        await sb.from('expense_allocations').insert(allocs);
+        var insertResult = await sb.from('expense_allocations').insert(allocs);
+        if (insertResult.error) {
+          console.warn('Allocation insert failed, retrying without new columns:', insertResult.error);
+          // Strip new columns that might not exist yet (migration not run)
+          var fallbackAllocs = allocs.map(function(a) {
+            var copy = {};
+            for (var k in a) {
+              if (k !== 'area_used' && k !== 'tempering_used') copy[k] = a[k];
+            }
+            return copy;
+          });
+          var retryResult = await sb.from('expense_allocations').insert(fallbackAllocs);
+          if (retryResult.error) {
+            alert('CHYBA: Alokácie sa nepodarilo uložiť!\n\n' + retryResult.error.message);
+            console.error('Allocation insert retry failed:', retryResult.error);
+          } else {
+            alert('Upozornenie: Alokácie uložené, ale bez sledovania zmien plôch/temperovania.\n\nSpustite migrácie v Supabase:\n- migration_add_tempering_used.sql\n- migration_add_area_used.sql');
+          }
+        }
       }
     } catch(allocErr) {
       console.warn('Allocation save error (table may not exist):', allocErr);
