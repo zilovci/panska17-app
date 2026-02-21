@@ -201,15 +201,17 @@
                 </div>
 
                 <!-- ZÓNY - METRAŽE -->
-                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Zóny – Metraže</h3>
-                        <div class="flex gap-2">
+                <div class="bg-white rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center p-6 md:p-8 cursor-pointer" onclick="var b=document.getElementById('zones-body');var i=document.getElementById('zones-chevron');b.classList.toggle('hidden');i.classList.toggle('fa-chevron-down');i.classList.toggle('fa-chevron-up');">
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest"><i id="zones-chevron" class="fa-solid fa-chevron-down text-[10px] mr-2"></i>Zóny – Metraže</h3>
+                        <div class="flex gap-2" onclick="event.stopPropagation()">
                             <button onclick="window.addZone()" class="bg-slate-200 text-slate-600 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Zóna</button>
                             <button onclick="window.saveZoneAreas()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Uložiť</button>
                         </div>
                     </div>
-                    <div id="fin-zones-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                    <div id="zones-body" class="hidden px-6 md:px-8 pb-6 md:pb-8">
+                        <div id="fin-zones-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                    </div>
                 </div>
 
                 <!-- MERAČE -->
@@ -484,15 +486,17 @@
                 </div>
 
                 <!-- NÁJOMCOVIA -->
-                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Nájomcovia</h3>
-                        <div class="flex items-center gap-2">
+                <div class="bg-white rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center p-6 md:p-8 cursor-pointer" onclick="var b=document.getElementById('tenants-body');var i=document.getElementById('tenants-chevron');b.classList.toggle('hidden');i.classList.toggle('fa-chevron-down');i.classList.toggle('fa-chevron-up');">
+                        <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest"><i id="tenants-chevron" class="fa-solid fa-chevron-down text-[10px] mr-2"></i>Nájomcovia</h3>
+                        <div class="flex items-center gap-2" onclick="event.stopPropagation()">
                             <select id="fin-tenants-year" onchange="window.loadTenants()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                             <button onclick="window.showAddTenant()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
                         </div>
                     </div>
-                    <div id="fin-tenants-list"></div>
+                    <div id="tenants-body" class="hidden px-6 md:px-8 pb-6 md:pb-8">
+                        <div id="fin-tenants-list"></div>
+                    </div>
                 </div>
 
                 <!-- ZÁLOHY -->
@@ -868,8 +872,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260221f"></script>
-    <script src="app-finance.js?v=20260221f"></script>
-    <script src="app-main.js?v=20260221f"></script>
+    <script src="app-core.js?v=20260221g"></script>
+    <script src="app-finance.js?v=20260221g"></script>
+    <script src="app-main.js?v=20260221g"></script>
 </body>
 </html>

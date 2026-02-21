@@ -660,12 +660,26 @@ window.loadExpenses = async function() {
 
   // Client-side sorting
   var sortBy = document.getElementById('fin-sort') ? document.getElementById('fin-sort').value : 'ref';
+  // Helper: compare ref numbers like "24-90" vs "24-91"
+  function compareRef(ra, rb) {
+    if (!ra && !rb) return 0;
+    if (!ra) return 1;
+    if (!rb) return -1;
+    var pa = ra.split(/[-\/]/); 
+    var pb = rb.split(/[-\/]/);
+    for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+      var na = i < pa.length ? (parseInt(pa[i]) || 0) : 0;
+      var nb = i < pb.length ? (parseInt(pb[i]) || 0) : 0;
+      if (na !== nb) return na - nb;
+    }
+    return 0;
+  }
+
   expenses.sort(function(a, b) {
     switch (sortBy) {
       case 'ref':
-        var ra = a.ref_number ? parseInt(a.ref_number) : 99999;
-        var rb = b.ref_number ? parseInt(b.ref_number) : 99999;
-        if (ra !== rb) return ra - rb;
+        var rc = compareRef(a.ref_number, b.ref_number);
+        if (rc !== 0) return rc;
         return (a.date || '').localeCompare(b.date || '');
       case 'date':
         return (b.date || '').localeCompare(a.date || '');
