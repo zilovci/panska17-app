@@ -605,15 +605,24 @@ window.loadPayments = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, monthly_rent, monthly_advance').order('name');
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, monthly_rent, monthly_advance, lease_from, lease_to').order('name');
   var { data: payments = [] } = await sb.from('tenant_payments').select('*')
     .gte('month', year + '-01-01').lte('month', year + '-12-01');
+
+  // Filter tenants active in selected year
+  var yearStart = year + '-01-01';
+  var yearEnd = year + '-12-31';
+  tenants = tenants.filter(function(t) {
+    var startOk = !t.lease_from || t.lease_from <= yearEnd;
+    var endOk = !t.lease_to || t.lease_to >= yearStart;
+    return startOk && endOk;
+  });
 
   var grid = document.getElementById('fin-payments-grid');
   if (!grid) return;
 
   if (tenants.length === 0) {
-    grid.innerHTML = '<p class="text-sm text-slate-300">Najprv pridajte nájomcov</p>';
+    grid.innerHTML = '<p class="text-sm text-slate-300">Žiadni aktívni nájomcovia v ' + year + '</p>';
     return;
   }
 
