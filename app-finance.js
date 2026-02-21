@@ -790,6 +790,176 @@ window.recalcExpense = async function(id) {
   await window.editExpense(id);
 };
 
+// Consistency check - analyze expenses for potential issues
+window.runConsistencyCheck = async function() {
+  var report = document.getElementById('consistency-report');
+  report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">Analyzujem...</p>';
+  report.classList.remove('hidden');
+
+  var year = document.getElementById('fin-year').value;
+  var query = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), expense_allocations(zone_id, payer, tempering_used, zones(name, tenant_name))');
+  if (year) {
+    query = query.gte('date', year + '-01-01').lte('date', year + '-12-31');
+  }
+  var { data: expenses = [] } = await query;
+  if (expenses.length === 0) {
+    report.innerHTML = '<p class="text-[9px] text-slate-400 text-center py-2">Žiadne náklady na kontrolu.</p>';
+    return;
+  }
+
+  var issues = [];
+  var zoneTemperMap = {};
+  allZones.forEach(function(z) { zoneTemperMap[z.id] = z.tempering_pct || 0; });
+
+  // 1. Tempering mismatches
+  var temperIssues = [];
+  expenses.forEach(function(e) {
+    var isHeating = e.cost_categories && e.cost_categories.empty_zone_rule === 'owner_temper';
+    if (!isHeating || !e.expense_allocations) return;
+    e.expense_allocations.forEach(function(a) {
+      if (a.tempering_used != null) {
+        var curr = zoneTemperMap[a.zone_id] || 0;
+        if (parseFloat(a.tempering_used) !== curr) {
+          var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
+          temperIssues.push({ expense: e, zone: zName, old: a.tempering_used, new: curr });
+        }
+      }
+    });
+  });
+  if (temperIssues.length > 0) {
+    var grouped = {};
+    temperIssues.forEach(function(t) {
+      var key = t.zone + ': ' + t.old + '% → ' + t.new + '%';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(t.expense);
+    });
+    var details = Object.keys(grouped).map(function(k) {
+      return '<span class="font-bold">' + k + '</span> (' + grouped[k].length + ' faktúr)';
+    }).join(', ');
+    issues.push({ type: 'danger', icon: '⚠️', title: 'Temperovanie zmenené', detail: details, count: temperIssues.length });
+  }
+
+  // 2. Missing tempering data (pre-migration expenses)
+  var noTempCount = 0;
+  expenses.forEach(function(e) {
+    var isHeating = e.cost_categories && e.cost_categories.empty_zone_rule === 'owner_temper';
+    if (!isHeating || !e.expense_allocations) return;
+    var hasAny = e.expense_allocations.some(function(a) { return a.tempering_used != null; });
+    if (!hasAny && e.expense_allocations.length > 0) noTempCount++;
+  });
+  if (noTempCount > 0) {
+    issues.push({ type: 'warning', icon: '🔄', title: 'Vykurovanie bez temp. údajov', detail: noTempCount + ' faktúr treba otvoriť a uložiť', count: noTempCount });
+  }
+
+  // 3. Same category + same period - different zone selections
+  var catPeriodMap = {};
+  expenses.forEach(function(e) {
+    if (!e.period_from || !e.period_to || !e.expense_allocations || e.expense_allocations.length === 0) return;
+    var key = (e.category_id || '') + '|' + e.period_from + '|' + e.period_to;
+    if (!catPeriodMap[key]) catPeriodMap[key] = [];
+    catPeriodMap[key].push(e);
+  });
+  var zoneDiffIssues = [];
+  Object.keys(catPeriodMap).forEach(function(key) {
+    var group = catPeriodMap[key];
+    if (group.length < 2) return;
+    // Compare zone sets
+    var zoneSets = group.map(function(e) {
+      return e.expense_allocations.filter(function(a) { return a.payer !== 'owner'; }).map(function(a) { return a.zone_id; }).sort().join(',');
+    });
+    var unique = zoneSets.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    if (unique.length > 1) {
+      var catName = group[0].cost_categories ? group[0].cost_categories.name : '?';
+      var period = fmtD(group[0].period_from) + ' – ' + fmtD(group[0].period_to);
+      zoneDiffIssues.push({ category: catName, period: period, count: group.length, expenses: group });
+    }
+  });
+  if (zoneDiffIssues.length > 0) {
+    var details = zoneDiffIssues.map(function(z) {
+      return '<span class="font-bold">' + z.category + '</span> ' + z.period + ' (' + z.count + ' faktúr s rôznymi zónami)';
+    }).join('<br>');
+    issues.push({ type: 'info', icon: '🔀', title: 'Rôzne zóny v rovnakom období', detail: details, count: zoneDiffIssues.length });
+  }
+
+  // 4. Duplicate: same supplier + same category + overlapping period
+  var supplierMap = {};
+  expenses.forEach(function(e) {
+    if (!e.supplier || !e.period_from) return;
+    var key = (e.supplier || '').toLowerCase().trim() + '|' + (e.category_id || '');
+    if (!supplierMap[key]) supplierMap[key] = [];
+    supplierMap[key].push(e);
+  });
+  var overlapIssues = [];
+  Object.keys(supplierMap).forEach(function(key) {
+    var group = supplierMap[key];
+    if (group.length < 2) return;
+    for (var i = 0; i < group.length; i++) {
+      for (var j = i + 1; j < group.length; j++) {
+        var a = group[i], b = group[j];
+        if (a.period_from && a.period_to && b.period_from && b.period_to) {
+          if (a.period_from <= b.period_to && b.period_from <= a.period_to) {
+            // Same period = expected (same invoice split differently)
+            // Only flag if periods are identical AND amounts are similar
+            if (a.period_from === b.period_from && a.period_to === b.period_to) {
+              var catName = a.cost_categories ? a.cost_categories.name : '?';
+              overlapIssues.push({
+                supplier: a.supplier,
+                category: catName,
+                period: fmtD(a.period_from) + ' – ' + fmtD(a.period_to),
+                amounts: [a.amount, b.amount],
+                refs: [a.ref_number, b.ref_number]
+              });
+            }
+          }
+        }
+      }
+    }
+  });
+  if (overlapIssues.length > 0) {
+    var details = overlapIssues.map(function(o) {
+      return '<span class="font-bold">' + o.supplier + '</span> • ' + o.category + ' • ' + o.period +
+        ' (' + (o.refs[0] ? '#' + o.refs[0] : '?') + ': ' + parseFloat(o.amounts[0]).toFixed(0) + '€, ' +
+        (o.refs[1] ? '#' + o.refs[1] : '?') + ': ' + parseFloat(o.amounts[1]).toFixed(0) + '€)';
+    }).join('<br>');
+    issues.push({ type: 'info', icon: '📋', title: 'Rovnaký dodávateľ + obdobie', detail: details, count: overlapIssues.length });
+  }
+
+  // 5. Expenses without allocations
+  var noAllocCount = expenses.filter(function(e) { return !e.expense_allocations || e.expense_allocations.length === 0; }).length;
+  if (noAllocCount > 0) {
+    issues.push({ type: 'warning', icon: '❓', title: 'Bez rozpočítania', detail: noAllocCount + ' faktúr nemá priradené zóny', count: noAllocCount });
+  }
+
+  // Render report
+  if (issues.length === 0) {
+    report.innerHTML = '<div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center">' +
+      '<span class="text-green-600 font-bold text-sm">✅ Všetko v poriadku</span>' +
+      '<p class="text-[9px] text-green-500 mt-1">' + expenses.length + ' faktúr skontrolovaných' + (year ? ' za rok ' + year : '') + '</p>' +
+      '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-[8px] text-green-400 mt-1 hover:text-green-600">zavrieť</button>' +
+    '</div>';
+  } else {
+    var colors = { danger: ['bg-red-50 border-red-200', 'text-red-700', 'text-red-600'], warning: ['bg-yellow-50 border-yellow-200', 'text-yellow-700', 'text-yellow-600'], info: ['bg-blue-50 border-blue-200', 'text-blue-700', 'text-blue-600'] };
+    report.innerHTML = '<div class="bg-white border border-amber-200 rounded-xl p-4 space-y-2">' +
+      '<div class="flex justify-between items-center">' +
+        '<span class="text-[9px] font-black text-amber-600 uppercase">Výsledky kontroly (' + year + ')</span>' +
+        '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-slate-300 hover:text-slate-500 text-sm">&times;</button>' +
+      '</div>' +
+      issues.map(function(issue) {
+        var c = colors[issue.type] || ['bg-slate-50 border-slate-200', 'text-slate-700', 'text-slate-600'];
+        return '<div class="' + c[0] + ' rounded-lg p-3">' +
+          '<div class="flex items-start gap-2">' +
+            '<span class="text-sm">' + issue.icon + '</span>' +
+            '<div class="flex-1 min-w-0">' +
+              '<p class="text-[10px] font-bold ' + c[1] + '">' + issue.title + '</p>' +
+              '<p class="text-[9px] ' + c[2] + ' mt-0.5">' + issue.detail + '</p>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+};
+
 window.saveZoneAreas = async function() {
   var inputs = document.querySelectorAll('.zone-area-input');
   for (var i = 0; i < inputs.length; i++) {

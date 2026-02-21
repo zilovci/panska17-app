@@ -314,8 +314,12 @@
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Náklady / Faktúry</h3>
-                        <button onclick="window.showAddExpense()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
+                        <div class="flex gap-2">
+                            <button onclick="window.runConsistencyCheck()" class="bg-amber-100 text-amber-700 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-amber-200">🔍 Kontrola</button>
+                            <button onclick="window.showAddExpense()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Pridať</button>
+                        </div>
                     </div>
+                    <div id="consistency-report" class="hidden mb-4"></div>
 
                     <div class="flex flex-wrap items-center gap-3 mb-4">
                         <label class="text-[9px] font-black text-slate-400 uppercase">Rok:</label>
@@ -872,8 +876,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260221h"></script>
-    <script src="app-finance.js?v=20260221h"></script>
-    <script src="app-main.js?v=20260221h"></script>
+    <script src="app-core.js?v=20260221i"></script>
+    <script src="app-finance.js?v=20260221i"></script>
+    <script src="app-main.js?v=20260221i"></script>
 </body>
 </html>
