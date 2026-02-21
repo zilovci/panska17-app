@@ -199,20 +199,19 @@ async function loadFinance() {
         try {
           var detailText = '';
           if (leaseFrom) {
-            // Show overlap range
-            var pf = parseDate(periodFrom), pt = parseDate(periodTo);
             var lf = parseDate(leaseFrom);
-            var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
-            var overlapStart = lf > pf ? lf : pf;
-            var overlapEnd = lt < pt ? lt : pt;
-            if (overlapStart <= overlapEnd) {
-              var startLabel = monthNamesShort[overlapStart.getMonth()] + ' ' + overlapStart.getFullYear();
-              var endLabel = monthNamesShort[overlapEnd.getMonth()] + ' ' + overlapEnd.getFullYear();
-              detailText = 'zmluva od ' + monthNamesShort[lf.getMonth()] + ' ' + lf.getFullYear();
-              if (autoMonths !== null && autoMonths < totalMonths) {
-                detailText += ' → ' + startLabel + '–' + endLabel;
+            detailText = 'zmluva od ' + lf.getDate() + '.' + (lf.getMonth()+1) + '.' + lf.getFullYear();
+            if (autoMonths !== null && autoMonths < totalMonths) {
+              var pf = parseDate(periodFrom), pt = parseDate(periodTo);
+              var lt = leaseTo ? parseDate(leaseTo) : new Date(2099, 11, 31);
+              var overlapStart = lf > pf ? lf : pf;
+              var overlapEnd = lt < pt ? lt : pt;
+              if (overlapStart <= overlapEnd) {
+                detailText += ' → ' + monthNamesShort[overlapStart.getMonth()] + '–' + monthNamesShort[overlapEnd.getMonth()] + ' ' + overlapEnd.getFullYear();
               }
             }
+          } else {
+            detailText = 'bez dátumu zmluvy';
           }
           detailEl.textContent = detailText;
         } catch(detErr) {
@@ -728,6 +727,7 @@ window.toggleAmortFields = function() {
 
 window.showAddExpense = async function() {
   editingExpenseId = null;
+  document.getElementById('expense-modal-title').innerText = 'Nový náklad';
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-supplier').value = '';
@@ -1620,6 +1620,7 @@ window.editExpense = async function(id) {
   if (!e) return;
 
   editingExpenseId = id;
+  document.getElementById('expense-modal-title').innerText = 'Upraviť náklad';
   document.getElementById('exp-date').value = e.date;
   document.getElementById('exp-category').value = e.category_id;
   document.getElementById('exp-desc').value = e.description;
@@ -1656,6 +1657,12 @@ window.editExpense = async function(id) {
     if (monthsInput) {
       monthsInput.value = '';
       monthsInput.setAttribute('data-auto', 'true');
+      // Debug: log what we're doing for zones that had saved months
+      var allocData = allocMap[cbs[i].value];
+      if (allocData && allocData.months_occupied != null) {
+        var zLabel = cbs[i].nextElementSibling ? cbs[i].nextElementSibling.textContent : cbs[i].value;
+        console.log('Months reset:', zLabel, 'DB had:', allocData.months_occupied + '/' + allocData.months_total, 'lease-from:', cbs[i].getAttribute('data-lease-from') || '(none)');
+      }
     }
   }
 
