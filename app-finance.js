@@ -1581,9 +1581,8 @@ window.calcMeterAllocation = async function() {
 
   if (meters.length === 0) {
     var hint = meterType ? ('Žiadne ' + meterType + ' merače.') : 'Pre túto kategóriu nie sú merače.';
-    meterRows.innerHTML = '<p class="text-[9px] text-amber-500 font-bold">' + hint + ' Prepnuté na rozpočítanie podľa plochy.</p>';
-    // Auto-fallback to area method
-    window.setAllocMethod('area');
+    meterRows.innerHTML = '<p class="text-[9px] text-slate-400">' + hint + ' Pridajte merače v sekcii Merače alebo nastavte kategóriu na merači.</p>';
+    preview.classList.add('hidden');
     return;
   }
 
