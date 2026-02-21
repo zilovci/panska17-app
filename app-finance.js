@@ -71,7 +71,35 @@ async function loadFinance() {
     };
   }
 
-  // Zone checkboxes
+  // Refresh lease dates on zone checkboxes from current DB state
+  // Must be called before any expense edit to ensure correct dates
+  window.refreshZoneLeaseDates = async function() {
+    try {
+      var { data: freshZones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+      var { data: freshTenants = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
+      var leaseMap = {};
+      freshTenants.forEach(function(t) { leaseMap[t.id] = t; });
+      var cbs = document.querySelectorAll('.alloc-zone-cb');
+      for (var i = 0; i < cbs.length; i++) {
+        var zoneId = cbs[i].value;
+        var zone = freshZones.find(function(z) { return z.id === zoneId; });
+        if (!zone) continue;
+        var lease = zone.tenant_id ? leaseMap[zone.tenant_id] : null;
+        var leaseFrom = (lease && lease.lease_from) ? lease.lease_from : '';
+        var leaseTo = (lease && lease.lease_to) ? lease.lease_to : '';
+        cbs[i].setAttribute('data-lease-from', leaseFrom);
+        cbs[i].setAttribute('data-lease-to', leaseTo);
+        var label = zone.tenant_name || zone.name;
+        var span = cbs[i].nextElementSibling;
+        if (span) span.title = label + (leaseFrom ? ' • Zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') : ' • Bez dátumu zmluvy');
+      }
+      console.log('Zone lease dates refreshed from DB');
+    } catch(err) {
+      console.warn('refreshZoneLeaseDates error:', err);
+    }
+  };
+
+  // Zone checkboxes for allocation
   var zoneChecks = document.getElementById('exp-zone-checks');
   if (zoneChecks) {
     zoneChecks.innerHTML = allZones.filter(function(z) { return z.name !== 'Spoločné priestory' && z.name !== 'Dvor'; }).map(function(z) {
@@ -173,6 +201,10 @@ async function loadFinance() {
       var leaseFrom = cb.getAttribute('data-lease-from') || '';
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+      
+      // Debug log for zones with lease dates
+      var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
+      console.log('Months calc:', zoneName, '| lease:', leaseFrom || '(none)', '| period:', periodFrom, '-', periodTo, '| total:', totalMonths, '| auto:', autoMonths, '| data-auto:', inp ? inp.getAttribute('data-auto') : 'N/A', '| current val:', inp ? inp.value : 'N/A');
       
       // Update total label - ALWAYS from current period
       var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
@@ -726,6 +758,9 @@ window.toggleAmortFields = function() {
 };
 
 window.showAddExpense = async function() {
+  // Refresh lease dates from DB
+  await window.refreshZoneLeaseDates();
+
   editingExpenseId = null;
   document.getElementById('expense-modal-title').innerText = 'Nový náklad';
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
@@ -1618,6 +1653,9 @@ window.saveExpense = async function() {
 window.editExpense = async function(id) {
   var { data: e } = await sb.from('expenses').select('*').eq('id', id).single();
   if (!e) return;
+
+  // Refresh lease dates from DB before anything else
+  await window.refreshZoneLeaseDates();
 
   editingExpenseId = id;
   document.getElementById('expense-modal-title').innerText = 'Upraviť náklad';

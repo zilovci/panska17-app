@@ -275,6 +275,8 @@ window.saveTenant = async function() {
 
   window.closeTenantModal();
   await window.loadTenants();
+  // Refresh zone lease dates for expense allocation (tenant assignments may have changed)
+  if (window.refreshZoneLeaseDates) await window.refreshZoneLeaseDates();
 };
 
 window.editTenant = async function(id) {
