@@ -1946,6 +1946,7 @@ window.calcMeterAllocation = async function() {
 
   // Load meters: those assigned to this category, OR default type without category override
   var meters = [];
+  var redirectedMeters = []; // meters of this type but assigned to different category (e.g., water meter → Vykurovanie)
   if (catId) {
     var { data: catMeters = [] } = await sb.from('meters').select('*').eq('cost_category_id', catId);
     meters = meters.concat(catMeters);
@@ -1955,6 +1956,11 @@ window.calcMeterAllocation = async function() {
     typeMeters.forEach(function(m) {
       if (!meters.find(function(em) { return em.id === m.id; })) meters.push(m);
     });
+    // Also load meters of same type that are redirected to OTHER categories (e.g., vodomer kotolne → Vykurovanie)
+    if (catId) {
+      var { data: redirMeters = [] } = await sb.from('meters').select('*, cost_categories(name)').eq('type', meterType).not('cost_category_id', 'is', null).neq('cost_category_id', catId);
+      redirectedMeters = redirMeters;
+    }
   }
 
   if (meters.length === 0) {
@@ -1965,8 +1971,9 @@ window.calcMeterAllocation = async function() {
   }
 
   // Load all readings in range (with buffer for finding closest)
+  var allMeterIds = meters.map(function(m) { return m.id; }).concat(redirectedMeters.map(function(m) { return m.id; }));
   var { data: readings = [] } = await sb.from('meter_readings').select('*')
-    .in('meter_id', meters.map(function(m) { return m.id; }))
+    .in('meter_id', allMeterIds.length > 0 ? allMeterIds : ['none'])
     .lte('date', periodTo)
     .order('date', { ascending: true });
 
@@ -1982,7 +1989,10 @@ window.calcMeterAllocation = async function() {
   var meterConsumption = [];
   var mainMeter = meters.find(function(m) { return m.is_main; });
 
-  meters.forEach(function(m) {
+  // Combine regular + redirected meters for consumption calc
+  var allCalcMeters = meters.concat(redirectedMeters.map(function(m) { m._redirected = true; return m; }));
+
+  allCalcMeters.forEach(function(m) {
     var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
     if (mReadings.length < 2) return;
 
@@ -2062,7 +2072,9 @@ window.calcMeterAllocation = async function() {
       startDate: startDate,
       endDate: endDate,
       zones: zones,
-      hadReplacement: !!(hasFinal && hasInitial)
+      hadReplacement: !!(hasFinal && hasInitial),
+      isRedirected: !!m._redirected,
+      redirectedCatName: m._redirected && m.cost_categories ? m.cost_categories.name : null
     });
   });
 
@@ -2070,9 +2082,16 @@ window.calcMeterAllocation = async function() {
   var zoneAllocs = []; // { zoneId, zoneName, consumption, pct, amount, payer, meterName, note }
   var totalConsumption = 0;
   var subMeterTotal = 0;
+  var redirectedTotal = 0;
 
   meterConsumption.forEach(function(mc) {
     if (mc.meter.is_main) return; // Handle main meter separately
+
+    // Redirected meters (e.g., vodomer kotolne → Vykurovanie) - subtract but don't allocate here
+    if (mc.isRedirected) {
+      redirectedTotal += mc.consumption;
+      return;
+    }
 
     subMeterTotal += mc.consumption;
 
@@ -2115,7 +2134,22 @@ window.calcMeterAllocation = async function() {
   var mainMc = meterConsumption.find(function(mc) { return mc.meter.is_main; });
   if (mainMc) {
     mainConsumption = mainMc.consumption;
-    var remainder = mainConsumption - subMeterTotal;
+    // Redirected meters are subtracted from main but not allocated to this expense
+    var remainder = mainConsumption - subMeterTotal - redirectedTotal;
+
+    // Add redirected consumption as informational line
+    var redirectedMcs = meterConsumption.filter(function(mc) { return mc.isRedirected; });
+    redirectedMcs.forEach(function(rmc) {
+      zoneAllocs.push({
+        zoneId: null,
+        zoneName: '→ ' + (rmc.redirectedCatName || 'Iná kategória'),
+        consumption: rmc.consumption,
+        meterName: rmc.meter.name,
+        payer: 'redirect', // special payer type
+        note: rmc.meter.meter_number ? '#' + rmc.meter.meter_number : ''
+      });
+    });
+
     if (remainder > 0.01) {
       zoneAllocs.push({
         zoneId: null,
@@ -2128,12 +2162,17 @@ window.calcMeterAllocation = async function() {
     }
   }
 
-  totalConsumption = zoneAllocs.reduce(function(s, a) { return s + a.consumption; }, 0);
+  totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
   // Calculate percentages and amounts
   zoneAllocs.forEach(function(a) {
-    a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
-    a.amount = amount * a.pct / 100;
+    if (a.payer === 'redirect') {
+      a.pct = 0;
+      a.amount = 0;
+    } else {
+      a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
+      a.amount = amount * a.pct / 100;
+    }
   });
 
   // Display meter info
@@ -2141,7 +2180,8 @@ window.calcMeterAllocation = async function() {
   meterRows.innerHTML = meterConsumption.map(function(mc) {
     var badges = mc.meter.is_main ? ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-600">HLAVNÝ</span>' : '';
     if (mc.hadReplacement) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-600">VÝMENA</span>';
-    return '<div class="flex justify-between text-[9px] bg-white rounded-lg px-2 py-1.5">' +
+    if (mc.isRedirected) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-600">→ ' + (mc.redirectedCatName || 'Iná kat.') + '</span>';
+    return '<div class="flex justify-between text-[9px] bg-white rounded-lg px-2 py-1.5' + (mc.isRedirected ? ' opacity-60' : '') + '">' +
       '<span class="font-bold text-slate-600">' + mc.meter.name + badges + '</span>' +
       '<span class="text-slate-400">' + mc.startValue.toFixed(2) + ' → ' + mc.endValue.toFixed(2) + (mc.hadReplacement ? ' (výmena)' : '') + '</span>' +
       '<span class="font-black text-green-600">' + mc.consumption.toFixed(2) + ' ' + unit + '</span>' +
@@ -2156,8 +2196,24 @@ window.calcMeterAllocation = async function() {
 
   var tenantAllocs = zoneAllocs.filter(function(a) { return a.payer === 'tenant'; });
   var ownerAllocs = zoneAllocs.filter(function(a) { return a.payer === 'owner'; });
+  var redirectAllocs = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; });
 
   var html = '';
+
+  // Redirected meters info (e.g., vodomer kotolne → Vykurovanie)
+  if (redirectAllocs.length > 0) {
+    html += '<div class="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 mb-2">';
+    html += '<p class="text-[8px] font-black text-blue-500 uppercase mb-1">Presmerované do inej kategórie</p>';
+    html += redirectAllocs.map(function(a) {
+      return '<div class="flex items-center justify-between text-[9px]">' +
+        '<span class="font-bold text-blue-600 truncate flex-1">' + a.meterName + '</span>' +
+        '<span class="text-blue-400 w-16 text-right">' + a.consumption.toFixed(2) + ' ' + unit + '</span>' +
+        '<span class="font-bold text-blue-500">' + a.zoneName + '</span>' +
+      '</div>';
+    }).join('');
+    html += '</div>';
+  }
+
   if (tenantAllocs.length > 0) {
     html += '<p class="text-[8px] font-black text-green-600 uppercase mb-1">Nájomca platí</p>';
     var tenantTotal = 0;
@@ -2195,10 +2251,10 @@ window.calcMeterAllocation = async function() {
   allocRows.innerHTML = html;
   preview.classList.remove('hidden');
 
-  // Store meter allocations for save
+  // Store meter allocations for save (exclude redirected - they belong to another category)
   var allocUnit = meters[0] ? meters[0].unit : 'm³';
   zoneAllocs.forEach(function(a) { a.unit = allocUnit; });
-  window._meterAllocations = zoneAllocs;
+  window._meterAllocations = zoneAllocs.filter(function(a) { return a.payer !== 'redirect'; });
 };
 
 // Recalc meter when period changes
