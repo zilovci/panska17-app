@@ -1027,6 +1027,220 @@ window.runConsistencyCheck = async function() {
   }
 };
 
+// ============ RECALCULATE ALL EXPENSES ============
+window.recalcAllExpenses = async function() {
+  var year = document.getElementById('fin-year').value;
+  if (!year) { alert('Vyberte rok'); return; }
+  if (!confirm('Prepočítať všetky plošné alokácie za rok ' + year + ' podľa aktuálnych plôch zón?\n\nMeračové náklady sa nezmenia.')) return;
+
+  // Load current zones
+  var { data: zones = [] } = await sb.from('zones').select('*');
+  var zoneMap = {};
+  zones.forEach(function(z) { zoneMap[z.id] = z; });
+
+  // Load categories
+  var { data: cats = [] } = await sb.from('cost_categories').select('*');
+  var catMap = {};
+  cats.forEach(function(c) { catMap[c.id] = c; });
+
+  // Load all expenses for year with allocations
+  var { data: expenses = [] } = await sb.from('expenses')
+    .select('*, expense_allocations(*)')
+    .gte('date', year + '-01-01').lte('date', year + '-12-31');
+
+  // Also by period
+  var { data: expenses2 = [] } = await sb.from('expenses')
+    .select('*, expense_allocations(*)')
+    .lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+
+  var allExp = expenses.concat(expenses2);
+  var seen = {};
+  allExp = allExp.filter(function(e) {
+    if (seen[e.id]) return false;
+    seen[e.id] = true;
+    return true;
+  });
+
+  var updated = 0, skipped = 0, errors = 0;
+
+  for (var ei = 0; ei < allExp.length; ei++) {
+    var e = allExp[ei];
+    var allocs = e.expense_allocations || [];
+    if (allocs.length === 0) { skipped++; continue; }
+
+    // Skip meter-based
+    if (e.alloc_method === 'meter') { skipped++; continue; }
+
+    var cat = catMap[e.category_id] || {};
+    var emptyRule = cat.empty_zone_rule || 'owner';
+    var isHeating = emptyRule === 'owner_temper';
+
+    // Determine save amount
+    var saveAmount = e.amount || 0;
+    if (e.cost_type === 'amortized' && e.amort_years > 0) {
+      saveAmount = e.amount / e.amort_years;
+    }
+
+    // Calculate period months
+    var totalMonths = 12;
+    if (e.period_from && e.period_to) {
+      var pf = new Date(e.period_from), pt = new Date(e.period_to);
+      totalMonths = Math.round((pt - pf) / (30.44 * 24 * 60 * 60 * 1000));
+      if (totalMonths < 1) totalMonths = 1;
+      if (totalMonths > 24) totalMonths = 24;
+    }
+
+    // Deduplicate zones from allocations (merge tenant+owner splits)
+    var zoneAllocMap = {};
+    allocs.forEach(function(a) {
+      if (!zoneAllocMap[a.zone_id]) {
+        zoneAllocMap[a.zone_id] = { payer: a.payer, months_occupied: a.months_occupied, months_total: a.months_total };
+      }
+      // Prefer tenant entry over owner for payer
+      if (a.payer === 'tenant') {
+        zoneAllocMap[a.zone_id].payer = 'tenant';
+        zoneAllocMap[a.zone_id].months_occupied = a.months_occupied;
+        zoneAllocMap[a.zone_id].months_total = a.months_total;
+      }
+    });
+
+    // Build zone list with current areas
+    var zoneList = [];
+    Object.keys(zoneAllocMap).forEach(function(zid) {
+      var z = zoneMap[zid];
+      if (!z) return;
+      var aInfo = zoneAllocMap[zid];
+      zoneList.push({
+        id: zid,
+        area: z.area_m2 || 0,
+        billingArea: z.billing_area_m2 || z.area_m2 || 0,
+        temper: z.tempering_pct || 0,
+        payer: aInfo.payer || 'tenant',
+        monthsOcc: aInfo.months_occupied != null ? aInfo.months_occupied : totalMonths,
+        monthsTotal: aInfo.months_total || totalMonths,
+        isTimeWeighted: false
+      });
+    });
+
+    if (zoneList.length === 0) { skipped++; continue; }
+
+    // Time-weighted detection
+    zoneList.forEach(function(z) {
+      if (z.monthsOcc < totalMonths) {
+        var monthsEmpty = totalMonths - z.monthsOcc;
+        var ownerWeight = emptyRule === 'exclude' ? 0 : (emptyRule === 'owner_temper' ? (z.temper / 100) : 1);
+        z.isTimeWeighted = true;
+        z.monthsEmpty = monthsEmpty;
+        z.tenantEffArea = z.area * z.monthsOcc / totalMonths;
+        z.tenantEffBilling = z.billingArea * z.monthsOcc / totalMonths;
+        z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
+      }
+    });
+
+    // Tempered zones (heating: unchecked zones with tempering)
+    var temperedZones = [];
+    if (isHeating) {
+      var allocatedIds = {};
+      zoneList.forEach(function(z) { allocatedIds[z.id] = true; });
+      zones.forEach(function(z) {
+        if (!allocatedIds[z.id] && z.tempering_pct > 0) {
+          temperedZones.push({ id: z.id, area: z.area_m2, temper: z.tempering_pct, effectiveArea: z.area_m2 * z.tempering_pct / 100 });
+        }
+      });
+    }
+
+    // Calculate total area (pool)
+    var totalArea = 0;
+    zoneList.forEach(function(z) {
+      if (z.isTimeWeighted) {
+        totalArea += z.tenantEffArea + z.ownerEffArea;
+      } else if (isHeating && z.payer === 'owner') {
+        z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
+        totalArea += z.ownerTemperedArea;
+      } else {
+        totalArea += z.area;
+      }
+    });
+    totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
+
+    if (totalArea === 0) { skipped++; continue; }
+
+    // Build new allocations
+    var newAllocs = [];
+    zoneList.forEach(function(z) {
+      if (z.isTimeWeighted) {
+        var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
+        var tenantPct = tenantBilling / totalArea * 100;
+        var ownerPct = z.ownerEffArea / totalArea * 100;
+        newAllocs.push({
+          expense_id: e.id, zone_id: z.id,
+          percentage: parseFloat(tenantPct.toFixed(2)),
+          amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
+          payer: z.payer,
+          months_occupied: z.monthsOcc, months_total: totalMonths,
+          tempering_used: isHeating ? z.temper : null,
+          area_used: z.area
+        });
+        if (z.payer === 'tenant' && ownerPct > 0) {
+          newAllocs.push({
+            expense_id: e.id, zone_id: z.id,
+            percentage: parseFloat(ownerPct.toFixed(2)),
+            amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+            payer: 'owner',
+            months_occupied: 0, months_total: totalMonths,
+            tempering_used: isHeating ? z.temper : null,
+            area_used: z.area
+          });
+        }
+      } else {
+        var chargeArea;
+        if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
+          chargeArea = z.ownerTemperedArea;
+        } else {
+          chargeArea = (z.payer === 'tenant') ? z.billingArea : z.area;
+        }
+        var pct = chargeArea / totalArea * 100;
+        newAllocs.push({
+          expense_id: e.id, zone_id: z.id,
+          percentage: parseFloat(pct.toFixed(2)),
+          amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+          payer: z.payer,
+          tempering_used: isHeating ? z.temper : null,
+          area_used: z.area
+        });
+      }
+    });
+    temperedZones.forEach(function(z) {
+      var pct = z.effectiveArea / totalArea * 100;
+      newAllocs.push({
+        expense_id: e.id, zone_id: z.id,
+        percentage: parseFloat(pct.toFixed(2)),
+        amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+        payer: 'owner',
+        tempering_used: z.temper,
+        area_used: z.area
+      });
+    });
+
+    // Replace allocations
+    try {
+      await sb.from('expense_allocations').delete().eq('expense_id', e.id);
+      if (newAllocs.length > 0) {
+        var ins = await sb.from('expense_allocations').insert(newAllocs);
+        if (ins.error) throw ins.error;
+      }
+      updated++;
+    } catch(err) {
+      console.error('Recalc error for expense ' + e.id + ':', err);
+      errors++;
+    }
+  }
+
+  alert('Hotovo!\n\n✅ Prepočítaných: ' + updated + '\n⏭ Preskočených (merač/prázdne): ' + skipped + (errors > 0 ? '\n❌ Chýb: ' + errors : ''));
+  await loadExpenses();
+  if (window.loadOverview) await window.loadOverview();
+};
+
 window.saveZoneAreas = async function() {
   var inputs = document.querySelectorAll('.zone-area-input');
   for (var i = 0; i < inputs.length; i++) {
