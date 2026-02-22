@@ -1030,8 +1030,11 @@ window.runConsistencyCheck = async function() {
 // ============ RECALCULATE ALL EXPENSES ============
 window.recalcAllExpenses = async function() {
   var year = document.getElementById('fin-year').value;
+  var catFilter = document.getElementById('fin-cat-filter').value;
+  var dateMode = document.getElementById('fin-date-mode').value;
   if (!year) { alert('Vyberte rok'); return; }
-  if (!confirm('Prepočítať všetky plošné alokácie za rok ' + year + ' podľa aktuálnych plôch zón?\n\nMeračové náklady sa nezmenia.')) return;
+  var catLabel = catFilter === 'all' ? 'všetky kategórie' : document.getElementById('fin-cat-filter').options[document.getElementById('fin-cat-filter').selectedIndex].text;
+  if (!confirm('Prepočítať plošné alokácie za rok ' + year + ' (' + catLabel + ') podľa aktuálnych plôch zón?\n\nMeračové náklady sa nezmenia.')) return;
 
   // Load current zones
   var { data: zones = [] } = await sb.from('zones').select('*');
@@ -1043,15 +1046,27 @@ window.recalcAllExpenses = async function() {
   var catMap = {};
   cats.forEach(function(c) { catMap[c.id] = c; });
 
-  // Load all expenses for year with allocations
-  var { data: expenses = [] } = await sb.from('expenses')
-    .select('*, expense_allocations(*)')
-    .gte('date', year + '-01-01').lte('date', year + '-12-31');
+  // Load expenses respecting filters
+  var q1 = sb.from('expenses').select('*, expense_allocations(*)');
+  var q2 = sb.from('expenses').select('*, expense_allocations(*)');
+  if (dateMode === 'period') {
+    q1 = q1.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+    q2 = null; // period mode doesn't need fallback
+  } else {
+    q1 = q1.gte('date', year + '-01-01').lte('date', year + '-12-31');
+    q2 = q2.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+  }
+  if (catFilter !== 'all') {
+    q1 = q1.eq('category_id', catFilter);
+    if (q2) q2 = q2.eq('category_id', catFilter);
+  }
 
-  // Also by period
-  var { data: expenses2 = [] } = await sb.from('expenses')
-    .select('*, expense_allocations(*)')
-    .lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+  var { data: expenses = [] } = await q1;
+  var expenses2 = [];
+  if (q2) {
+    var r2 = await q2;
+    expenses2 = r2.data || [];
+  }
 
   var allExp = expenses.concat(expenses2);
   var seen = {};
