@@ -310,6 +310,39 @@
                     </div>
                 </div>
 
+                <!-- MODAL - Výmena merača -->
+                <div id="modal-replacement" class="hidden fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onclick="if(event.target===this)this.classList.add('hidden')">
+                    <div class="bg-white rounded-[2rem] p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
+                        <h3 class="font-black text-lg uppercase tracking-tighter mb-2">Výmena merača</h3>
+                        <p class="text-[10px] font-bold text-slate-400 mb-4" id="repl-meter-name"></p>
+                        <div id="repl-old-info" class="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                            <p class="text-[9px] font-black text-amber-600 uppercase">Starý merač</p>
+                            <p class="text-sm font-bold text-slate-700">Číslo: <span id="repl-old-number" class="text-amber-600"></span></p>
+                            <p class="text-sm font-bold text-slate-700">Posledné odčítanie: <span id="repl-old-last" class="text-slate-400"></span></p>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[9px] font-black text-slate-400 uppercase">Dátum výmeny</label>
+                                <input type="date" id="repl-date" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                            </div>
+                            <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+                                <label class="text-[9px] font-black text-red-400 uppercase">Konečný stav starého merača</label>
+                                <input type="number" step="0.01" id="repl-old-final" class="w-full border border-red-200 rounded-xl p-2.5 text-sm mt-1 bg-white" placeholder="0.00">
+                            </div>
+                            <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+                                <label class="text-[9px] font-black text-green-600 uppercase">Nové číslo merača</label>
+                                <input type="text" id="repl-new-number" class="w-full border border-green-200 rounded-xl p-2.5 text-sm mt-1 bg-white" placeholder="Napr. 65077720C123">
+                                <label class="text-[9px] font-black text-green-600 uppercase mt-3 block">Počiatočný stav nového merača</label>
+                                <input type="number" step="0.01" id="repl-new-initial" class="w-full border border-green-200 rounded-xl p-2.5 text-sm mt-1 bg-white" placeholder="0.00" value="0">
+                            </div>
+                        </div>
+                        <div class="flex space-x-3 mt-6">
+                            <button onclick="window.saveMeterReplacement()" class="flex-1 bg-amber-500 text-white py-3 rounded-xl text-[10px] font-black uppercase">Vymeniť</button>
+                            <button onclick="document.getElementById('modal-replacement').classList.add('hidden')" class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl text-[10px] font-black uppercase">Zrušiť</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- NÁKLADY -->
                 <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center mb-4">
