@@ -2003,8 +2003,8 @@ window.setAllocMethod = function(method) {
 
 // Category name → meter type mapping
 var catMeterType = {
-  'Voda': 'water', 'Vodné a stočné': 'water',
-  'Elektrina': 'electricity', 'Elektrická energia': 'electricity',
+  'Voda': 'water', 'Vodné a stočné': 'water', 'Voda a kanalizácia': 'water', 'Voda a kanalizacia': 'water',
+  'Elektrina': 'electricity', 'Elektrická energia': 'electricity', 'Elektricka energia': 'electricity',
   'Plyn': 'gas', 'Vykurovanie': 'gas'
 };
 
