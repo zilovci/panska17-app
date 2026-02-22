@@ -353,6 +353,18 @@ async function loadMeters() {
 
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date', { ascending: false });
 
+  // Sort: same date → initial replacement before final (in descending order, initial is "newer")
+  readings.sort(function(a, b) {
+    if (a.date !== b.date) return a.date > b.date ? -1 : 1;
+    // Same date: initial > final > normal
+    var rank = function(r) {
+      if (r.is_replacement && r.replacement_type === 'initial') return 2;
+      if (r.is_replacement && r.replacement_type === 'final') return 0;
+      return 1;
+    };
+    return rank(b) - rank(a);
+  });
+
   // Load meter-zone assignments
   var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id, zones(name, tenant_name)');
   var mzByMeter = {};
@@ -448,11 +460,16 @@ async function loadMeters() {
       '</div>' +
       (last ? '<div class="flex items-center space-x-4">' +
         '<div>' +
-          '<p class="text-[8px] font-black text-slate-400 uppercase">Posledné</p>' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Posledné' +
+            (last.is_replacement && last.replacement_type === 'initial' ? ' <span class="text-green-500">(nový merač)</span>' : '') +
+          '</p>' +
           '<p class="text-sm font-bold text-slate-700">' + parseFloat(last.value).toFixed(2) + ' ' + m.unit + ' <span class="text-[8px] text-slate-400">' + fmtD(last.date) + '</span></p>' +
         '</div>' +
         (prev ? '<div>' +
-          '<p class="text-[8px] font-black text-slate-400 uppercase">Predchádzajúce</p>' +
+          '<p class="text-[8px] font-black text-slate-400 uppercase">Predchádzajúce' +
+            (prev.is_replacement && prev.replacement_type === 'initial' ? ' <span class="text-green-500">(nový merač)</span>' : '') +
+            (prev.is_replacement && prev.replacement_type === 'final' ? ' <span class="text-red-400">(starý merač)</span>' : '') +
+          '</p>' +
           '<p class="text-sm font-bold text-slate-400">' + parseFloat(prev.value).toFixed(2) + ' ' + m.unit + ' <span class="text-[8px] text-slate-300">' + fmtD(prev.date) + '</span></p>' +
         '</div>' : '') +
         (consumption ? '<div>' +
@@ -465,30 +482,41 @@ async function loadMeters() {
           var prevR = meterReadings[idx + 1];
           var isRepl = r.is_replacement;
           var replType = r.replacement_type;
-          var cons;
+          var cons = null;
+
           if (isRepl && replType === 'initial') {
-            cons = null; // No consumption for initial reading of new meter
-          } else if (prevR && prevR.is_replacement && prevR.replacement_type === 'initial') {
-            // Previous is initial of new meter - skip, calculate from the one before
+            // New meter just installed - no consumption to show
             cons = null;
           } else if (isRepl && replType === 'final') {
-            cons = prevR ? (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2) : null;
-          } else {
-            // Normal reading - but check if prev is 'initial' replacement
-            if (prevR && prevR.is_replacement && prevR.replacement_type === 'initial') {
+            // Final reading of old meter - show consumption vs previous normal reading
+            if (prevR && !prevR.is_replacement) {
               cons = (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2);
-            } else {
-              cons = prevR ? (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2) : null;
             }
+          } else if (prevR && prevR.is_replacement && prevR.replacement_type === 'initial') {
+            // Normal reading after new meter - consumption from initial
+            cons = (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2);
+          } else if (prevR && prevR.is_replacement && prevR.replacement_type === 'final') {
+            // Should not happen with correct sort, but safety
+            cons = null;
+          } else if (prevR) {
+            // Normal vs normal
+            cons = (parseFloat(r.value) - parseFloat(prevR.value)).toFixed(2);
           }
+
           var replBadge = '';
           if (isRepl && replType === 'final') replBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-500">KONEČNÝ</span>';
           if (isRepl && replType === 'initial') replBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-green-100 text-green-600">NOVÝ MERAČ</span>';
+          var prevLabel = '';
+          if (prevR && !isRepl && !(prevR.is_replacement && prevR.replacement_type === 'final')) {
+            prevLabel = '<span class="text-slate-300">pred: ' + parseFloat(prevR.value).toFixed(2) + '</span>';
+          } else {
+            prevLabel = '<span class="text-slate-300">--</span>';
+          }
           return '<div class="flex items-center justify-between text-[9px] text-slate-500 bg-white rounded-lg px-3 py-1.5' + (isRepl ? ' border border-amber-200' : '') + '">' +
             '<span>' + fmtD(r.date) + '</span>' +
             replBadge +
             '<span class="font-bold">' + parseFloat(r.value).toFixed(2) + ' ' + m.unit + '</span>' +
-            (prevR && !isRepl ? '<span class="text-slate-300">pred: ' + parseFloat(prevR.value).toFixed(2) + '</span>' : '<span class="text-slate-300">--</span>') +
+            prevLabel +
             '<span class="text-green-600 font-bold">' + (cons !== null ? '+' + cons : '--') + '</span>' +
             '<button onclick="window.editReading(\'' + r.id + '\', \'' + m.id + '\')" class="text-slate-300 hover:text-blue-500"><i class="fa-solid fa-pen"></i></button>' +
             '<button onclick="window.deleteReading(\'' + r.id + '\')" class="text-red-300 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>' +
