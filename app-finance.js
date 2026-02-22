@@ -1356,7 +1356,7 @@ window.updateAllocPreview = function() {
     }
   }
 
-  // Calculate total effective area (pool uses billing area to exclude unauthorized constructions)
+  // Calculate total effective area (pool = building area)
   var totalArea = 0;
   checkedZones.forEach(function(z) {
     if (z.isTimeWeighted) {
@@ -1368,7 +1368,7 @@ window.updateAllocPreview = function() {
       z.ownerTemperedArea = z.area * temper / 100;
       totalArea += z.ownerTemperedArea;
     } else {
-      totalArea += z.billingArea || z.area; // pool uses billing area (excludes illegal constructions)
+      totalArea += z.area; // pool uses building area
     }
   });
   totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
@@ -1443,7 +1443,7 @@ window.updateAllocPreview = function() {
         var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
         temperNote = ' <span class="text-orange-400">(kúr. ' + temper + '%)</span>';
       } else {
-        effArea = z.billingArea || z.area;
+        effArea = z.area;
       }
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
@@ -1951,7 +1951,7 @@ window.saveExpense = async function() {
           }
         }
 
-        // Calculate total effective area (pool uses billing area)
+        // Calculate total effective area (pool = building area)
         var totalArea = 0;
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
@@ -1961,7 +1961,7 @@ window.saveExpense = async function() {
             z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
             totalArea += z.ownerTemperedArea;
           } else {
-            totalArea += z.billingArea || z.area;
+            totalArea += z.area;
           }
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
@@ -2003,7 +2003,7 @@ window.saveExpense = async function() {
             if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
               chargeArea = z.ownerTemperedArea;
             } else {
-              chargeArea = z.billingArea || z.area;
+              chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
             }
             var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
             allocs.push({
