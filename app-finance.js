@@ -1139,6 +1139,85 @@ window.runConsistencyCheck = async function() {
     issues.push({ type: 'warning', icon: '❓', title: 'Bez rozpočítania (' + noAllocList.length + ')', detail: noAllocList.join(', ') });
   }
 
+  // 7. Meter consistency checks
+  if (year) {
+    var periodStart = year + '-01-01';
+    var periodEnd = year + '-12-31';
+
+    // Load all meters and readings
+    var { data: checkMeters = [] } = await sb.from('meters').select('*, cost_categories(name)').order('sort_order', { ascending: true });
+    var meterIds = checkMeters.map(function(m) { return m.id; });
+    var { data: checkReadings = [] } = await sb.from('meter_readings').select('*')
+      .in('meter_id', meterIds.length > 0 ? meterIds : ['none'])
+      .order('date', { ascending: true });
+
+    // Check each meter type group
+    var meterTypes = ['water', 'electricity', 'gas'];
+    var typeLabels = { water: 'Voda', electricity: 'Elektrina', gas: 'Plyn' };
+
+    meterTypes.forEach(function(mType) {
+      var typeMeters = checkMeters.filter(function(m) { return m.type === mType; });
+      if (typeMeters.length === 0) return;
+
+      var mainM = typeMeters.find(function(m) { return m.is_main; });
+      var subMs = typeMeters.filter(function(m) { return !m.is_main && !m.cost_category_id; });
+      var meterIssues = [];
+
+      // Check for meters with no readings in period
+      typeMeters.forEach(function(m) {
+        var mRdgs = checkReadings.filter(function(r) { return r.meter_id === m.id; });
+        var inPeriod = mRdgs.filter(function(r) { return r.date >= periodStart && r.date <= periodEnd; });
+        var beforePeriod = mRdgs.filter(function(r) { return r.date < periodStart; });
+
+        if (mRdgs.length === 0) {
+          meterIssues.push('<b>' + m.name + '</b>: žiadne odčítania vôbec');
+        } else if (inPeriod.length === 0 && beforePeriod.length > 0) {
+          var lastR = mRdgs[mRdgs.length - 1];
+          meterIssues.push('<b>' + m.name + '</b>: posledné odčítanie ' + fmtD(lastR.date) + ' – chýba ' + year);
+        }
+      });
+
+      // Check main vs sub consumption
+      if (mainM) {
+        var mainRdgs = checkReadings.filter(function(r) { return r.meter_id === mainM.id && !r.is_replacement; });
+        var mainStart = mainRdgs.filter(function(r) { return r.date <= periodStart; });
+        var mainEnd = mainRdgs.filter(function(r) { return r.date <= periodEnd; });
+        var mStartR = mainStart.length > 0 ? mainStart[mainStart.length - 1] : (mainRdgs.length > 0 ? mainRdgs[0] : null);
+        var mEndR = mainEnd.length > 0 ? mainEnd[mainEnd.length - 1] : null;
+
+        if (mStartR && mEndR && mStartR.id !== mEndR.id) {
+          var mainCons = parseFloat(mEndR.value) - parseFloat(mStartR.value);
+          var subTotal = 0;
+
+          subMs.forEach(function(sm) {
+            var sRdgs = checkReadings.filter(function(r) { return r.meter_id === sm.id && !r.is_replacement; });
+            var sStart = sRdgs.filter(function(r) { return r.date <= periodStart; });
+            var sEnd = sRdgs.filter(function(r) { return r.date <= periodEnd; });
+            var sS = sStart.length > 0 ? sStart[sStart.length - 1] : (sRdgs.length > 0 ? sRdgs[0] : null);
+            var sE = sEnd.length > 0 ? sEnd[sEnd.length - 1] : null;
+            if (sS && sE && sS.id !== sE.id) {
+              subTotal += parseFloat(sE.value) - parseFloat(sS.value);
+            }
+          });
+
+          if (mainCons > 0) {
+            var lossPct = ((mainCons - subTotal) / mainCons * 100);
+            if (lossPct > 20) {
+              meterIssues.push('Straty ' + lossPct.toFixed(0) + '% (' + typeLabels[mType] + ': hlavný ' + mainCons.toFixed(0) + ' – podmerače ' + subTotal.toFixed(0) + ')');
+            }
+            if (subTotal > mainCons) {
+              meterIssues.push('<span class="text-red-600">Podmerače (' + subTotal.toFixed(0) + ') > hlavný (' + mainCons.toFixed(0) + ')!</span>');
+            }
+          }
+        }
+      }
+
+      if (meterIssues.length > 0) {
+        issues.push({ type: 'warning', icon: '🔧', title: typeLabels[mType] + ' – merače', detail: meterIssues.join('<br>') });
+      }
+    });
+  }
+
   // Render
   if (issues.length === 0) {
     report.innerHTML = '<div class="bg-green-50 border border-green-200 rounded-xl p-4 text-center">' +
@@ -1987,6 +2066,7 @@ window.calcMeterAllocation = async function() {
 
   // Calculate consumption per meter
   var meterConsumption = [];
+  var meterWarnings = []; // { meter, type, message }
   var mainMeter = meters.find(function(m) { return m.is_main; });
 
   // Combine regular + redirected meters for consumption calc
@@ -1994,7 +2074,16 @@ window.calcMeterAllocation = async function() {
 
   allCalcMeters.forEach(function(m) {
     var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
-    if (mReadings.length < 2) return;
+    if (mReadings.length < 2) {
+      if (!m._redirected && !m.is_main) {
+        if (mReadings.length === 0) {
+          meterWarnings.push({ meter: m, type: 'no_readings', message: m.name + ': žiadne odčítanie' });
+        } else {
+          meterWarnings.push({ meter: m, type: 'single_reading', message: m.name + ': len 1 odčítanie – spotreba sa nedá vypočítať' });
+        }
+      }
+      return;
+    }
 
     // Check for replacement readings in range
     var replacements = mReadings.filter(function(r) { return r.is_replacement; });
@@ -2050,14 +2139,28 @@ window.calcMeterAllocation = async function() {
       var endReadings = normalReadings.filter(function(r) { return r.date <= periodTo; });
       var endR = endReadings.length > 0 ? endReadings[endReadings.length - 1] : null;
 
-      if (!endR || endR.id === startR.id) return;
+      if (!endR) {
+        if (!m._redirected && !m.is_main) {
+          meterWarnings.push({ meter: m, type: 'no_end_reading', message: m.name + ': žiadne odčítanie v období' });
+        }
+        return; // No readings at all → will be caught by warning
+      }
 
-      consumption = parseFloat(endR.value) - parseFloat(startR.value);
-      if (consumption < 0) consumption = 0;
-      startValue = parseFloat(startR.value);
-      endValue = parseFloat(endR.value);
-      startDate = startR.date;
-      endDate = endR.date;
+      if (endR.id === startR.id) {
+        // Same reading for start and end → zero consumption (nobody there / no change)
+        consumption = 0;
+        startValue = parseFloat(startR.value);
+        endValue = parseFloat(endR.value);
+        startDate = startR.date;
+        endDate = endR.date;
+      } else {
+        consumption = parseFloat(endR.value) - parseFloat(startR.value);
+        if (consumption < 0) consumption = 0;
+        startValue = parseFloat(startR.value);
+        endValue = parseFloat(endR.value);
+        startDate = startR.date;
+        endDate = endR.date;
+      }
     }
 
     var zones = mzByMeter[m.id] || [];
@@ -2074,7 +2177,8 @@ window.calcMeterAllocation = async function() {
       zones: zones,
       hadReplacement: !!(hasFinal && hasInitial),
       isRedirected: !!m._redirected,
-      redirectedCatName: m._redirected && m.cost_categories ? m.cost_categories.name : null
+      redirectedCatName: m._redirected && m.cost_categories ? m.cost_categories.name : null,
+      isZeroConsumption: consumption === 0
     });
   });
 
@@ -2181,12 +2285,24 @@ window.calcMeterAllocation = async function() {
     var badges = mc.meter.is_main ? ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-purple-100 text-purple-600">HLAVNÝ</span>' : '';
     if (mc.hadReplacement) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-600">VÝMENA</span>';
     if (mc.isRedirected) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-600">→ ' + (mc.redirectedCatName || 'Iná kat.') + '</span>';
+    if (mc.isZeroConsumption && !mc.meter.is_main) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-slate-100 text-slate-400">0</span>';
+    var consColor = mc.isZeroConsumption ? 'text-slate-400' : 'text-green-600';
     return '<div class="flex justify-between text-[9px] bg-white rounded-lg px-2 py-1.5' + (mc.isRedirected ? ' opacity-60' : '') + '">' +
       '<span class="font-bold text-slate-600">' + mc.meter.name + badges + '</span>' +
       '<span class="text-slate-400">' + mc.startValue.toFixed(2) + ' → ' + mc.endValue.toFixed(2) + (mc.hadReplacement ? ' (výmena)' : '') + '</span>' +
-      '<span class="font-black text-green-600">' + mc.consumption.toFixed(2) + ' ' + unit + '</span>' +
+      '<span class="font-black ' + consColor + '">' + mc.consumption.toFixed(2) + ' ' + unit + '</span>' +
     '</div>';
   }).join('');
+
+  // Show warnings for missing/incomplete meters
+  if (meterWarnings.length > 0) {
+    meterRows.innerHTML += '<div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">' +
+      '<p class="text-[8px] font-black text-amber-600 uppercase mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Upozornenia</p>' +
+      meterWarnings.map(function(w) {
+        return '<p class="text-[9px] text-amber-700">' + w.message + ' – spotreba zahrnutá v stratách</p>';
+      }).join('') +
+    '</div>';
+  }
 
   // Display allocation preview
   if (zoneAllocs.length === 0) {
