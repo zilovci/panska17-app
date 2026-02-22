@@ -1725,7 +1725,14 @@ window.updateAllocPreview = function() {
   if (amount > 0 && checkedZones.length > 0) {
     var grandTotal = 0;
     checkedZones.forEach(function(z) {
-      var effArea = z.isTimeWeighted ? (z.tenantEffArea + z.ownerEffArea) : z.area;
+      var effArea;
+      if (z.isTimeWeighted) {
+        effArea = z.tenantEffArea + z.ownerEffArea;
+      } else if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
+        effArea = z.ownerTemperedArea;
+      } else {
+        effArea = z.area;
+      }
       grandTotal += displayAmount * (totalArea > 0 ? effArea / totalArea * 100 : 0) / 100;
     });
     temperedZones.forEach(function(z) {
