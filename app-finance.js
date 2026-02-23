@@ -2587,8 +2587,25 @@ window.saveExpense = async function() {
           });
         });
         var lossAlloc = window._meterAllocations.find(function(a) { return !a.zoneId && a.payer === 'owner'; });
-        if (lossAlloc) {
-          var commonZone = allZones.find(function(z) { return z.name === 'Spoločné priestory'; });
+        if (lossAlloc && lossAlloc.consumption > 0.01) {
+          // Find common/shared zone by various names
+          var commonZone = allZones.find(function(z) { return z.name === 'Spoločné priestory'; })
+            || allZones.find(function(z) { return z.name.toLowerCase().indexOf('spoločn') >= 0 || z.name.toLowerCase().indexOf('spoloc') >= 0 || z.name.toLowerCase().indexOf('common') >= 0; });
+
+          if (!commonZone) {
+            // Auto-create "Spoločné priestory" zone
+            var { data: newZone } = await sb.from('zones').insert({
+              name: 'Spoločné priestory',
+              area_m2: 0,
+              billing_area_m2: 0,
+              is_active: true
+            }).select('*').single();
+            if (newZone) {
+              commonZone = newZone;
+              allZones.push(newZone);
+            }
+          }
+
           if (commonZone) {
             allocs.push({
               expense_id: expenseId,
@@ -2600,6 +2617,8 @@ window.saveExpense = async function() {
               consumption_unit: lossAlloc.unit || 'm³',
               area_used: commonZone.area_m2 || null
             });
+          } else {
+            alert('Upozornenie: Straty (' + lossAlloc.consumption.toFixed(2) + ' ' + (lossAlloc.unit || 'm³') + ' / ' + lossAlloc.amount.toFixed(2) + ' €) sa nepodarilo uložiť – chýba zóna "Spoločné priestory".');
           }
         }
       } else {
