@@ -1250,10 +1250,20 @@ window.generateInvoice = async function(existingInvoice) {
     var avgPct = byCat[c].items.length > 0
       ? (byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.percentage) || 0); }, 0) / byCat[c].items.length)
       : 0;
-    // Sum consumption if available
-    var totalCons = byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
-    var consUnit = byCat[c].items[0] && byCat[c].items[0].consumption_unit ? byCat[c].items[0].consumption_unit : '';
-    var consLabel = totalCons > 0 ? totalCons.toFixed(2) + ' ' + consUnit : '';
+    // Sum consumption if available - deduplicate by expense ID
+    var seenExpIds = {};
+    var totalCons = 0;
+    var consUnit = '';
+    byCat[c].items.forEach(function(a) {
+      var expId = a.expenses ? a.expenses.id : null;
+      if (expId && seenExpIds[expId]) return; // skip duplicate expense allocs
+      if (expId) seenExpIds[expId] = true;
+      totalCons += (parseFloat(a.consumption) || 0);
+      if (!consUnit && a.consumption_unit) consUnit = a.consumption_unit;
+      // Prefer unit from expense meter data
+      if (!consUnit && a.expenses && a.expenses.meter_consumption_unit) consUnit = a.expenses.meter_consumption_unit;
+    });
+    var consLabel = totalCons > 0 ? totalCons.toFixed(2) + ' ' + stripDia(consUnit) : '';
     return [stripDia(c), consLabel, avgPct.toFixed(1) + ' %', fmtEur(byCat[c].amount) + ' EUR'];
   });
 
