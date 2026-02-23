@@ -1688,6 +1688,7 @@ window.clearAllocChecks = function() {
   document.getElementById('exp-alloc-preview').classList.add('hidden');
   currentAllocMethod = 'area';
   window._meterAllocations = null;
+  window._meterSummary = null;
   document.getElementById('alloc-area-section').classList.remove('hidden');
   document.getElementById('alloc-meter-section').classList.add('hidden');
   document.getElementById('alloc-method-area').className = 'text-[8px] font-black px-2 py-1 rounded-lg bg-slate-900 text-white';
@@ -2517,6 +2518,17 @@ window.calcMeterAllocation = async function() {
   var allocUnit = meters[0] ? meters[0].unit : 'm³';
   zoneAllocs.forEach(function(a) { a.unit = allocUnit; });
   window._meterAllocations = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; });
+
+  // Store meter summary for audit trail on expense
+  window._meterSummary = {
+    mainConsumption: mainMc ? mainMc.consumption : null,
+    subTotal: subMeterTotal,
+    redirectedTotal: redirectedTotal,
+    losses: mainMc ? (mainMc.consumption - subMeterTotal - redirectedTotal) : null,
+    lossesPct: mainMc && mainMc.consumption > 0 ? ((mainMc.consumption - subMeterTotal - redirectedTotal) / mainMc.consumption * 100) : null,
+    unit: allocUnit
+  };
+
   // Store redirected info for creating child expenses
   window._redirectedAllocations = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; }).map(function(a) {
     var rdMeter = redirectedMeters.find(function(rm) { return rm.name === a.meterName; });
@@ -2573,9 +2585,34 @@ window.saveExpense = async function() {
     created_by: currentUserId
   };
 
+  // Add meter summary if meter-based
+  if (currentAllocMethod === 'meter' && window._meterSummary) {
+    data.meter_main_consumption = window._meterSummary.mainConsumption;
+    data.meter_sub_total = window._meterSummary.subTotal;
+    data.meter_losses = window._meterSummary.losses;
+    data.meter_losses_pct = window._meterSummary.lossesPct ? parseFloat(window._meterSummary.lossesPct.toFixed(1)) : null;
+    data.consumption_unit = window._meterSummary.unit;
+  }
+
   if (!data.description || !data.amount) {
     alert('Vyplňte popis a sumu.');
     return;
+  }
+
+  // Save meter audit data for transparency in reports
+  if (currentAllocMethod === 'meter' && window._meterSummary) {
+    var ms = window._meterSummary;
+    data.meter_main_consumption = ms.mainConsumption;
+    data.meter_sub_consumption = ms.subTotal;
+    data.meter_redirected_consumption = ms.redirectedTotal || 0;
+    data.meter_losses = ms.losses;
+    data.meter_consumption_unit = ms.unit || 'm³';
+  } else {
+    data.meter_main_consumption = null;
+    data.meter_sub_consumption = null;
+    data.meter_redirected_consumption = null;
+    data.meter_losses = null;
+    data.meter_consumption_unit = null;
   }
 
   // Upload receipt if selected

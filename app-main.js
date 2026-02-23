@@ -346,7 +346,7 @@ window.loadOverview = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_total, meter_losses, meter_losses_pct, consumption_unit, is_auto_generated, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
   var allExp = [];
 
   if (overviewMode === 'payment') {
@@ -525,7 +525,79 @@ window.loadOverview = async function() {
   html += '<td class="text-right py-2 px-2 font-black text-slate-900">' + grandTotal.toFixed(2) + ' €</td>';
   html += '</tr></tbody></table>';
 
+  // Meter diagnostics section
+  var meterExps = allExp.filter(function(e) { return e.alloc_method === 'meter' && e.meter_main_consumption != null && !e.is_auto_generated; });
+  if (meterExps.length > 0) {
+    html += '<div class="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">' +
+      '<p class="text-[9px] font-black text-slate-500 uppercase mb-2">🔧 Merače – straty a nepresnosti</p>' +
+      '<table class="w-full text-[9px]">' +
+      '<thead><tr class="border-b border-slate-200">' +
+        '<th class="text-left py-1 text-slate-400">Faktúra</th>' +
+        '<th class="text-right py-1 text-slate-400 px-2">Hlavný</th>' +
+        '<th class="text-right py-1 text-slate-400 px-2">Podmerače</th>' +
+        '<th class="text-right py-1 text-slate-400 px-2">Rozdiel</th>' +
+        '<th class="text-right py-1 text-slate-400 px-2">%</th>' +
+        '<th class="text-right py-1 text-slate-400 px-2">Suma</th>' +
+      '</tr></thead><tbody>';
+
+    meterExps.forEach(function(e) {
+      var catName = e.cost_categories ? e.cost_categories.name : '';
+      var unit = e.consumption_unit || 'm³';
+      var losses = parseFloat(e.meter_losses) || 0;
+      var lossesPct = parseFloat(e.meter_losses_pct) || 0;
+      var mainCons = parseFloat(e.meter_main_consumption) || 0;
+      var lossAmount = mainCons > 0 ? (losses / mainCons * parseFloat(e.amount)) : 0;
+      var color = losses < -0.5 ? 'text-red-600' : losses > mainCons * 0.05 ? 'text-amber-600' : 'text-green-600';
+      var label = losses < -0.5 ? 'podmerače > hlavný' : losses > mainCons * 0.05 ? 'straty' : 'OK';
+
+      html += '<tr class="border-b border-slate-100">' +
+        '<td class="py-1"><span class="font-bold text-slate-600">' + catName + '</span> <span class="text-slate-400">' + (e.description || '') + '</span></td>' +
+        '<td class="text-right py-1 px-2 font-bold">' + mainCons.toFixed(0) + ' ' + unit + '</td>' +
+        '<td class="text-right py-1 px-2">' + (parseFloat(e.meter_sub_total) || 0).toFixed(0) + ' ' + unit + '</td>' +
+        '<td class="text-right py-1 px-2 font-bold ' + color + '">' + losses.toFixed(0) + ' ' + unit + '</td>' +
+        '<td class="text-right py-1 px-2 ' + color + '">' + lossesPct.toFixed(1) + '%</td>' +
+        '<td class="text-right py-1 px-2 ' + color + '">' + lossAmount.toFixed(2) + ' €  <span class="text-[7px]">' + label + '</span></td>' +
+      '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+  }
+
   table.innerHTML = html;
+
+  // ===== METER AUDIT SECTION =====
+  var meterExpenses = allExp.filter(function(e) {
+    return e.alloc_method === 'meter' && e.meter_main_consumption != null;
+  });
+  if (meterExpenses.length > 0) {
+    var mauditHtml = '<div class="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4">' +
+      '<p class="text-[10px] font-black text-slate-500 uppercase mb-2">🔧 Audit meračov</p>';
+    meterExpenses.forEach(function(e) {
+      var catName = e.cost_categories ? e.cost_categories.name : '';
+      var mainC = parseFloat(e.meter_main_consumption) || 0;
+      var subC = parseFloat(e.meter_sub_consumption) || 0;
+      var redirC = parseFloat(e.meter_redirected_consumption) || 0;
+      var losses = parseFloat(e.meter_losses) || 0;
+      var unit = e.meter_consumption_unit || 'm³';
+      var lossPct = mainC > 0 ? (losses / mainC * 100) : 0;
+      var lossColor = losses < -0.5 ? 'text-red-600' : losses > mainC * 0.05 ? 'text-orange-600' : 'text-green-600';
+      var lossLabel = losses < -0.5 ? 'podmerače > hlavný' : losses > 0.01 ? 'straty' : 'OK';
+
+      // Calculate loss amount in euros
+      var lossAmount = mainC > 0 ? (Math.abs(losses) / mainC * (parseFloat(e.amount) || 0)) : 0;
+
+      mauditHtml += '<div class="flex items-center justify-between text-[9px] bg-white rounded-lg px-3 py-2 mb-1">' +
+        '<span class="font-bold text-slate-600">' + catName + '</span>' +
+        '<span class="text-slate-400">' + e.description + '</span>' +
+        '<span class="text-slate-500">hlavný: <b>' + mainC.toFixed(0) + '</b> ' + unit +
+        '  podm: <b>' + subC.toFixed(0) + '</b>' +
+        (redirC > 0 ? '  presm: <b>' + redirC.toFixed(0) + '</b>' : '') + '</span>' +
+        '<span class="font-bold ' + lossColor + '">' + losses.toFixed(1) + ' ' + unit + ' (' + lossPct.toFixed(1) + '%) = ' + lossAmount.toFixed(2) + ' € ' + lossLabel + '</span>' +
+      '</div>';
+    });
+    mauditHtml += '</div>';
+    table.innerHTML += mauditHtml;
+  }
 
   // ===== SUPPLIER BREAKDOWN TABLE WITH ACCORDION =====
   var supplierMatrix = {};
