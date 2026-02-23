@@ -2390,6 +2390,12 @@ window.calcMeterAllocation = async function() {
   var summaryRemainder = summaryMainCons - summarySubCons - summaryRedirCons;
   var summaryColor = !mainMc ? 'bg-red-50 border-red-200' : (summaryRemainder < -0.5 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200');
 
+  // Store summary for audit trail
+  window._meterSummary = 'Hlavný: ' + summaryMainCons.toFixed(0) + ' ' + unit +
+    ' | Podmerače: ' + summarySubCons.toFixed(0) + ' ' + unit +
+    (summaryRedirCons > 0 ? ' | Presm.: ' + summaryRedirCons.toFixed(0) + ' ' + unit : '') +
+    (mainMc ? ' | Rozdiel: ' + summaryRemainder.toFixed(0) + ' ' + unit + ' (' + (summaryMainCons > 0 ? (summaryRemainder / summaryMainCons * 100).toFixed(1) : '0') + '%)' : ' | Hlavný merač chýba!');
+
   meterRows.innerHTML += '<div class="' + summaryColor + ' border rounded-lg px-3 py-2 mt-2 text-[9px]">' +
     '<p class="font-black text-slate-500 uppercase mb-1">Súhrn</p>' +
     (mainMc ?
