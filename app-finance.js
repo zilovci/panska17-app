@@ -2296,15 +2296,27 @@ window.calcMeterAllocation = async function() {
 
   totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
-  // Calculate percentages and amounts
+  // Calculate redirected amounts first (proportional to main meter)
+  var redirectedTotalAmount = 0;
+  var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
+  var mainCons3 = mainMc3 ? mainMc3.consumption : 0;
   zoneAllocs.forEach(function(a) {
     if (a.payer === 'redirect') {
+      a.amount = mainCons3 > 0 ? (a.consumption / mainCons3 * amount) : 0;
+      a.amount = parseFloat(a.amount.toFixed(2));
       a.pct = 0;
-      a.amount = 0;
-    } else {
-      a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
-      a.amount = amount * a.pct / 100;
+      redirectedTotalAmount += a.amount;
     }
+  });
+
+  // Tenant/owner allocations use remaining amount after redirects
+  var allocatableAmount = amount - redirectedTotalAmount;
+
+  // Calculate percentages and amounts
+  zoneAllocs.forEach(function(a) {
+    if (a.payer === 'redirect') return; // already calculated
+    a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
+    a.amount = allocatableAmount * a.pct / 100;
   });
 
   // Display meter info
@@ -2346,20 +2358,26 @@ window.calcMeterAllocation = async function() {
 
   // Redirected meters info (e.g., vodomer kotolne → Vykurovanie)
   if (redirectAllocs.length > 0) {
-    var mainMc2 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
-    var mainCons2 = mainMc2 ? mainMc2.consumption : 0;
     html += '<div class="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 mb-2">';
     html += '<p class="text-[8px] font-black text-blue-500 uppercase mb-1">Presmerované do inej kategórie (automaticky)</p>';
     html += redirectAllocs.map(function(a) {
-      var rdAmount = mainCons2 > 0 ? (a.consumption / mainCons2 * amount) : 0;
       return '<div class="flex items-center justify-between text-[9px]">' +
         '<span class="font-bold text-blue-600 truncate flex-1">' + a.meterName + '</span>' +
         '<span class="text-blue-400 w-16 text-right">' + a.consumption.toFixed(2) + ' ' + unit + '</span>' +
-        '<span class="font-black text-blue-600 w-16 text-right">' + rdAmount.toFixed(2) + ' €</span>' +
+        '<span class="font-black text-blue-600 w-16 text-right">' + a.amount.toFixed(2) + ' €</span>' +
         '<span class="font-bold text-blue-500">' + a.zoneName + '</span>' +
       '</div>';
     }).join('');
     html += '</div>';
+  }
+
+  // Warning if sub-meters exceed main
+  if (mainMc3 && subMeterTotal + redirectedTotal > mainCons3 + 0.01) {
+    var excess = subMeterTotal + redirectedTotal - mainCons3;
+    html += '<div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">' +
+      '<p class="text-[8px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' +
+      'Podmerače (' + (subMeterTotal + redirectedTotal).toFixed(0) + ' ' + unit + ') prevyšujú hlavný (' + mainCons3.toFixed(0) + ' ' + unit + ') o ' + excess.toFixed(1) + ' ' + unit + ' – bežná nepresnosť meračov</p>' +
+    '</div>';
   }
 
   if (tenantAllocs.length > 0) {
@@ -2396,6 +2414,19 @@ window.calcMeterAllocation = async function() {
     html += '</div>';
   }
 
+  // Summary if redirected amounts exist
+  if (redirectAllocs.length > 0) {
+    var tenantTotal2 = tenantAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+    var ownerTotal2 = ownerAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+    var redirectTotal2 = redirectAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+    html += '<div class="border-t-2 border-slate-300 mt-2 pt-2 space-y-0.5">';
+    html += '<div class="flex justify-between text-[8px] text-slate-400 px-2"><span>Nájomcovia</span><span>' + tenantTotal2.toFixed(2) + ' €</span></div>';
+    if (ownerTotal2 > 0) html += '<div class="flex justify-between text-[8px] text-orange-400 px-2"><span>Vlastník</span><span>' + ownerTotal2.toFixed(2) + ' €</span></div>';
+    html += '<div class="flex justify-between text-[8px] text-blue-400 px-2"><span>→ ' + redirectAllocs.map(function(a) { return a.zoneName.replace('→ ', ''); }).join(', ') + '</span><span>' + redirectTotal2.toFixed(2) + ' €</span></div>';
+    html += '<div class="flex justify-between text-[9px] font-black text-slate-800 px-2"><span>Spolu</span><span>' + (tenantTotal2 + ownerTotal2 + redirectTotal2).toFixed(2) + ' €</span></div>';
+    html += '</div>';
+  }
+
   allocRows.innerHTML = html;
   preview.classList.remove('hidden');
 
@@ -2413,7 +2444,8 @@ window.calcMeterAllocation = async function() {
       meterId: rdMeter ? rdMeter.id : null,
       targetCategoryId: rdMeter ? rdMeter.cost_category_id : null,
       targetCategoryName: a.zoneName.replace('→ ', ''),
-      mainConsumption: mainConsumption
+      mainConsumption: mainConsumption,
+      calculatedAmount: a.amount  // pre-calculated proportional amount
     };
   });
 };
@@ -2720,9 +2752,8 @@ window.saveExpense = async function() {
       var redir = window._redirectedAllocations[ri];
       if (!redir.targetCategoryId || !redir.mainConsumption || redir.mainConsumption <= 0) continue;
 
-      // Calculate proportional amount: (redirected consumption / main consumption) * total amount
-      var childAmount = (redir.consumption / redir.mainConsumption) * parentAmount;
-      childAmount = parseFloat(childAmount.toFixed(2));
+      // Use pre-calculated amount from allocation preview
+      var childAmount = redir.calculatedAmount || parseFloat(((redir.consumption / redir.mainConsumption) * parentAmount).toFixed(2));
 
       var childData = {
         date: data.date,
