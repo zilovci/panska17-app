@@ -1233,6 +1233,7 @@ window.runConsistencyCheck = async function() {
     var { data: checkReadings = [] } = await sb.from('meter_readings').select('*')
       .in('meter_id', meterIds.length > 0 ? meterIds : ['none'])
       .order('date', { ascending: true });
+    var { data: checkMeterZones = [] } = await sb.from('meter_zones').select('meter_id, zone_id');
 
     // Check each meter type group
     var meterTypes = ['water', 'electricity', 'gas'];
@@ -1246,7 +1247,15 @@ window.runConsistencyCheck = async function() {
       var subMs = typeMeters.filter(function(m) { return !m.is_main && !m.cost_category_id; });
       var meterIssues = [];
 
-      // Check for meters with no readings in period
+      // 7a. Meters without zone assignments
+      subMs.forEach(function(m) {
+        var zones = checkMeterZones.filter(function(mz) { return mz.meter_id === m.id; });
+        if (zones.length === 0) {
+          meterIssues.push('<b>' + m.name + '</b>: <span class="text-red-600">nemá priradené zóny!</span>');
+        }
+      });
+
+      // 7b. Meters with insufficient readings for period
       typeMeters.forEach(function(m) {
         var mRdgs = checkReadings.filter(function(r) { return r.meter_id === m.id; });
         var inPeriod = mRdgs.filter(function(r) { return r.date >= periodStart && r.date <= periodEnd; });
@@ -1254,13 +1263,25 @@ window.runConsistencyCheck = async function() {
 
         if (mRdgs.length === 0) {
           meterIssues.push('<b>' + m.name + '</b>: žiadne odčítania vôbec');
+        } else if (mRdgs.length === 1) {
+          var isZero = parseFloat(mRdgs[0].value) === 0;
+          if (!isZero) {
+            meterIssues.push('<b>' + m.name + '</b>: len 1 odčítanie – spotreba sa nedá vypočítať');
+          }
         } else if (inPeriod.length === 0 && beforePeriod.length > 0) {
           var lastR = mRdgs[mRdgs.length - 1];
           meterIssues.push('<b>' + m.name + '</b>: posledné odčítanie ' + fmtD(lastR.date) + ' – chýba ' + year);
+        } else {
+          // 7c. Check that there are readings BEFORE and IN/AFTER period
+          var hasBeforeOrAtStart = mRdgs.some(function(r) { return r.date <= periodStart; });
+          if (!hasBeforeOrAtStart && !m.is_main) {
+            var firstR = mRdgs[0];
+            meterIssues.push('<b>' + m.name + '</b>: prvé odčítanie ' + fmtD(firstR.date) + ' – chýba počiatočný stav pred ' + year);
+          }
         }
       });
 
-      // Check main vs sub consumption
+      // 7d. Main vs sub consumption comparison
       if (mainM) {
         var mainRdgs = checkReadings.filter(function(r) { return r.meter_id === mainM.id && !r.is_replacement; });
         var mainStart = mainRdgs.filter(function(r) { return r.date <= periodStart; });
@@ -1299,6 +1320,74 @@ window.runConsistencyCheck = async function() {
         issues.push({ type: 'warning', icon: '🔧', title: typeLabels[mType] + ' – merače', detail: meterIssues.join('<br>') });
       }
     });
+
+    // 8. Meter-based expenses: check for stale/wrong allocations
+    var meterExpIssues = [];
+    expenses.forEach(function(e) {
+      if (e.alloc_method !== 'meter' || !e.expense_allocations || e.expense_allocations.length === 0) return;
+      if (e.is_auto_generated) return;
+
+      // 8a. Meter expense missing main meter data
+      if (e.meter_main_consumption == null && e.meter_sub_consumption == null) {
+        meterExpIssues.push(expRef(e) + ' – <span class="text-red-600">nemá uložené meter údaje</span> (treba otvoriť a uložiť)');
+      }
+
+      // 8b. Check for zones that shouldn't be in this expense (no meter for them)
+      var catName = e.cost_categories ? e.cost_categories.name : '';
+      var catMeterType2 = null;
+      if (catName.match(/vod|kanal/i)) catMeterType2 = 'water';
+      else if (catName.match(/elektr/i)) catMeterType2 = 'electricity';
+      else if (catName.match(/plyn|vykur/i)) catMeterType2 = 'gas';
+
+      if (catMeterType2) {
+        var typeMs = checkMeters.filter(function(m) { return m.type === catMeterType2 && !m.is_main && !m.cost_category_id; });
+        var coveredZoneIds = [];
+        typeMs.forEach(function(m) {
+          checkMeterZones.filter(function(mz) { return mz.meter_id === m.id; }).forEach(function(mz) {
+            if (coveredZoneIds.indexOf(mz.zone_id) < 0) coveredZoneIds.push(mz.zone_id);
+          });
+        });
+
+        var unexpectedZones = [];
+        e.expense_allocations.forEach(function(a) {
+          if (a.payer === 'owner') return;
+          if (coveredZoneIds.indexOf(a.zone_id) < 0) {
+            var zName = a.zones ? (a.zones.tenant_name || a.zones.name) : '?';
+            unexpectedZones.push(zName);
+          }
+        });
+
+        if (unexpectedZones.length > 0) {
+          meterExpIssues.push(expRef(e) + ' – zóny <b>bez merača</b> v alokácii: <span class="text-red-600">' + unexpectedZones.join(', ') + '</span>');
+        }
+      }
+    });
+
+    if (meterExpIssues.length > 0) {
+      issues.push({ type: 'danger', icon: '⚡', title: 'Meter-based faktúry – problémy', detail: meterExpIssues.join('<br>') });
+    }
+
+    // 9. Area-based expenses that SHOULD be meter-based (category has meters but expense uses area)
+    var shouldBeMeter = [];
+    expenses.forEach(function(e) {
+      if (e.alloc_method === 'meter' || e.is_auto_generated) return;
+      if (!e.expense_allocations || e.expense_allocations.length === 0) return;
+      var catName = e.cost_categories ? e.cost_categories.name : '';
+      var catMeterType3 = null;
+      if (catName.match(/vod|kanal/i)) catMeterType3 = 'water';
+      else if (catName.match(/elektr/i)) catMeterType3 = 'electricity';
+      else if (catName.match(/plyn/i)) catMeterType3 = 'gas';
+
+      if (catMeterType3) {
+        var hasMeters = checkMeters.some(function(m) { return m.type === catMeterType3 && !m.cost_category_id; });
+        if (hasMeters) {
+          shouldBeMeter.push(expRef(e) + ' <span class="text-slate-500">(' + catName + ' – podľa plochy, ale existujú merače)</span>');
+        }
+      }
+    });
+    if (shouldBeMeter.length > 0) {
+      issues.push({ type: 'warning', icon: '📐', title: 'Podľa plochy, ale existujú merače (' + shouldBeMeter.length + ')', detail: shouldBeMeter.join('<br>') });
+    }
   }
 
   // Render
