@@ -2284,6 +2284,18 @@ window.calcMeterAllocation = async function() {
   // Main meter remainder = common areas / losses
   var mainConsumption = 0;
   var mainMc = meterConsumption.find(function(mc) { return mc.meter.is_main; });
+
+  // Check if main meter was expected but not found in consumption
+  var mainMeterObj = meters.find(function(m) { return m.is_main; });
+  if (mainMeterObj && !mainMc) {
+    // Main meter exists but couldn't calculate consumption (missing readings, replacement issue, etc.)
+    meterWarnings.push({
+      meter: mainMeterObj,
+      type: 'main_no_consumption',
+      message: mainMeterObj.name + ': hlavný merač – nepodarilo sa vypočítať spotrebu (chýbajúce alebo nedostatočné odčítania). Celá suma bude rozdelená len medzi podmerače!'
+    });
+  }
+
   if (mainMc) {
     mainConsumption = mainMc.consumption;
     // Redirected meters are subtracted from main but not allocated to this expense
@@ -2362,12 +2374,37 @@ window.calcMeterAllocation = async function() {
     if (mc.isRedirected) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-blue-100 text-blue-600">→ ' + (mc.redirectedCatName || 'Iná kat.') + '</span>';
     if (mc.isZeroConsumption && !mc.meter.is_main) badges += ' <span class="text-[7px] font-bold px-1 py-0.5 rounded bg-slate-100 text-slate-400">0</span>';
     var consColor = mc.isZeroConsumption ? 'text-slate-400' : 'text-green-600';
+    var dateRange = mc.startDate && mc.endDate ? '<span class="text-[7px] text-slate-300 ml-1">(' + fmtD(mc.startDate) + ' – ' + fmtD(mc.endDate) + ')</span>' : '';
     return '<div class="flex justify-between text-[9px] bg-white rounded-lg px-2 py-1.5' + (mc.isRedirected ? ' opacity-60' : '') + '">' +
       '<span class="font-bold text-slate-600">' + mc.meter.name + badges + '</span>' +
-      '<span class="text-slate-400">' + mc.startValue.toFixed(2) + ' → ' + mc.endValue.toFixed(2) + (mc.hadReplacement ? ' (výmena)' : '') + '</span>' +
+      '<span class="text-slate-400">' + mc.startValue.toFixed(2) + ' → ' + mc.endValue.toFixed(2) + (mc.hadReplacement ? ' (výmena)' : '') + dateRange + '</span>' +
       '<span class="font-black ' + consColor + '">' + mc.consumption.toFixed(2) + ' ' + unit + '</span>' +
     '</div>';
   }).join('');
+
+  // Summary: main vs sub-meters
+  var summaryMainCons = mainMc ? mainMc.consumption : 0;
+  var summarySubCons = subMeterTotal;
+  var summaryRedirCons = redirectedTotal;
+  var summaryRemainder = summaryMainCons - summarySubCons - summaryRedirCons;
+  var summaryColor = !mainMc ? 'bg-red-50 border-red-200' : (summaryRemainder < -0.5 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200');
+
+  meterRows.innerHTML += '<div class="' + summaryColor + ' border rounded-lg px-3 py-2 mt-2 text-[9px]">' +
+    '<p class="font-black text-slate-500 uppercase mb-1">Súhrn</p>' +
+    (mainMc ?
+      '<div class="flex justify-between"><span>Hlavný merač:</span><span class="font-bold">' + summaryMainCons.toFixed(2) + ' ' + unit + '</span></div>' : 
+      '<div class="flex justify-between text-red-600"><span>Hlavný merač:</span><span class="font-bold">nenájdený / bez odčítaní</span></div>'
+    ) +
+    '<div class="flex justify-between"><span>Podmerače spolu:</span><span class="font-bold">' + summarySubCons.toFixed(2) + ' ' + unit + '</span></div>' +
+    (summaryRedirCons > 0 ? '<div class="flex justify-between text-blue-600"><span>Presmerované:</span><span class="font-bold">' + summaryRedirCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
+    (mainMc ?
+      '<div class="flex justify-between border-t border-slate-200 pt-1 mt-1' + (summaryRemainder < -0.5 ? ' text-red-600' : summaryRemainder > 0.01 ? ' text-orange-600' : ' text-green-600') + '">' +
+        '<span>Rozdiel (straty):</span><span class="font-bold">' + summaryRemainder.toFixed(2) + ' ' + unit + 
+        (summaryMainCons > 0 ? ' (' + (summaryRemainder / summaryMainCons * 100).toFixed(1) + '%)' : '') +
+        '</span></div>' : 
+      '<div class="flex justify-between text-red-600 border-t border-red-200 pt-1 mt-1"><span>⚠</span><span class="font-bold">Celá suma ide nájomcom – chýba hlavný merač!</span></div>'
+    ) +
+  '</div>';
 
   // Show warnings for missing/incomplete meters
   if (meterWarnings.length > 0) {
