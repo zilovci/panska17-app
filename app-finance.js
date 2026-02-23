@@ -1167,6 +1167,26 @@ window.runConsistencyCheck = async function() {
     issues.push({ type: 'warning', icon: '❓', title: 'Bez rozpočítania (' + noAllocList.length + ')', detail: noAllocList.join(', ') });
   }
 
+  // 6b. Allocation sum mismatch - saved allocations don't add up to expense amount
+  var mismatchList = [];
+  expenses.forEach(function(e) {
+    if (!e.expense_allocations || e.expense_allocations.length === 0) return;
+    if (e.is_auto_generated) return; // skip auto-generated children
+    var allocTotal = e.expense_allocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+    var expAmount = parseFloat(e.amount) || 0;
+    // For amortized, compare yearly amount
+    if (e.cost_type === 'amortized' && e.amort_years > 0) {
+      expAmount = expAmount / e.amort_years;
+    }
+    var diff = Math.abs(allocTotal - expAmount);
+    if (diff > 1) {
+      mismatchList.push(expLabel(e) + ': <b>' + expAmount.toFixed(2) + ' €</b> vs alokované <b>' + allocTotal.toFixed(2) + ' €</b> (rozdiel ' + diff.toFixed(2) + ' €)');
+    }
+  });
+  if (mismatchList.length > 0) {
+    issues.push({ type: 'danger', icon: '💰', title: 'Nesúlad suma vs. alokácie (' + mismatchList.length + ')', detail: mismatchList.join('<br>') });
+  }
+
   // 7. Meter consistency checks
   if (year) {
     var periodStart = year + '-01-01';
@@ -2786,6 +2806,33 @@ window.saveExpense = async function() {
       }
     } catch(allocErr) {
       console.warn('Allocation save error (table may not exist):', allocErr);
+    }
+
+    // Post-save validation: check saved allocations sum matches expense amount
+    try {
+      var { data: savedAllocs = [] } = await sb.from('expense_allocations')
+        .select('amount, payer')
+        .eq('expense_id', expenseId);
+      var savedTotal = savedAllocs.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+      var expAmount = parseFloat(data.amount) || 0;
+      // For amortized expenses, compare against yearly amount
+      if (data.cost_type === 'amortized' && data.amort_years > 0) {
+        expAmount = expAmount / data.amort_years;
+      }
+      var diff = Math.abs(savedTotal - expAmount);
+      if (diff > 1 && savedAllocs.length > 0) {
+        var ownerTotal = savedAllocs.filter(function(a) { return a.payer === 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+        var tenantTotal = savedAllocs.filter(function(a) { return a.payer !== 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+        alert('⚠ Kontrola po uložení:\n\n' +
+          'Suma faktúry: ' + expAmount.toFixed(2) + ' €\n' +
+          'Uložené alokácie: ' + savedTotal.toFixed(2) + ' €\n' +
+          'Rozdiel: ' + diff.toFixed(2) + ' €\n\n' +
+          'Nájomcovia: ' + tenantTotal.toFixed(2) + ' €\n' +
+          'Vlastník: ' + ownerTotal.toFixed(2) + ' €\n\n' +
+          'Skontrolujte rozpočítanie – možno chýbajú straty alebo niektoré zóny.');
+      }
+    } catch(valErr) {
+      console.warn('Post-save validation error:', valErr);
     }
   }
 
