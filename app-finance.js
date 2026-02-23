@@ -2313,6 +2313,16 @@ window.calcMeterAllocation = async function() {
       return;
     }
 
+    // Skip child meters (parent is not main) - they're handled by their parent
+    if (mc.meter.parent_meter_id) {
+      var parentMc = meterConsumption.find(function(p) { return p.meter.id === mc.meter.parent_meter_id; });
+      if (parentMc && !parentMc.meter.is_main) {
+        // This is a level-2 child (e.g., Elektromer A1 under Elektromer Blok A)
+        // Don't add to subMeterTotal - parent already covers it
+        return;
+      }
+    }
+
     subMeterTotal += mc.consumption;
 
     if (mc.zones.length === 1) {
@@ -2327,25 +2337,103 @@ window.calcMeterAllocation = async function() {
         note: mc.meter.meter_number ? '#' + mc.meter.meter_number : ''
       });
     } else if (mc.zones.length > 1) {
-      // Multi-zone meter (e.g., Blok B) - split by area
-      var zonesWithArea = mc.zones.map(function(zId) {
-        var z = allZones.find(function(az) { return az.id === zId; });
-        return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+      // Multi-zone meter (e.g., Blok A covering A1 + A2)
+      // Check for child sub-meters under this meter
+      var childMcs = meterConsumption.filter(function(ch) {
+        return ch.meter.parent_meter_id === mc.meter.id && !ch.meter.is_main;
       });
-      var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
 
-      zonesWithArea.forEach(function(z) {
-        var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
-        var zoneCons = mc.consumption * share;
-        zoneAllocs.push({
-          zoneId: z.id,
-          zoneName: z.name,
-          consumption: zoneCons,
-          meterName: mc.meter.name,
-          payer: 'tenant',
-          note: z.area + ' m² z ' + totalZoneArea + ' m²'
+      if (childMcs.length > 0) {
+        // Hierarchical: child meters get exact consumption, rest gets remainder
+        var childTotal = 0;
+        var coveredZoneIds = [];
+
+        childMcs.forEach(function(ch) {
+          var chZones = ch.zones || [];
+          chZones.forEach(function(zId) {
+            coveredZoneIds.push(zId);
+          });
+          childTotal += ch.consumption;
+
+          // Allocate child meter consumption to its zones
+          if (chZones.length === 1) {
+            var chZone = allZones.find(function(z) { return z.id === chZones[0]; });
+            zoneAllocs.push({
+              zoneId: chZones[0],
+              zoneName: chZone ? (chZone.tenant_name || chZone.name) : '?',
+              consumption: ch.consumption,
+              meterName: ch.meter.name,
+              payer: 'tenant',
+              note: (ch.meter.meter_number ? '#' + ch.meter.meter_number : '') + ' (podmerač)'
+            });
+          }
         });
-      });
+
+        // Remainder goes to uncovered zones
+        var remainder = mc.consumption - childTotal;
+        if (remainder < 0) remainder = 0;
+        var uncoveredZones = mc.zones.filter(function(zId) {
+          return coveredZoneIds.indexOf(zId) < 0;
+        });
+
+        if (uncoveredZones.length === 1) {
+          var remZone = allZones.find(function(z) { return z.id === uncoveredZones[0]; });
+          zoneAllocs.push({
+            zoneId: uncoveredZones[0],
+            zoneName: remZone ? (remZone.tenant_name || remZone.name) : '?',
+            consumption: remainder,
+            meterName: mc.meter.name,
+            payer: 'tenant',
+            note: 'zvyšok (' + mc.consumption.toFixed(0) + ' - ' + childTotal.toFixed(0) + ')'
+          });
+        } else if (uncoveredZones.length > 1) {
+          // Multiple uncovered zones - split remainder by area
+          var uncZonesWithArea = uncoveredZones.map(function(zId) {
+            var z = allZones.find(function(az) { return az.id === zId; });
+            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+          });
+          var uncTotalArea = uncZonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+          uncZonesWithArea.forEach(function(z) {
+            var share = uncTotalArea > 0 ? (z.area / uncTotalArea) : (1 / uncoveredZones.length);
+            zoneAllocs.push({
+              zoneId: z.id,
+              zoneName: z.name,
+              consumption: remainder * share,
+              meterName: mc.meter.name,
+              payer: 'tenant',
+              note: 'zvyšok podľa m²'
+            });
+          });
+        }
+        // If remainder < 0, warn
+        if (mc.consumption - childTotal < -0.5) {
+          meterWarnings.push({
+            meter: mc.meter,
+            type: 'child_exceeds_parent',
+            message: mc.meter.name + ': podmerače (' + childTotal.toFixed(0) + ') > nadradený (' + mc.consumption.toFixed(0) + ')'
+          });
+        }
+      } else {
+        // No child meters - split by area (original behavior)
+        var zonesWithArea = mc.zones.map(function(zId) {
+          var z = allZones.find(function(az) { return az.id === zId; });
+          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+        });
+        var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+
+        zonesWithArea.forEach(function(z) {
+          var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
+          var zoneCons = mc.consumption * share;
+          zoneAllocs.push({
+            zoneId: z.id,
+            zoneName: z.name,
+            consumption: zoneCons,
+            meterName: mc.meter.name,
+            payer: 'tenant',
+            note: z.area + ' m² z ' + totalZoneArea + ' m²'
+          });
+        });
+      }
     }
   });
 
