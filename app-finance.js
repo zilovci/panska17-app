@@ -2585,15 +2585,6 @@ window.saveExpense = async function() {
     created_by: currentUserId
   };
 
-  // Add meter summary if meter-based
-  if (currentAllocMethod === 'meter' && window._meterSummary) {
-    data.meter_main_consumption = window._meterSummary.mainConsumption;
-    data.meter_sub_total = window._meterSummary.subTotal;
-    data.meter_losses = window._meterSummary.losses;
-    data.meter_losses_pct = window._meterSummary.lossesPct ? parseFloat(window._meterSummary.lossesPct.toFixed(1)) : null;
-    data.consumption_unit = window._meterSummary.unit;
-  }
-
   if (!data.description || !data.amount) {
     alert('Vyplňte popis a sumu.');
     return;
@@ -2629,7 +2620,7 @@ window.saveExpense = async function() {
       console.warn('Expense update failed, retrying without new columns:', updateResult.error);
       var fallbackData = {};
       for (var k in data) {
-        var newCols = ['billing_period_from','billing_period_to','meter_main_consumption','meter_sub_consumption','meter_redirected_consumption','meter_losses','meter_consumption_unit','parent_expense_id','is_auto_generated','auto_source_meter_id']; if (newCols.indexOf(k) < 0) fallbackData[k] = data[k];
+        var newCols = ['billing_period_from','billing_period_to','meter_main_consumption','meter_sub_consumption','meter_redirected_consumption','meter_losses','meter_consumption_unit','meter_sub_total','meter_losses_pct','consumption_unit','parent_expense_id','is_auto_generated','auto_source_meter_id']; if (newCols.indexOf(k) < 0) fallbackData[k] = data[k];
       }
       var retryUpdate = await sb.from('expenses').update(fallbackData).eq('id', editingExpenseId);
       if (retryUpdate.error) {
@@ -2644,7 +2635,7 @@ window.saveExpense = async function() {
       console.warn('Expense insert failed, retrying without new columns:', insertResult.error);
       var fallbackData = {};
       for (var k in data) {
-        var newCols = ['billing_period_from','billing_period_to','meter_main_consumption','meter_sub_consumption','meter_redirected_consumption','meter_losses','meter_consumption_unit','parent_expense_id','is_auto_generated','auto_source_meter_id']; if (newCols.indexOf(k) < 0) fallbackData[k] = data[k];
+        var newCols = ['billing_period_from','billing_period_to','meter_main_consumption','meter_sub_consumption','meter_redirected_consumption','meter_losses','meter_consumption_unit','meter_sub_total','meter_losses_pct','consumption_unit','parent_expense_id','is_auto_generated','auto_source_meter_id']; if (newCols.indexOf(k) < 0) fallbackData[k] = data[k];
       }
       var retryInsert = await sb.from('expenses').insert(fallbackData).select('id').single();
       if (retryInsert.error) {
