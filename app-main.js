@@ -346,31 +346,41 @@ window.loadOverview = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_total, meter_losses, meter_losses_pct, consumption_unit, is_auto_generated, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, is_auto_generated, cost_type, amort_years, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFieldsFallback = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
   var allExp = [];
 
   if (overviewMode === 'payment') {
     // By payment date (date field)
-    var { data: exp1 = [] } = await sb.from('expenses')
+    var { data: exp1, error: err1 } = await sb.from('expenses')
       .select(selectFields)
       .gte('date', year + '-01-01')
       .lte('date', year + '-12-31');
-    allExp = exp1;
+    if (err1) {
+      var { data: exp1 = [] } = await sb.from('expenses').select(selectFieldsFallback).gte('date', year + '-01-01').lte('date', year + '-12-31');
+    }
+    allExp = exp1 || [];
   } else {
     // By billing period (period_from/period_to)
-    var { data: expenses = [] } = await sb.from('expenses')
+    var { data: expenses, error: err2 } = await sb.from('expenses')
       .select(selectFields)
       .lte('period_from', year + '-12-31')
       .gte('period_to', year + '-01-01');
+    if (err2) {
+      var { data: expenses = [] } = await sb.from('expenses').select(selectFieldsFallback).lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
+    }
 
     // Also get expenses without period but with date in year
-    var { data: expenses2 = [] } = await sb.from('expenses')
+    var { data: expenses2, error: err3 } = await sb.from('expenses')
       .select(selectFields)
       .is('period_from', null)
       .gte('date', year + '-01-01')
       .lte('date', year + '-12-31');
+    if (err3) {
+      var { data: expenses2 = [] } = await sb.from('expenses').select(selectFieldsFallback).is('period_from', null).gte('date', year + '-01-01').lte('date', year + '-12-31');
+    }
 
-    allExp = expenses.concat(expenses2);
+    allExp = (expenses || []).concat(expenses2 || []);
   }
 
   // Deduplicate by id
