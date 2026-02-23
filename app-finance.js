@@ -1381,14 +1381,16 @@ window.recalcAllExpenses = async function() {
   });
 
   var updated = 0, skipped = 0, errors = 0;
+  var skipDetails = [];
 
   for (var ei = 0; ei < allExp.length; ei++) {
     var e = allExp[ei];
     var allocs = e.expense_allocations || [];
-    if (allocs.length === 0) { skipped++; continue; }
+    var eLabel = (e.ref_number || '') + ' ' + (e.description || '').substring(0, 40);
+    if (allocs.length === 0) { skipped++; skipDetails.push(eLabel.trim() + ' → bez alokácií'); continue; }
 
     // Skip meter-based
-    if (e.alloc_method === 'meter') { skipped++; continue; }
+    if (e.alloc_method === 'meter') { skipped++; skipDetails.push(eLabel.trim() + ' → merač (ručne)'); continue; }
 
     var cat = catMap[e.category_id] || {};
     var emptyRule = cat.empty_zone_rule || 'owner';
@@ -1441,7 +1443,7 @@ window.recalcAllExpenses = async function() {
       });
     });
 
-    if (zoneList.length === 0) { skipped++; continue; }
+    if (zoneList.length === 0) { skipped++; skipDetails.push(eLabel.trim() + ' → žiadne zóny'); continue; }
 
     // Time-weighted detection
     zoneList.forEach(function(z) {
@@ -1482,7 +1484,7 @@ window.recalcAllExpenses = async function() {
     });
     totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
-    if (totalArea === 0) { skipped++; continue; }
+    if (totalArea === 0) { skipped++; skipDetails.push(eLabel.trim() + ' → plocha 0'); continue; }
 
     // Build new allocations
     var newAllocs = [];
@@ -1555,7 +1557,8 @@ window.recalcAllExpenses = async function() {
     }
   }
 
-  alert('Hotovo!\n\n✅ Prepočítaných: ' + updated + '\n⏭ Preskočených (merač/prázdne): ' + skipped + (errors > 0 ? '\n❌ Chýb: ' + errors : ''));
+  var skipInfo = skipped > 0 ? '\n⏭ Preskočených: ' + skipped + '\n' + skipDetails.join('\n') : '';
+  alert('Hotovo!\n\n✅ Prepočítaných: ' + updated + skipInfo + (errors > 0 ? '\n❌ Chýb: ' + errors : ''));
   await loadExpenses();
   if (window.loadOverview) await window.loadOverview();
 };
