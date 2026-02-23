@@ -2124,6 +2124,20 @@ window.calcMeterAllocation = async function() {
   allCalcMeters.forEach(function(m) {
     var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
     if (mReadings.length < 2) {
+      // Special case: single reading with value 0 = clearly zero consumption
+      if (mReadings.length === 1 && parseFloat(mReadings[0].value) === 0) {
+        var zones = mzByMeter[m.id] || [];
+        if (zones.length === 0 && m.zone_id) zones = [m.zone_id];
+        meterConsumption.push({
+          meter: m, consumption: 0, startValue: 0, endValue: 0,
+          startDate: mReadings[0].date, endDate: mReadings[0].date,
+          zones: zones, hadReplacement: false,
+          isRedirected: !!m._redirected,
+          redirectedCatName: m._redirected && m.cost_categories ? m.cost_categories.name : null,
+          isZeroConsumption: true
+        });
+        return;
+      }
       if (!m._redirected && !m.is_main) {
         if (mReadings.length === 0) {
           meterWarnings.push({ meter: m, type: 'no_readings', message: m.name + ': žiadne odčítanie' });
