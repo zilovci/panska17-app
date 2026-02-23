@@ -269,12 +269,11 @@
                                 </select>
                             </div>
                             <div id="mtr-deduction-row" class="hidden">
-                                <label class="text-[9px] font-black text-amber-500 uppercase">Odpočet <span class="text-slate-300 normal-case">(odráta sa pred presmerovaním, napr. spotreba iného odberateľa)</span></label>
-                                <div class="flex items-center space-x-2 mt-1">
-                                    <input type="number" step="0.01" id="mtr-deduction" class="flex-1 border border-amber-200 rounded-xl p-2.5 text-sm bg-amber-50" placeholder="0">
-                                    <span id="mtr-deduction-unit" class="text-sm text-slate-400">kWh</span>
-                                </div>
-                                <input type="text" id="mtr-deduction-note" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1" placeholder="Dôvod odpočtu (napr. Gatto chladničky)">
+                                <label class="text-[9px] font-black text-amber-500 uppercase flex items-center space-x-2">
+                                    <input type="checkbox" id="mtr-has-deduction" class="rounded">
+                                    <span>Povoliť odpočet pri odčítaní <span class="text-slate-300 normal-case">(napr. spotreba iného odberateľa)</span></span>
+                                </label>
+                                <input type="text" id="mtr-deduction-note" class="w-full border border-amber-200 rounded-xl p-2.5 text-sm mt-1 bg-amber-50" placeholder="Popis odpočtu (napr. Gatto chladničky)">
                             </div>
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Poznámka</label>
@@ -309,6 +308,10 @@
                             <div>
                                 <label class="text-[9px] font-black text-slate-400 uppercase">Poznámka</label>
                                 <input type="text" id="rdg-note" class="w-full border border-slate-200 rounded-xl p-2.5 text-sm mt-1">
+                            </div>
+                            <div id="rdg-deduction-row" class="hidden">
+                                <label class="text-[9px] font-black text-amber-500 uppercase" id="rdg-deduction-label">Odpočet</label>
+                                <input type="number" step="0.01" id="rdg-deduction" class="w-full border border-amber-200 rounded-xl p-2.5 text-sm mt-1 bg-amber-50" placeholder="0">
                             </div>
                         </div>
                         <div class="flex space-x-3 mt-6">

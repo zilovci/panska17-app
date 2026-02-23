@@ -439,7 +439,7 @@ async function loadMeters() {
     if (m.cost_category_id) {
       var cat = allCategories.find(function(c) { return c.id === m.cost_category_id; });
       if (cat) badges += '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-600">→ ' + cat.name + '</span> ';
-      if (m.deduction) badges += '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">-' + m.deduction + ' ' + m.unit + (m.deduction_note ? ' ' + m.deduction_note : '') + '</span> ';
+      if (m.has_deduction) badges += '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">ODPOČET' + (m.deduction_note ? ': ' + m.deduction_note : '') + '</span> ';
     }
 
     return '<div class="bg-slate-50 rounded-xl p-4">' +
@@ -513,12 +513,14 @@ async function loadMeters() {
           } else {
             prevLabel = '<span class="text-slate-300">--</span>';
           }
+          var deductBadge = r.deduction ? '<span class="text-[7px] font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-600">-' + parseFloat(r.deduction).toFixed(0) + ' ' + m.unit + '</span>' : '';
           return '<div class="flex items-center justify-between text-[9px] text-slate-500 bg-white rounded-lg px-3 py-1.5' + (isRepl ? ' border border-amber-200' : '') + '">' +
             '<span>' + fmtD(r.date) + '</span>' +
             replBadge +
             '<span class="font-bold">' + parseFloat(r.value).toFixed(2) + ' ' + m.unit + '</span>' +
             prevLabel +
             '<span class="text-green-600 font-bold">' + (cons !== null ? '+' + cons : '--') + '</span>' +
+            deductBadge +
             '<button onclick="window.editReading(\'' + r.id + '\', \'' + m.id + '\')" class="text-slate-300 hover:text-blue-500"><i class="fa-solid fa-pen"></i></button>' +
             '<button onclick="window.deleteReading(\'' + r.id + '\')" class="text-red-300 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>' +
           '</div>';
@@ -540,6 +542,7 @@ window.showAddMeter = function() {
   document.getElementById('mtr-note').value = '';
   document.getElementById('mtr-deduction').value = '';
   document.getElementById('mtr-deduction-note').value = '';
+  document.getElementById('mtr-has-deduction').checked = false;
   document.getElementById('mtr-deduction-row').classList.add('hidden');
   document.getElementById('modal-meter').classList.remove('hidden');
 };
@@ -562,10 +565,8 @@ window.editMeter = async function(id) {
   document.getElementById('mtr-number').value = m.meter_number || '';
   document.getElementById('mtr-category').value = m.cost_category_id || '';
   document.getElementById('mtr-note').value = m.note || '';
-  document.getElementById('mtr-deduction').value = m.deduction || '';
   document.getElementById('mtr-deduction-note').value = m.deduction_note || '';
-  var unitMap2 = { water: 'm³', electricity: 'kWh', gas: 'm³' };
-  document.getElementById('mtr-deduction-unit').innerText = unitMap2[m.type] || 'm³';
+  document.getElementById('mtr-has-deduction').checked = m.has_deduction || false;
   // Show deduction row if category is set (redirected meter)
   document.getElementById('mtr-deduction-row').classList.toggle('hidden', !m.cost_category_id);
 
@@ -591,7 +592,7 @@ window.saveMeter = async function() {
     meter_number: document.getElementById('mtr-number').value.trim() || null,
     cost_category_id: document.getElementById('mtr-category').value || null,
     note: document.getElementById('mtr-note').value.trim() || null,
-    deduction: parseFloat(document.getElementById('mtr-deduction').value) || null,
+    has_deduction: document.getElementById('mtr-has-deduction').checked || false,
     deduction_note: document.getElementById('mtr-deduction-note').value.trim() || null
   };
   if (!data.name) { alert('Vyplňte názov.'); return; }
@@ -656,6 +657,13 @@ window.showAddReading = async function(meterId) {
   document.getElementById('rdg-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('rdg-value').value = '';
   document.getElementById('rdg-note').value = '';
+  document.getElementById('rdg-deduction').value = '';
+  // Show deduction field if meter has it enabled
+  var showDed = meter && meter.has_deduction;
+  document.getElementById('rdg-deduction-row').classList.toggle('hidden', !showDed);
+  if (showDed) {
+    document.getElementById('rdg-deduction-label').innerText = 'Odpočet' + (meter.deduction_note ? ' (' + meter.deduction_note + ')' : '') + ' – ' + (meter.unit || 'kWh');
+  }
 
   var { data: prev = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).order('date', { ascending: false }).limit(1);
   var prevInfo = document.getElementById('reading-prev-info');
@@ -683,6 +691,13 @@ window.editReading = async function(readingId, meterId) {
   document.getElementById('rdg-date').value = r.date;
   document.getElementById('rdg-value').value = r.value;
   document.getElementById('rdg-note').value = r.note || '';
+  document.getElementById('rdg-deduction').value = r.deduction || '';
+  // Show deduction field if meter has it enabled
+  var showDed2 = meter && meter.has_deduction;
+  document.getElementById('rdg-deduction-row').classList.toggle('hidden', !showDed2);
+  if (showDed2) {
+    document.getElementById('rdg-deduction-label').innerText = 'Odpočet' + (meter.deduction_note ? ' (' + meter.deduction_note + ')' : '') + ' – ' + (meter.unit || 'kWh');
+  }
 
   // Show previous reading before this one
   var { data: prev = [] } = await sb.from('meter_readings').select('*').eq('meter_id', meterId).lt('date', r.date).order('date', { ascending: false }).limit(1);
@@ -704,17 +719,19 @@ window.editReading = async function(readingId, meterId) {
 };
 
 window.saveReading = async function() {
+  var deductionVal = parseFloat(document.getElementById('rdg-deduction').value) || null;
   var data = {
     meter_id: currentReadingMeterId,
     date: document.getElementById('rdg-date').value,
     value: parseFloat(document.getElementById('rdg-value').value) || 0,
     note: document.getElementById('rdg-note').value.trim() || null,
+    deduction: deductionVal,
     created_by: currentUserId
   };
   if (!data.value && data.value !== 0) { alert('Zadajte stav merača.'); return; }
 
   if (editingReadingId) {
-    await sb.from('meter_readings').update({ date: data.date, value: data.value, note: data.note }).eq('id', editingReadingId);
+    await sb.from('meter_readings').update({ date: data.date, value: data.value, note: data.note, deduction: data.deduction }).eq('id', editingReadingId);
     editingReadingId = null;
   } else {
     await sb.from('meter_readings').insert(data);
@@ -2248,9 +2265,20 @@ window.calcMeterAllocation = async function() {
     // Fallback to old zone_id if no meter_zones
     if (zones.length === 0 && m.zone_id) zones = [m.zone_id];
 
+    // Sum deductions from readings in period
+    var totalDeduction = 0;
+    if (m.has_deduction) {
+      mReadings.forEach(function(r) {
+        if (r.deduction && r.date > (startDate || periodFrom) && r.date <= (endDate || periodTo)) {
+          totalDeduction += parseFloat(r.deduction) || 0;
+        }
+      });
+    }
+
     meterConsumption.push({
       meter: m,
       consumption: consumption,
+      totalDeduction: totalDeduction,
       startValue: startValue,
       endValue: endValue,
       startDate: startDate,
@@ -2274,8 +2302,8 @@ window.calcMeterAllocation = async function() {
 
     // Redirected meters (e.g., vodomer kotolne → Vykurovanie) - subtract but don't allocate here
     if (mc.isRedirected) {
-      // Apply deduction (e.g., Gatto chladničky) before redirecting
-      var deduction = parseFloat(mc.meter.deduction) || 0;
+      // Apply deductions from readings (e.g., Gatto chladničky) before redirecting
+      var deduction = mc.totalDeduction || 0;
       var redirectedCons = mc.consumption - deduction;
       if (redirectedCons < 0) redirectedCons = 0;
       mc.redirectedConsumption = redirectedCons;
