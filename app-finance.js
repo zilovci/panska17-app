@@ -597,6 +597,29 @@ window.saveMeter = async function() {
     await sb.from('meter_zones').insert(selectedZones);
   }
 
+  // Check if any meter-based expenses use this meter and may need recalculation
+  if (editingMeterId) {
+    var { data: meterExpenses = [] } = await sb.from('expenses')
+      .select('id, description, period_from, date')
+      .eq('alloc_method', 'meter')
+      .order('date', { ascending: false })
+      .limit(10);
+
+    if (meterExpenses.length > 0) {
+      var names = meterExpenses.slice(0, 5).map(function(e) {
+        return '\u2022 ' + e.description + (e.period_from ? ' (' + e.period_from.substring(0, 4) + ')' : '');
+      }).join('\n');
+      var more = meterExpenses.length > 5 ? '\n... a \u010Fal\u0161ie' : '';
+
+      if (confirm('Zmena mera\u010Da m\u00F4\u017Ee ovplyvni\u0165 tieto fakt\u00FAry:\n\n' + names + more + '\n\nChcete otvori\u0165 prv\u00FA na prepo\u010D\u00EDtanie?\n(Otvorte ka\u017Ed\u00FA meter-based fakt\u00FAru a kliknite Ulo\u017Ei\u0165)')) {
+        document.getElementById('modal-meter').classList.add('hidden');
+        await loadMeters();
+        await window.editExpense(meterExpenses[0].id);
+        return;
+      }
+    }
+  }
+
   document.getElementById('modal-meter').classList.add('hidden');
   await loadMeters();
 };
