@@ -2287,14 +2287,24 @@ window.calcMeterAllocation = async function() {
         zoneId: null,
         zoneName: 'Spoločné / straty',
         consumption: remainder,
-        meterName: mainMc.meter.name + ' - podmerače',
+        meterName: mainMc.meter.name + ' – podmerače',
         payer: 'owner',
-        note: mainConsumption.toFixed(2) + ' - ' + subMeterTotal.toFixed(2)
+        note: mainConsumption.toFixed(2) + ' - ' + (subMeterTotal + redirectedTotal).toFixed(2)
+      });
+    } else if (remainder < -0.01) {
+      // Sub-meters exceed main → meter inaccuracy, reduce proportionally
+      zoneAllocs.push({
+        zoneId: null,
+        zoneName: 'Nepresnosť meračov',
+        consumption: remainder,  // negative
+        meterName: mainMc.meter.name + ' – podmerače',
+        payer: 'correction',
+        note: 'Podmerače (' + (subMeterTotal + redirectedTotal).toFixed(2) + ') > hlavný (' + mainConsumption.toFixed(2) + ')'
       });
     }
   }
 
-  totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
+  totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
   // Calculate redirected amounts first (proportional to main meter)
   var redirectedTotalAmount = 0;
@@ -2315,6 +2325,11 @@ window.calcMeterAllocation = async function() {
   // Calculate percentages and amounts
   zoneAllocs.forEach(function(a) {
     if (a.payer === 'redirect') return; // already calculated
+    if (a.payer === 'correction') {
+      a.pct = 0;
+      a.amount = 0;
+      return;
+    }
     a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
     a.amount = allocatableAmount * a.pct / 100;
   });
@@ -2353,6 +2368,7 @@ window.calcMeterAllocation = async function() {
   var tenantAllocs = zoneAllocs.filter(function(a) { return a.payer === 'tenant'; });
   var ownerAllocs = zoneAllocs.filter(function(a) { return a.payer === 'owner'; });
   var redirectAllocs = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; });
+  var correctionAllocs = zoneAllocs.filter(function(a) { return a.payer === 'correction'; });
 
   var html = '';
 
@@ -2371,8 +2387,8 @@ window.calcMeterAllocation = async function() {
     html += '</div>';
   }
 
-  // Warning if sub-meters exceed main
-  if (mainMc3 && subMeterTotal + redirectedTotal > mainCons3 + 0.01) {
+  // Warning if sub-meters exceed main (only show if no correction line)
+  if (mainMc3 && subMeterTotal + redirectedTotal > mainCons3 + 0.01 && correctionAllocs.length === 0) {
     var excess = subMeterTotal + redirectedTotal - mainCons3;
     html += '<div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">' +
       '<p class="text-[8px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' +
@@ -2414,6 +2430,16 @@ window.calcMeterAllocation = async function() {
     html += '</div>';
   }
 
+  // Correction (sub-meters > main) - informational
+  if (correctionAllocs.length > 0) {
+    html += '<div class="border-t border-slate-200 mt-2 pt-2">' +
+      '<div class="flex items-center justify-between text-[9px] bg-slate-50 rounded-lg px-2 py-1">' +
+        '<span class="font-bold text-slate-400"><i class="fa-solid fa-scale-unbalanced mr-1"></i>Nepresnosť meračov</span>' +
+        '<span class="text-slate-400">' + correctionAllocs[0].consumption.toFixed(2) + ' ' + unit + '</span>' +
+        '<span class="text-[8px] text-slate-300">' + correctionAllocs[0].note + '</span>' +
+      '</div></div>';
+  }
+
   // Summary if redirected amounts exist
   if (redirectAllocs.length > 0) {
     var tenantTotal2 = tenantAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
@@ -2433,7 +2459,7 @@ window.calcMeterAllocation = async function() {
   // Store meter allocations for save (exclude redirected - they belong to another category)
   var allocUnit = meters[0] ? meters[0].unit : 'm³';
   zoneAllocs.forEach(function(a) { a.unit = allocUnit; });
-  window._meterAllocations = zoneAllocs.filter(function(a) { return a.payer !== 'redirect'; });
+  window._meterAllocations = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; });
   // Store redirected info for creating child expenses
   window._redirectedAllocations = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; }).map(function(a) {
     var rdMeter = redirectedMeters.find(function(rm) { return rm.name === a.meterName; });
