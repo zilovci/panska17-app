@@ -1153,21 +1153,7 @@ window.generateInvoice = async function(existingInvoice) {
   var catNames = Object.keys(byCat).sort();
   var totalCosts = catNames.reduce(function(s, c) { return s + byCat[c].amount; }, 0);
 
-  // For detail pages: load ALL allocations for meter-based expenses (full building view)
-  var meterExpenseIds = [];
-  periodAllocs.forEach(function(a) {
-    if (a.expenses && a.expenses.alloc_method === 'meter' && meterExpenseIds.indexOf(a.expenses.id) < 0) {
-      meterExpenseIds.push(a.expenses.id);
-    }
-  });
-
-  var allBuildingAllocs = [];
-  if (meterExpenseIds.length > 0) {
-    var { data: bAllocs = [] } = await sb.from('expense_allocations')
-      .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expense_id, zones(name, tenant_name)')
-      .in('expense_id', meterExpenseIds);
-    allBuildingAllocs = bAllocs;
-  }
+  // (allBuildingAllocs removed - detail pages now show only tenant's own data)
 
   // Load advance payments in period
   var { data: payments = [] } = await sb.from('tenant_payments').select('*')
@@ -1247,45 +1233,40 @@ window.generateInvoice = async function(existingInvoice) {
   y += 3;
 
   var costRows = catNames.map(function(c) {
-    var avgPct = byCat[c].items.length > 0
-      ? (byCat[c].items.reduce(function(s, a) { return s + (parseFloat(a.percentage) || 0); }, 0) / byCat[c].items.length)
-      : 0;
     // Sum consumption if available - deduplicate by expense ID
     var seenExpIds = {};
     var totalCons = 0;
     var consUnit = '';
     byCat[c].items.forEach(function(a) {
       var expId = a.expenses ? a.expenses.id : null;
-      if (expId && seenExpIds[expId]) return; // skip duplicate expense allocs
+      if (expId && seenExpIds[expId]) return;
       if (expId) seenExpIds[expId] = true;
       totalCons += (parseFloat(a.consumption) || 0);
       if (!consUnit && a.consumption_unit) consUnit = a.consumption_unit;
-      // Prefer unit from expense meter data
       if (!consUnit && a.expenses && a.expenses.meter_consumption_unit) consUnit = a.expenses.meter_consumption_unit;
     });
     var consLabel = totalCons > 0 ? totalCons.toFixed(2) + ' ' + stripDia(consUnit) : '';
-    return [stripDia(c), consLabel, avgPct.toFixed(1) + ' %', fmtEur(byCat[c].amount) + ' EUR'];
+    return [stripDia(c), consLabel, fmtEur(byCat[c].amount) + ' EUR'];
   });
 
   costRows.push([
     { content: stripDia('NAKLADY SPOLU'), styles: { fontStyle: 'bold' } },
-    '', '',
+    '',
     { content: fmtEur(totalCosts) + ' EUR', styles: { fontStyle: 'bold' } }
   ]);
 
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Polozka'), stripDia('Spotreba'), stripDia('Podiel'), 'Suma']],
+    head: [[stripDia('Polozka'), stripDia('Spotreba'), 'Suma']],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2 },
     headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
     columnStyles: {
-      0: { cellWidth: 60 },
-      1: { cellWidth: 35, halign: 'right' },
-      2: { cellWidth: 25, halign: 'right' },
-      3: { cellWidth: 35, halign: 'right' }
+      0: { cellWidth: 75 },
+      1: { cellWidth: 40, halign: 'right' },
+      2: { cellWidth: 40, halign: 'right' }
     }
   });
 
@@ -1367,85 +1348,101 @@ window.generateInvoice = async function(existingInvoice) {
   doc.text(stripDia('Vyuctovanie vygenerovane ' + new Date().toLocaleDateString('sk-SK')), M, y);
 
   // ============ DETAIL PAGES FOR METER-BASED CATEGORIES ============
-  // For each meter-based expense, add a detail page showing all zone consumptions
+  // Show only building summary + tenant's own consumption/amount
   var meterCategories = {};
   periodAllocs.forEach(function(a) {
     if (!a.expenses || a.expenses.alloc_method !== 'meter') return;
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
     if (!meterCategories[cat]) {
       meterCategories[cat] = {
-        expenseId: a.expenses.id,
-        expense: a.expenses,
-        mainCons: parseFloat(a.expenses.meter_main_consumption) || 0,
-        subCons: parseFloat(a.expenses.meter_sub_consumption) || 0,
-        redirCons: parseFloat(a.expenses.meter_redirected_consumption) || 0,
-        losses: parseFloat(a.expenses.meter_losses) || 0,
+        expenseIds: [],
+        expenses: [],
+        mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
-        totalAmount: parseFloat(a.expenses.amount) || 0
+        totalAmount: 0
       };
+    }
+    var mc = meterCategories[cat];
+    if (mc.expenseIds.indexOf(a.expenses.id) < 0) {
+      mc.expenseIds.push(a.expenses.id);
+      mc.expenses.push(a.expenses);
+      mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
+      mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
+      mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
+      mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
   });
 
-  Object.keys(meterCategories).sort().forEach(function(catName) {
-    var mc = meterCategories[catName];
-    var expAllocs = allBuildingAllocs.filter(function(ba) { return ba.expense_id === mc.expenseId; });
+  // Also collect area-based categories that have special detail needs
+  var areaCatDetails = {};
+  tenantAllocs.forEach(function(a) {
+    if (!a.expenses) return;
+    var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
+    if (!areaCatDetails[cat]) areaCatDetails[cat] = { items: [], totalAmount: 0 };
+    areaCatDetails[cat].items.push(a);
+    areaCatDetails[cat].totalAmount += parseFloat(a.amount) || 0;
+  });
 
-    // Sort: tenants first by consumption desc, then owner
-    expAllocs.sort(function(a, b) {
-      if (a.payer === 'owner' && b.payer !== 'owner') return 1;
-      if (a.payer !== 'owner' && b.payer === 'owner') return -1;
-      return (parseFloat(b.consumption) || 0) - (parseFloat(a.consumption) || 0);
-    });
-
-    // Tenant's own allocations
-    var myAllocs = expAllocs.filter(function(ba) { return zoneIds.indexOf(ba.zone_id) >= 0 && ba.payer !== 'owner'; });
-    var myCons = myAllocs.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
-    var myAmount = myAllocs.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
-
+  // Helper: add detail page header
+  function detailHeader(doc, title, subtitle) {
     doc.addPage();
     var dy = 20;
-
-    // Header
-    doc.setFontSize(13);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0);
-    doc.text(stripDia('DETAILNY ROZPIS SPOTREBY'), M, dy);
-    dy += 7;
-    doc.setFontSize(11);
-    doc.text(stripDia(catName), M, dy);
-    dy += 5;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100);
-    var suppLabel = mc.expense.supplier ? mc.expense.supplier : '';
-    var invLabel = mc.expense.invoice_number ? ' c. ' + mc.expense.invoice_number : '';
-    doc.text(stripDia(suppLabel + invLabel + '  |  Obdobie: ' + (mc.expense.period_from ? fmtD(mc.expense.period_from) : '') + ' - ' + (mc.expense.period_to ? fmtD(mc.expense.period_to) : '')), M, dy);
-    dy += 3;
+    doc.text(stripDia(title), M, dy);
+    dy += 6;
+    if (subtitle) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100);
+      doc.text(stripDia(subtitle), M, dy);
+      dy += 3;
+    }
     doc.setTextColor(0);
     doc.setDrawColor(0);
     doc.setLineWidth(0.5);
     doc.line(M, dy, W - M, dy);
-    dy += 8;
+    dy += 6;
+    return dy;
+  }
 
-    // Summary box
+  // Detail pages for meter-based categories (Water, Electricity)
+  Object.keys(meterCategories).sort().forEach(function(catName) {
+    var mc = meterCategories[catName];
+
+    // Tenant's own allocations
+    var myItems = byCat[catName] ? byCat[catName].items : [];
+    var myCons = myItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
+    var myAmount = myItems.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+
+    // Suppliers + invoice numbers
+    var supplierInfo = mc.expenses.map(function(e) {
+      var parts = [];
+      if (e.supplier) parts.push(e.supplier);
+      if (e.invoice_number) parts.push('c. ' + e.invoice_number);
+      if (e.period_from && e.period_to) parts.push(fmtD(e.period_from) + ' - ' + fmtD(e.period_to));
+      return parts.join(', ');
+    }).join('\n');
+
+    var dy = detailHeader(doc, catName, supplierInfo);
+
+    // Building summary
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(stripDia('SUHRN MERACOV'), M, dy);
-    dy += 5;
-    doc.setFont('helvetica', 'normal');
+    doc.text(stripDia('Budova celkom'), M, dy);
+    dy += 4;
 
     var summaryRows = [];
     if (mc.mainCons > 0) {
-      summaryRows.push([stripDia('Hlavny merac (budova)'), mc.mainCons.toFixed(2) + ' ' + mc.unit]);
-    }
-    summaryRows.push([stripDia('Podmerace spolu'), mc.subCons.toFixed(2) + ' ' + mc.unit]);
-    if (mc.redirCons > 0) {
-      summaryRows.push([stripDia('Presmerovane (kotolna)'), mc.redirCons.toFixed(2) + ' ' + mc.unit]);
-    }
-    if (mc.mainCons > 0) {
+      summaryRows.push([stripDia('Hlavny merac'), mc.mainCons.toFixed(2) + ' ' + mc.unit]);
+      if (mc.redirCons > 0) {
+        summaryRows.push([stripDia('  z toho kotolna (vykurovanie)'), mc.redirCons.toFixed(2) + ' ' + mc.unit]);
+      }
       var lossVal = mc.mainCons - mc.subCons - mc.redirCons;
-      var lossPct = mc.mainCons > 0 ? (lossVal / mc.mainCons * 100).toFixed(1) : '0';
-      summaryRows.push([stripDia('Rozdiel (straty/nepresnost)'), lossVal.toFixed(2) + ' ' + mc.unit + '  (' + lossPct + '%)']);
+      if (Math.abs(lossVal) > 0.5) {
+        summaryRows.push([stripDia('  straty / nepresnost meracov'), lossVal.toFixed(2) + ' ' + mc.unit]);
+      }
     }
     summaryRows.push([{content: stripDia('Faktura celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(mc.totalAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
 
@@ -1455,84 +1452,132 @@ window.generateInvoice = async function(existingInvoice) {
       body: summaryRows,
       theme: 'plain',
       styles: { fontSize: 8, cellPadding: 1.5 },
-      columnStyles: {
-        0: { cellWidth: 70 },
-        1: { cellWidth: 50, halign: 'right' }
-      }
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } }
     });
     dy = doc.lastAutoTable.finalY + 8;
 
-    // All zones breakdown
-    doc.setFontSize(9);
+    // Tenant's consumption
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.3);
+    doc.line(M, dy, W - M, dy);
+    dy += 6;
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(stripDia('ROZPIS PODLA PRIESTOROV'), M, dy);
-    dy += 3;
+    doc.text(stripDia('Vas priestor: ' + zoneLabel), M, dy);
+    dy += 6;
 
-    var zoneRows = [];
-    expAllocs.forEach(function(ba) {
-      var zName = ba.zones ? (ba.zones.tenant_name || ba.zones.name) : '?';
-      var cons = parseFloat(ba.consumption) || 0;
-      var pct = parseFloat(ba.percentage) || 0;
-      var amt = parseFloat(ba.amount) || 0;
-      var isOwner = ba.payer === 'owner';
-      var isMine = zoneIds.indexOf(ba.zone_id) >= 0;
-
-      zoneRows.push([
-        { content: stripDia(zName) + (isOwner ? ' (vlastnik)' : ''), styles: isMine ? { fontStyle: 'bold' } : {} },
-        { content: cons.toFixed(2) + ' ' + mc.unit, styles: { halign: 'right' } },
-        { content: pct.toFixed(1) + ' %', styles: { halign: 'right' } },
-        { content: fmtEur(amt) + ' EUR', styles: { halign: 'right', fontStyle: isMine ? 'bold' : 'normal' } }
-      ]);
-    });
-
-    // Totals
-    var allTenantAmt = expAllocs.filter(function(ba) { return ba.payer !== 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
-    var allOwnerAmt = expAllocs.filter(function(ba) { return ba.payer === 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
-
-    zoneRows.push([
-      { content: stripDia('SPOLU'), styles: { fontStyle: 'bold' } },
-      '', '',
-      { content: fmtEur(allTenantAmt + allOwnerAmt) + ' EUR', styles: { fontStyle: 'bold', halign: 'right' } }
+    var tenantRows = [];
+    if (myCons > 0) {
+      tenantRows.push([stripDia('Spotreba podla meraca'), myCons.toFixed(2) + ' ' + mc.unit]);
+    }
+    tenantRows.push([
+      {content: stripDia('Suma'), styles: {fontStyle: 'bold'}},
+      {content: fmtEur(myAmount) + ' EUR', styles: {fontStyle: 'bold'}}
     ]);
 
     doc.autoTable({
       startY: dy,
       margin: { left: M, right: M },
-      head: [[stripDia('Priestor'), stripDia('Spotreba'), stripDia('Podiel'), 'Suma']],
-      body: zoneRows,
+      body: tenantRows,
       theme: 'plain',
-      styles: { fontSize: 8, cellPadding: 1.5 },
-      headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
-      columnStyles: {
-        0: { cellWidth: 55 },
-        1: { cellWidth: 35, halign: 'right' },
-        2: { cellWidth: 25, halign: 'right' },
-        3: { cellWidth: 35, halign: 'right' }
-      },
-      didParseCell: function(data) {
-        // Highlight this tenant's rows
-        if (data.section === 'body' && data.row.index < expAllocs.length) {
-          var ba = expAllocs[data.row.index];
-          if (ba && zoneIds.indexOf(ba.zone_id) >= 0) {
-            data.cell.styles.fillColor = [245, 250, 255];
-          }
-        }
-      }
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } }
     });
-    dy = doc.lastAutoTable.finalY + 8;
+  });
 
-    // This tenant's summary
+  // Detail page for Vykurovanie (if exists) - special: show gas + electricity + water inputs
+  if (areaCatDetails['Vykurovanie'] || byCat['Vykurovanie']) {
+    var heatAmount = byCat['Vykurovanie'] ? byCat['Vykurovanie'].amount : 0;
+    var dy = detailHeader(doc, 'Vykurovanie', stripDia('Naklady na vykurovanie priestorov'));
+
+    // Collect auto-generated heating expenses (gas, redirected water/electricity)
+    var heatingInputs = [];
+    periodAllocs.forEach(function(a) {
+      if (!a.expenses || !a.expenses.cost_categories) return;
+      if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
+      if (zoneIds.indexOf(a.zone_id) < 0) return;
+      var desc = a.expenses.description || '';
+      if (heatingInputs.some(function(h) { return h.desc === desc; })) return;
+      heatingInputs.push({
+        desc: desc,
+        amount: parseFloat(a.expenses.amount) || 0,
+        supplier: a.expenses.supplier || ''
+      });
+    });
+
+    if (heatingInputs.length > 0) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(stripDia('Skladba nakladov na vykurovanie'), M, dy);
+      dy += 4;
+
+      var heatRows = heatingInputs.map(function(h) {
+        return [stripDia(h.desc), fmtEur(h.amount) + ' EUR'];
+      });
+
+      doc.autoTable({
+        startY: dy,
+        margin: { left: M, right: M },
+        body: heatRows,
+        theme: 'plain',
+        styles: { fontSize: 8, cellPadding: 1.5 },
+        columnStyles: { 0: { cellWidth: 100 }, 1: { cellWidth: 40, halign: 'right' } }
+      });
+      dy = doc.lastAutoTable.finalY + 6;
+    }
+
+    // Tenant's heating info
     doc.setDrawColor(0);
     doc.setLineWidth(0.3);
     doc.line(M, dy, W - M, dy);
-    dy += 5;
-    doc.setFontSize(9);
+    dy += 6;
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.text(stripDia('Vas priestor: ' + zoneLabel), M, dy);
-    dy += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.text(stripDia('Spotreba: ' + myCons.toFixed(2) + ' ' + mc.unit + '  |  Suma: ' + fmtEur(myAmount) + ' EUR'), M, dy);
-  });
+    dy += 6;
+
+    var heatTenantRows = [];
+    heatTenantRows.push([stripDia('Plocha'), totalArea.toFixed(2) + ' m2']);
+    if (heatAmount > 0 && totalArea > 0) {
+      heatTenantRows.push([stripDia('Naklad na m2'), fmtEur(heatAmount / totalArea) + ' EUR/m2']);
+    }
+    heatTenantRows.push([
+      {content: stripDia('Suma vykurovania'), styles: {fontStyle: 'bold'}},
+      {content: fmtEur(heatAmount) + ' EUR', styles: {fontStyle: 'bold'}}
+    ]);
+
+    doc.autoTable({
+      startY: dy,
+      margin: { left: M, right: M },
+      body: heatTenantRows,
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } }
+    });
+  }
+
+  // Detail for EPS a PO (if exists) - show protected area
+  if (byCat['EPS a PO']) {
+    var epsAmount = byCat['EPS a PO'].amount;
+    var dy = detailHeader(doc, 'EPS a PO', stripDia('Elektronicka poziarna signalizacia a poziarna ochrana'));
+
+    var epsRows = [];
+    epsRows.push([stripDia('Vas priestor'), stripDia(zoneLabel)]);
+    epsRows.push([stripDia('Chranena plocha'), totalArea.toFixed(2) + ' m2']);
+    epsRows.push([
+      {content: stripDia('Suma'), styles: {fontStyle: 'bold'}},
+      {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}
+    ]);
+
+    doc.autoTable({
+      startY: dy,
+      margin: { left: M, right: M },
+      body: epsRows,
+      theme: 'plain',
+      styles: { fontSize: 9, cellPadding: 2 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 50, halign: 'right' } }
+    });
+  }
 
   // Invoice number and DB save
   var invNumber;
