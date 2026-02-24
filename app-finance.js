@@ -3481,10 +3481,12 @@ window.saveExpense = async function() {
 
     for (var ri = 0; ri < window._redirectedAllocations.length; ri++) {
       var redir = window._redirectedAllocations[ri];
-      if (!redir.targetCategoryId || !redir.mainConsumption || redir.mainConsumption <= 0) continue;
-
-      // Use pre-calculated amount from allocation preview
-      var childAmount = redir.calculatedAmount || parseFloat(((redir.consumption / redir.mainConsumption) * parentAmount).toFixed(2));
+      // Use pre-calculated amount from allocation preview (works with or without main meter)
+      var childAmount = redir.calculatedAmount || 0;
+      if (!redir.targetCategoryId || childAmount <= 0) {
+        childResults.push({ name: redir.meterName, amount: 0, status: 'PRESKOČENÉ: chýba kategória alebo suma' });
+        continue;
+      }
 
       var childData = {
         date: data.date,
@@ -3498,7 +3500,7 @@ window.saveExpense = async function() {
         billing_period_to: data.billing_period_to,
         period_from: data.period_from,
         period_to: data.period_to,
-        note: 'Auto: ' + redir.consumption.toFixed(2) + ' ' + redir.unit + ' z ' + redir.mainConsumption.toFixed(2) + ' ' + redir.unit + ' (' + (redir.consumption / redir.mainConsumption * 100).toFixed(1) + '%)',
+        note: 'Auto: ' + redir.consumption.toFixed(2) + ' ' + redir.unit + (redir.mainConsumption > 0 ? ' z ' + redir.mainConsumption.toFixed(2) + ' ' + redir.unit + ' (' + (redir.consumption / redir.mainConsumption * 100).toFixed(1) + '%)' : '') + ' = ' + childAmount.toFixed(2) + ' €',
         cost_type: 'operating',
         alloc_method: 'area',
         parent_expense_id: expenseId,
