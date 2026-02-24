@@ -2694,7 +2694,8 @@ window.calcMeterAllocation = async function() {
   var zoneAllocs = []; // { zoneId, zoneName, consumption, pct, amount, payer, meterName, note }
   var totalConsumption = 0;
   var subMeterTotal = 0;
-  var redirectedTotal = 0;
+  var redirectedTotal = 0;      // NET (after deduction) - used for amount calculation
+  var redirectedFullTotal = 0;  // FULL meter reading - used for remainder/loss calculation
 
   meterConsumption.forEach(function(mc) {
     if (mc.meter.is_main) return; // Handle main meter separately
@@ -2710,22 +2711,11 @@ window.calcMeterAllocation = async function() {
       mc.deductionNote = mc.meter.deduction_note || '';
 
       // Only NET consumption goes to other category (Vykurovanie)
+      // Deduction is just a meter correction (e.g., Blahovec unauthorized usage)
+      // - it reduces the reading, does NOT go into the pool or get allocated anywhere
       redirectedTotal += redirectedCons;
+      redirectedFullTotal += mc.consumption;  // full reading for remainder calc
 
-      // Deduction stays in THIS category's pool (e.g., chladničky stay in Elektrina)
-      if (deduction > 0) {
-        subMeterTotal += deduction;
-        var dedZoneId = mc.meter.deduction_zone_id || null;
-        var dedZone = dedZoneId ? allZones.find(function(z) { return z.id === dedZoneId; }) : null;
-        zoneAllocs.push({
-          zoneId: dedZoneId,
-          zoneName: dedZone ? (dedZone.tenant_name || dedZone.name) : (mc.meter.deduction_note || 'Odpočet z ' + mc.meter.name),
-          consumption: deduction,
-          meterName: mc.meter.name + ' (odpočet)',
-          payer: dedZoneId ? 'tenant' : 'owner',
-          note: mc.meter.deduction_note || 'odpočet z presmerovaného merača'
-        });
-      }
       return;
     }
 
@@ -2870,8 +2860,8 @@ window.calcMeterAllocation = async function() {
 
   if (mainMc) {
     mainConsumption = mainMc.consumption;
-    // Redirected meters are subtracted from main but not allocated to this expense
-    var remainder = mainConsumption - subMeterTotal - redirectedTotal;
+    // Redirected meters: full consumption subtracted from main (includes deductions)
+    var remainder = mainConsumption - subMeterTotal - redirectedFullTotal;
 
     if (remainder > 0.01) {
       zoneAllocs.push({
@@ -2880,7 +2870,7 @@ window.calcMeterAllocation = async function() {
         consumption: remainder,
         meterName: mainMc.meter.name + ' – podmerače',
         payer: 'owner',
-        note: mainConsumption.toFixed(2) + ' - ' + (subMeterTotal + redirectedTotal).toFixed(2)
+        note: mainConsumption.toFixed(2) + ' - ' + (subMeterTotal + redirectedFullTotal).toFixed(2)
       });
     } else if (remainder < -0.01) {
       // Sub-meters exceed main → meter inaccuracy, reduce proportionally
@@ -2890,7 +2880,7 @@ window.calcMeterAllocation = async function() {
         consumption: remainder,  // negative
         meterName: mainMc.meter.name + ' – podmerače',
         payer: 'correction',
-        note: 'Podmerače (' + (subMeterTotal + redirectedTotal).toFixed(2) + ') > hlavný (' + mainConsumption.toFixed(2) + ')'
+        note: 'Podmerače (' + (subMeterTotal + redirectedFullTotal).toFixed(2) + ') > hlavný (' + mainConsumption.toFixed(2) + ')'
       });
     }
   }
@@ -2915,10 +2905,18 @@ window.calcMeterAllocation = async function() {
 
   // Calculate redirected amounts first (proportional to main meter or total if no main)
   var redirectedTotalAmount = 0;
+  var deductionTotalAmount = 0;
   var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
   var mainCons3 = mainMc3 ? mainMc3.consumption : 0;
-  // If no main meter, use sum of all sub-meters + redirected as base
-  var redirectBase = mainCons3 > 0 ? mainCons3 : (subMeterTotal + redirectedTotal);
+  // If no main meter, use sum of all sub-meters + full redirected as base
+  var redirectBase = mainCons3 > 0 ? mainCons3 : (subMeterTotal + redirectedFullTotal);
+
+  // Calculate deduction amount (unauthorized usage - nobody pays)
+  var totalDeductionKwh = meterConsumption.filter(function(mc) { return mc.isRedirected; }).reduce(function(s, mc) { return s + (mc.deduction || 0); }, 0);
+  if (totalDeductionKwh > 0 && redirectBase > 0) {
+    deductionTotalAmount = parseFloat((totalDeductionKwh / redirectBase * amount).toFixed(2));
+  }
+
   zoneAllocs.forEach(function(a) {
     if (a.payer === 'redirect') {
       a.amount = redirectBase > 0 ? (a.consumption / redirectBase * amount) : 0;
@@ -2928,8 +2926,8 @@ window.calcMeterAllocation = async function() {
     }
   });
 
-  // Tenant/owner allocations use remaining amount after redirects
-  var allocatableAmount = amount - redirectedTotalAmount;
+  // Tenant/owner allocations use remaining amount after redirects AND deductions
+  var allocatableAmount = amount - redirectedTotalAmount - deductionTotalAmount;
 
   // Calculate percentages and amounts
   zoneAllocs.forEach(function(a) {
@@ -2963,17 +2961,17 @@ window.calcMeterAllocation = async function() {
   var summaryMainCons = mainMc ? mainMc.consumption : 0;
   var summarySubCons = subMeterTotal;
   var summaryRedirCons = redirectedTotal;
-  // Calculate deduction totals from redirected meters
+  // Deduction info (just for display, not affecting calculations)
   var summaryDeductCons = meterConsumption.filter(function(mc) { return mc.isRedirected; }).reduce(function(s, mc) { return s + (mc.deduction || 0); }, 0);
-  var summarySubWithoutDeduct = summarySubCons - summaryDeductCons;
-  var summaryRemainder = summaryMainCons - summarySubCons - summaryRedirCons;
+  var summaryFullRedirCons = meterConsumption.filter(function(mc) { return mc.isRedirected; }).reduce(function(s, mc) { return s + mc.consumption; }, 0);
+  var summaryRemainder = summaryMainCons - summarySubCons - summaryFullRedirCons;
   var summaryColor = !mainMc ? 'bg-red-50 border-red-200' : (summaryRemainder < -0.5 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200');
 
   // Store summary for audit trail
   window._meterSummary = 'Hlavný: ' + summaryMainCons.toFixed(0) + ' ' + unit +
-    ' | Podmerače: ' + summarySubWithoutDeduct.toFixed(0) + ' ' + unit +
-    (summaryDeductCons > 0 ? ' | Odpočet: ' + summaryDeductCons.toFixed(0) + ' ' + unit : '') +
+    ' | Podmerače: ' + summarySubCons.toFixed(0) + ' ' + unit +
     (summaryRedirCons > 0 ? ' | Presm.: ' + summaryRedirCons.toFixed(0) + ' ' + unit : '') +
+    (summaryDeductCons > 0 ? ' | Odpočet: ' + summaryDeductCons.toFixed(0) + ' ' + unit : '') +
     (mainMc ? ' | Rozdiel: ' + summaryRemainder.toFixed(0) + ' ' + unit + ' (' + (summaryMainCons > 0 ? (summaryRemainder / summaryMainCons * 100).toFixed(1) : '0') + '%)' : ' | Hlavný merač chýba!');
 
   meterRows.innerHTML += '<div class="' + summaryColor + ' border rounded-lg px-3 py-2 mt-2 text-[9px]">' +
@@ -2982,15 +2980,15 @@ window.calcMeterAllocation = async function() {
       '<div class="flex justify-between"><span>Hlavný merač:</span><span class="font-bold">' + summaryMainCons.toFixed(2) + ' ' + unit + '</span></div>' : 
       '<div class="flex justify-between text-red-600"><span>Hlavný merač:</span><span class="font-bold">nenájdený / bez odčítaní</span></div>'
     ) +
-    '<div class="flex justify-between"><span>Podmerače spolu:</span><span class="font-bold">' + summarySubWithoutDeduct.toFixed(2) + ' ' + unit + '</span></div>' +
-    (summaryDeductCons > 0 ? '<div class="flex justify-between text-amber-600"><span>Odpočet (zostáva tu):</span><span class="font-bold">' + summaryDeductCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
-    (summaryRedirCons > 0 ? '<div class="flex justify-between text-blue-600"><span>Presmerované (→ iná kat.):</span><span class="font-bold">' + summaryRedirCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
+    '<div class="flex justify-between"><span>Podmerače spolu:</span><span class="font-bold">' + summarySubCons.toFixed(2) + ' ' + unit + '</span></div>' +
+    (summaryFullRedirCons > 0 ? '<div class="flex justify-between text-blue-600"><span>Presmerované (→ iná kat.):</span><span class="font-bold">' + summaryRedirCons.toFixed(2) + ' ' + unit + (summaryDeductCons > 0 ? ' <span class="text-amber-500 text-[7px]">(z ' + summaryFullRedirCons.toFixed(0) + ' - odpočet ' + summaryDeductCons.toFixed(0) + ')</span>' : '') + '</span></div>' : '') +
+    (summaryDeductCons > 0 ? '<div class="flex justify-between text-amber-600"><span>Odpočet (' + (meterConsumption.filter(function(mc){return mc.isRedirected && mc.deduction > 0;})[0] || {}).deductionNote + '):</span><span class="font-bold">' + summaryDeductCons.toFixed(2) + ' ' + unit + ' = ' + fmtE(deductionTotalAmount) + '</span></div>' : '') +
     (mainMc ?
       '<div class="flex justify-between border-t border-slate-200 pt-1 mt-1' + (summaryRemainder < -0.5 ? ' text-red-600' : summaryRemainder > 0.01 ? ' text-orange-600' : ' text-green-600') + '">' +
         '<span>Rozdiel (straty):</span><span class="font-bold">' + summaryRemainder.toFixed(2) + ' ' + unit + 
         (summaryMainCons > 0 ? ' (' + (summaryRemainder / summaryMainCons * 100).toFixed(1) + '%)' : '') +
         '</span></div>' : 
-      '<div class="flex justify-between text-red-600 border-t border-red-200 pt-1 mt-1"><span>⚠</span><span class="font-bold">Celá suma ide nájomcom – chýba hlavný merač!</span></div>'
+      '<div class="flex justify-between text-red-600 border-t border-red-200 pt-1 mt-1"><span>⚠</span><span class="font-bold">Chýba hlavný merač – straty nie je možné vypočítať</span></div>'
     ) +
   '</div>';
 
@@ -3039,11 +3037,11 @@ window.calcMeterAllocation = async function() {
   }
 
   // Warning if sub-meters exceed main (only show if no correction line)
-  if (mainMc3 && subMeterTotal + redirectedTotal > mainCons3 + 0.01 && correctionAllocs.length === 0) {
-    var excess = subMeterTotal + redirectedTotal - mainCons3;
+  if (mainMc3 && subMeterTotal + redirectedFullTotal > mainCons3 + 0.01 && correctionAllocs.length === 0) {
+    var excess = subMeterTotal + redirectedFullTotal - mainCons3;
     html += '<div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">' +
       '<p class="text-[8px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' +
-      'Podmerače (' + (subMeterTotal + redirectedTotal).toFixed(0) + ' ' + unit + ') prevyšujú hlavný (' + mainCons3.toFixed(0) + ' ' + unit + ') o ' + excess.toFixed(1) + ' ' + unit + ' – bežná nepresnosť meračov</p>' +
+      'Podmerače (' + (subMeterTotal + redirectedFullTotal).toFixed(0) + ' ' + unit + ') prevyšujú hlavný (' + mainCons3.toFixed(0) + ' ' + unit + ') o ' + excess.toFixed(1) + ' ' + unit + ' – bežná nepresnosť meračov</p>' +
     '</div>';
   }
 
@@ -3117,8 +3115,11 @@ window.calcMeterAllocation = async function() {
     mainConsumption: mainMc ? mainMc.consumption : null,
     subTotal: subMeterTotal,
     redirectedTotal: redirectedTotal,
-    losses: mainMc ? (mainMc.consumption - subMeterTotal - redirectedTotal) : null,
-    lossesPct: mainMc && mainMc.consumption > 0 ? ((mainMc.consumption - subMeterTotal - redirectedTotal) / mainMc.consumption * 100) : null,
+    redirectedFullTotal: redirectedFullTotal,
+    deductionTotal: totalDeductionKwh,
+    deductionAmount: deductionTotalAmount,
+    losses: mainMc ? (mainMc.consumption - subMeterTotal - redirectedFullTotal) : null,
+    lossesPct: mainMc && mainMc.consumption > 0 ? ((mainMc.consumption - subMeterTotal - redirectedFullTotal) / mainMc.consumption * 100) : null,
     unit: allocUnit
   };
 
