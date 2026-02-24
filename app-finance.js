@@ -2881,6 +2881,16 @@ window.calcMeterAllocation = async function() {
 
   totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
+  // DEBUG: Log all key values
+  console.log('=== METER ALLOCATION DEBUG ===');
+  console.log('subMeterTotal:', subMeterTotal);
+  console.log('redirectedTotal (net):', redirectedTotal);
+  console.log('redirectedFullTotal (gross):', redirectedFullTotal);
+  console.log('totalConsumption:', totalConsumption);
+  console.log('zoneAllocs:', JSON.stringify(zoneAllocs.map(function(a) { return { zone: a.zoneName, cons: a.consumption, payer: a.payer, meter: a.meterName }; })));
+  console.log('meterConsumption:', JSON.stringify(meterConsumption.map(function(mc) { return { name: mc.meter.name, cons: mc.consumption, isMain: mc.meter.is_main, isRedir: mc.isRedirected, deduction: mc.totalDeduction, parentId: mc.meter.parent_meter_id }; })));
+  console.log('=== END DEBUG ===');
+
   // Calculate redirected amounts first (proportional to main meter or total if no main)
   var redirectedTotalAmount = 0;
   var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
@@ -2900,6 +2910,13 @@ window.calcMeterAllocation = async function() {
   // Tenant/owner allocations use remaining amount after redirects
   // Deduction has NO financial impact (not included in invoice)
   var allocatableAmount = amount - redirectedTotalAmount;
+  console.log('=== AMOUNT DEBUG ===');
+  console.log('amount (invoice):', amount);
+  console.log('priceBase:', priceBase);
+  console.log('redirectedTotalAmount:', redirectedTotalAmount);
+  console.log('allocatableAmount:', allocatableAmount);
+  console.log('redirectAllocs count:', zoneAllocs.filter(function(a){return a.payer==='redirect';}).length);
+  console.log('=== END AMOUNT DEBUG ===');
 
   // Calculate percentages and amounts
   zoneAllocs.forEach(function(a) {
