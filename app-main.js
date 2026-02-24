@@ -1399,7 +1399,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
     doc.text(stripDia('DETAILNY ROZPIS'), M, dy);
-    dy += 5;
+    dy += 9;
     doc.setDrawColor(0); doc.setLineWidth(0.25);
     doc.line(M, dy, W - M, dy);
     dy += 8;
