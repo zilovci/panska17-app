@@ -3375,6 +3375,7 @@ window.saveExpense = async function() {
   // Create/update child expenses for redirected meters (e.g., vodomer kotolne → Vykurovanie)
   if (expenseId && currentAllocMethod === 'meter' && window._redirectedAllocations && window._redirectedAllocations.length > 0) {
     var parentAmount = parseFloat(document.getElementById('exp-amount').value) || 0;
+    var childResults = [];
 
     for (var ri = 0; ri < window._redirectedAllocations.length; ri++) {
       var redir = window._redirectedAllocations[ri];
@@ -3405,21 +3406,54 @@ window.saveExpense = async function() {
       };
 
       // Check if child already exists for this parent + meter
-      var { data: existingChild } = await sb.from('expenses').select('id')
-        .eq('parent_expense_id', expenseId)
-        .eq('auto_source_meter_id', redir.meterId)
-        .maybeSingle();
+      var existingChild = null;
+      try {
+        var { data: ec } = await sb.from('expenses').select('id')
+          .eq('parent_expense_id', expenseId)
+          .eq('auto_source_meter_id', redir.meterId)
+          .maybeSingle();
+        existingChild = ec;
+      } catch(e) {
+        // Columns might not exist - try creating them
+        console.warn('Child expense lookup failed, attempting migration:', e.message);
+        try {
+          await sb.rpc('exec_sql', { sql: "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS parent_expense_id uuid REFERENCES expenses(id) ON DELETE CASCADE; ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false; ALTER TABLE expenses ADD COLUMN IF NOT EXISTS auto_source_meter_id uuid REFERENCES meters(id);" });
+        } catch(migErr) {
+          // RPC may not exist, that's OK - user needs to run migration manually
+          console.warn('Auto-migration failed:', migErr.message);
+        }
+      }
 
       var childExpenseId;
-      if (existingChild) {
-        // Update existing child
-        await sb.from('expenses').update(childData).eq('id', existingChild.id);
-        childExpenseId = existingChild.id;
-      } else {
-        // Create new child
-        var { data: newChild } = await sb.from('expenses').insert(childData).select('id').single();
-        childExpenseId = newChild ? newChild.id : null;
+      try {
+        if (existingChild) {
+          await sb.from('expenses').update(childData).eq('id', existingChild.id);
+          childExpenseId = existingChild.id;
+        } else {
+          var { data: newChild, error: childErr } = await sb.from('expenses').insert(childData).select('id').single();
+          if (childErr) {
+            console.error('Child expense insert error:', childErr);
+            // Try without new columns
+            delete childData.parent_expense_id;
+            delete childData.is_auto_generated;
+            delete childData.auto_source_meter_id;
+            childData.note = '[AUTO-CHILD of ' + expenseId + '] ' + childData.note;
+            var { data: newChild2, error: childErr2 } = await sb.from('expenses').insert(childData).select('id').single();
+            if (childErr2) {
+              childResults.push({ name: redir.meterName, amount: childAmount, status: 'CHYBA: ' + childErr2.message });
+              continue;
+            }
+            childExpenseId = newChild2 ? newChild2.id : null;
+          } else {
+            childExpenseId = newChild ? newChild.id : null;
+          }
+        }
+      } catch(insertErr) {
+        childResults.push({ name: redir.meterName, amount: childAmount, status: 'CHYBA: ' + insertErr.message });
+        continue;
       }
+
+      childResults.push({ name: redir.meterName, amount: childAmount, status: childExpenseId ? 'OK' : 'CHYBA' });
 
       // Run area-based allocation on child expense (same logic as Vykurovanie)
       if (childExpenseId) {
@@ -3455,6 +3489,18 @@ window.saveExpense = async function() {
           }
         }
       }
+    }
+    // Show feedback about child expenses
+    if (childResults.length > 0) {
+      var msg = 'Automatické faktúry (presmerované merače):\n\n';
+      childResults.forEach(function(cr) {
+        msg += (cr.status === 'OK' ? '✅' : '❌') + ' ' + cr.name + ': ' + cr.amount.toFixed(2) + ' € – ' + cr.status + '\n';
+      });
+      var hasError = childResults.some(function(cr) { return cr.status !== 'OK'; });
+      if (hasError) {
+        msg += '\n⚠ Niektoré auto-faktúry sa nepodarilo vytvoriť.\nSpustite migráciu v Supabase SQL Editor:\n\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS parent_expense_id uuid REFERENCES expenses(id) ON DELETE CASCADE;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS auto_source_meter_id uuid REFERENCES meters(id);';
+      }
+      alert(msg);
     }
     window._redirectedAllocations = null;
   }
