@@ -3585,9 +3585,9 @@ window.saveExpense = async function() {
               return {
                 expense_id: childExpenseId,
                 zone_id: a.zone_id,
-                percentage: parseFloat(a.percentage) || 0,
+                percentage: parseFloat((ratio * 100).toFixed(2)),
                 amount: parseFloat((childAmount * ratio).toFixed(2)),
-                payer: a.payer,
+                payer: 'tenant',
                 tempering_used: a.tempering_used,
                 area_used: a.area_used
               };
