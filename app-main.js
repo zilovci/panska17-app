@@ -1291,7 +1291,7 @@ window.generateInvoice = async function(existingInvoice) {
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Polozka'), { content: stripDia('Mesacne'), styles: { halign: 'right' } }, { content: stripDia(numMonths >= 12 ? 'Rocne' : 'Za ' + numMonths + ' mes.'), styles: { halign: 'right' } }]],
+    head: [[stripDia('Polozka'), { content: stripDia('Mesacne'), styles: { halign: 'right' } }, { content: stripDia('Rocne'), styles: { halign: 'right' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left' },
@@ -1458,6 +1458,7 @@ window.generateInvoice = async function(existingInvoice) {
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolna (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Vas merac'), eCons.toFixed(2) + ' kWh']);
+      console.log('ELEC DEBUG: eCons=', eCons, 'eAmount=', eAmount, 'unitPrice=', eAmount/eCons, 'items:', JSON.stringify(eItems.map(function(i) { return { cons: i.consumption, amt: i.amount, desc: (i.description || '').substring(0,30) }; })));
       if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotkova cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesacny naklad'), fmtEur(eAmount / numMonths) + ' EUR/mes.']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
