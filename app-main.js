@@ -1129,7 +1129,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Load allocations for this tenant's zones in period
   var { data: allocs = [] } = await sb.from('expense_allocations')
-    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, cost_categories(name))')
+    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
 
   // Filter by period overlap
@@ -1467,17 +1467,29 @@ window.generateInvoice = async function(existingInvoice) {
         if (zoneIds.indexOf(a.zone_id) < 0) return;
         var desc = a.expenses.description || '';
         if (heatingInputs.some(function(h) { return h.expId === a.expenses.id; })) return;
+
+        var fullAmount = parseFloat(a.expenses.amount) || 0;
+        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+        var yearlyAmount = isAmort ? fullAmount / a.expenses.amort_years : fullAmount;
+
         heatingInputs.push({
           expId: a.expenses.id,
           desc: desc,
           supplier: a.expenses.supplier || '',
-          amount: parseFloat(a.expenses.amount) || 0,
-          isAuto: !!a.expenses.is_auto_generated
+          fullAmount: fullAmount,
+          amount: yearlyAmount,
+          isAuto: !!a.expenses.is_auto_generated,
+          isAmort: isAmort,
+          amortYears: a.expenses.amort_years || 0
         });
-        heatingTotal += parseFloat(a.expenses.amount) || 0;
+        heatingTotal += yearlyAmount;
       });
 
       // Group into 4 categories
+      // Rule: amortized = always kurič (never media delivery)
+      //       auto-generated = water or electricity from kotolňa
+      //       SPP/plyn = gas delivery (only non-amortized)
+      //       everything else = kurič
       var heatGroups = {
         plyn: { label: 'Plyn', amount: 0, items: [] },
         kuric: { label: 'Kuric, revizie a udrzba', amount: 0, items: [] },
@@ -1488,12 +1500,17 @@ window.generateInvoice = async function(existingInvoice) {
       heatingInputs.forEach(function(h) {
         var descLow = (h.desc + ' ' + h.supplier).toLowerCase();
         var group;
-        if (h.isAuto && descLow.match(/vodomer|voda/)) {
+        if (h.isAmort) {
+          // Amortized = always maintenance/repair, never media delivery
+          group = 'kuric';
+        } else if (h.isAuto && descLow.match(/vodomer|voda/)) {
           group = 'voda';
         } else if (h.isAuto && descLow.match(/elektromer|elektri/)) {
           group = 'elektrina';
-        } else if (descLow.match(/spp|plyn|gas/)) {
+        } else if (descLow.match(/spp|plyn|gas/) && !descLow.match(/gasenerg/)) {
           group = 'plyn';
+        } else if (!h.isAuto && (descLow.match(/kuric|reviz|udrz|oprav|servis|cistenenie|komin/) || !descLow.match(/spp|plyn/))) {
+          group = 'kuric';
         } else {
           group = 'kuric';
         }
