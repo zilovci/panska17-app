@@ -1214,7 +1214,9 @@ window.runConsistencyCheck = async function() {
       expAmount = expAmount / e.amort_years;
     }
     var diff = Math.abs(allocTotal - expAmount);
-    if (diff > 1) {
+    var diffPct = Math.abs(expAmount) > 0 ? (diff / Math.abs(expAmount) * 100) : 0;
+    // Only flag significant mismatches: >1% AND >5€ (small rounding from meter calculations is normal)
+    if (diff > 5 && diffPct > 1) {
       mismatchList.push(expLabel(e) + ': <b>' + expAmount.toFixed(2) + ' €</b> vs alokované <b>' + allocTotal.toFixed(2) + ' €</b> (rozdiel ' + diff.toFixed(2) + ' €)');
     }
   });
@@ -1270,7 +1272,7 @@ window.runConsistencyCheck = async function() {
           }
         } else if (inPeriod.length === 0 && beforePeriod.length > 0) {
           var lastR = mRdgs[mRdgs.length - 1];
-          meterIssues.push('<b>' + m.name + '</b>: posledné odčítanie ' + fmtD(lastR.date) + ' – chýba ' + year);
+          meterIssues.push('<b>' + m.name + '</b>: posledné odčítanie ' + fmtD(lastR.date));
         } else {
           // 7c. Check that there are readings BEFORE and IN/AFTER period
           var hasBeforeOrAtStart = mRdgs.some(function(r) { return r.date <= periodStart; });

@@ -1117,6 +1117,10 @@ window.generateInvoice = async function(existingInvoice) {
   var { data: tenant } = await sb.from('tenants').select('*').eq('id', tenantId).single();
   if (!tenant) { alert('Najomca nenajdeny.'); return; }
 
+  // Load owner (prenajímateľ) from tenants with is_owner=true
+  var { data: owners = [] } = await sb.from('tenants').select('*').eq('is_owner', true).limit(1);
+  var owner = owners.length > 0 ? owners[0] : null;
+
   // Load zones for this tenant
   var { data: tenantZones = [] } = await sb.from('zones').select('id, name, tenant_name, area_m2').eq('tenant_id', tenantId);
   var zoneIds = tenantZones.map(function(z) { return z.id; });
@@ -1192,17 +1196,35 @@ window.generateInvoice = async function(existingInvoice) {
   doc.line(M, y, W - M, y);
   y += 8;
 
-  // Landlord info
+  // Landlord info (from owner tenant record)
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(stripDia('Prenajimatel:'), M, y);
   y += 5;
   doc.setFont('helvetica', 'normal');
-  doc.text(stripDia('Ing. Vladimir Zila, Ing. Zuzana Zilova'), M, y);
-  y += 4;
-  doc.text(stripDia('Panska 17, 811 01 Bratislava'), M, y);
-  y += 4;
-  doc.text('IBAN: SK23 1100 0000 0026 2084 4545', M, y);
+  if (owner) {
+    doc.text(stripDia(owner.company_name || owner.name), M, y);
+    y += 4;
+    if (owner.address) {
+      doc.text(stripDia((owner.address || '') + ', ' + (owner.zip || '') + ' ' + (owner.city || '')), M, y);
+      y += 4;
+    }
+    if (owner.ico || owner.dic) {
+      var ownerIds = [];
+      if (owner.ico) ownerIds.push('ICO: ' + owner.ico);
+      if (owner.dic) ownerIds.push('DIC: ' + owner.dic);
+      if (owner.ic_dph) ownerIds.push('IC DPH: ' + owner.ic_dph);
+      doc.text(stripDia(ownerIds.join('   ')), M, y);
+      y += 4;
+    }
+    doc.text('IBAN: ' + (owner.iban || 'SK00 0000 0000 0000 0000 0000'), M, y);
+  } else {
+    doc.text(stripDia('Ing. Vladimir Zila, spravca'), M, y);
+    y += 4;
+    doc.text(stripDia('Panska 17, 811 01 Bratislava'), M, y);
+    y += 4;
+    doc.text('IBAN: SK00 0000 0000 0000 0000 0000', M, y);
+  }
   y += 8;
 
   // Tenant info
@@ -1328,7 +1350,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('helvetica', 'normal');
     doc.text(stripDia('Splatnost: ' + fmtD(dueDateStr)), M, y);
     y += 5;
-    doc.text('IBAN: SK23 1100 0000 0026 2084 4545', M, y);
+    doc.text('IBAN: ' + (owner ? (owner.iban || 'SK00 0000 0000 0000 0000 0000') : 'SK00 0000 0000 0000 0000 0000'), M, y);
     y += 5;
     doc.text('VS: ' + yearLabel + '001', M, y);
   } else if (balance < -0.01) {
@@ -1469,6 +1491,23 @@ window.generateInvoice = async function(existingInvoice) {
     var tenantRows = [];
     if (myCons > 0) {
       tenantRows.push([stripDia('Spotreba podla meraca'), myCons.toFixed(2) + ' ' + mc.unit]);
+      // Unit price
+      if (myAmount > 0 && myCons > 0) {
+        var unitPrice = myAmount / myCons;
+        tenantRows.push([stripDia('Jednotkova cena'), fmtEur(unitPrice) + ' EUR/' + mc.unit]);
+      }
+    }
+    // Monthly cost
+    var periodFrom = mc.expenses[0] ? mc.expenses[0].period_from : dateFrom;
+    var periodTo = mc.expenses[mc.expenses.length - 1] ? mc.expenses[mc.expenses.length - 1].period_to : dateTo;
+    var months = 12;
+    if (periodFrom && periodTo) {
+      var pf = new Date(periodFrom + 'T00:00:00');
+      var pt = new Date(periodTo + 'T00:00:00');
+      months = Math.max(1, Math.round((pt - pf) / (30.44 * 24 * 60 * 60 * 1000)));
+    }
+    if (myAmount > 0) {
+      tenantRows.push([stripDia('Mesacny naklad'), fmtEur(myAmount / months) + ' EUR/mes.']);
     }
     tenantRows.push([
       {content: stripDia('Suma'), styles: {fontStyle: 'bold'}},
@@ -1539,7 +1578,11 @@ window.generateInvoice = async function(existingInvoice) {
     var heatTenantRows = [];
     heatTenantRows.push([stripDia('Plocha'), totalArea.toFixed(2) + ' m2']);
     if (heatAmount > 0 && totalArea > 0) {
-      heatTenantRows.push([stripDia('Naklad na m2'), fmtEur(heatAmount / totalArea) + ' EUR/m2']);
+      heatTenantRows.push([stripDia('Naklad na m2 / rok'), fmtEur(heatAmount / totalArea) + ' EUR/m2']);
+      heatTenantRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmount / totalArea / 12) + ' EUR/m2/mes.']);
+    }
+    if (heatAmount > 0) {
+      heatTenantRows.push([stripDia('Mesacny naklad'), fmtEur(heatAmount / 12) + ' EUR/mes.']);
     }
     heatTenantRows.push([
       {content: stripDia('Suma vykurovania'), styles: {fontStyle: 'bold'}},
