@@ -3578,6 +3578,7 @@ window.saveExpense = async function() {
         if (lastHeating && lastHeating.expense_allocations && lastHeating.expense_allocations.length > 0) {
           // Reuse zone distribution from last heating expense, just scale amounts
           var lastTotal = lastHeating.expense_allocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+          console.log('Auto-child: lastTotal=', lastTotal, 'allocCount=', lastHeating.expense_allocations.length, 'childAmount=', childAmount);
           if (lastTotal > 0) {
             var childAllocs = lastHeating.expense_allocations.map(function(a) {
               var ratio = (parseFloat(a.amount) || 0) / lastTotal;
@@ -3591,8 +3592,8 @@ window.saveExpense = async function() {
                 area_used: a.area_used
               };
             });
-            await sb.from('expense_allocations').insert(childAllocs);
-            console.log('Auto-child: created', childAllocs.length, 'allocations from lastHeating');
+            var { error: allocInsertErr } = await sb.from('expense_allocations').insert(childAllocs);
+            console.log('Auto-child: created', childAllocs.length, 'allocations from lastHeating', allocInsertErr ? 'ERROR: ' + allocInsertErr.message : 'OK');
           }
         } else {
           // Fallback: allocate by area to all zones (like a standard area-based expense)

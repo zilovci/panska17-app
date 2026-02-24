@@ -1471,6 +1471,8 @@ window.generateInvoice = async function(existingInvoice) {
       // Collect heating composition (building-level expenses for this category)
       var heatingInputs = [];
       var heatingTotal = 0;
+      console.log('PDF HEAT DEBUG: Vykurovanie allocs count:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).length);
+      console.log('PDF HEAT DEBUG: all Vykurovanie expenses:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).map(function(a) { return { desc: a.expenses.description, isAuto: a.expenses.is_auto_generated, amount: a.amount, zone: a.zone_id }; }));
       periodAllocs.forEach(function(a) {
         if (!a.expenses || !a.expenses.cost_categories) return;
         if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
