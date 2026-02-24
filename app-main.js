@@ -1472,7 +1472,8 @@ window.generateInvoice = async function(existingInvoice) {
       var heatingInputs = [];
       var heatingTotal = 0;
       console.log('PDF HEAT DEBUG: Vykurovanie allocs count:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).length);
-      console.log('PDF HEAT DEBUG: all Vykurovanie expenses:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).map(function(a) { return { desc: a.expenses.description, isAuto: a.expenses.is_auto_generated, amount: a.amount, zone: a.zone_id }; }));
+      console.log('PDF HEAT DEBUG: items:', JSON.stringify(periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).map(function(a) { return { desc: (a.expenses.description || '').substring(0, 40), isAuto: a.expenses.is_auto_generated, amt: a.amount }; })));
+      console.log('PDF HEAT DEBUG: ALL categories:', JSON.stringify(Object.keys(byCat).map(function(c) { return c + ': ' + byCat[c].items.length + ' items, ' + byCat[c].amount.toFixed(2); })));
       periodAllocs.forEach(function(a) {
         if (!a.expenses || !a.expenses.cost_categories) return;
         if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
