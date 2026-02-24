@@ -1473,7 +1473,9 @@ window.generateInvoice = async function(existingInvoice) {
       var heatingTotal = 0;
       console.log('PDF HEAT DEBUG: Vykurovanie allocs count:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).length);
       console.log('PDF HEAT DEBUG: items:', JSON.stringify(periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).map(function(a) { return { desc: (a.expenses.description || '').substring(0, 40), isAuto: a.expenses.is_auto_generated, amt: a.amount }; })));
-      console.log('PDF HEAT DEBUG: ALL categories:', JSON.stringify(Object.keys(byCat).map(function(c) { return c + ': ' + byCat[c].items.length + ' items, ' + byCat[c].amount.toFixed(2); })));
+      // Direct DB check for auto-children
+      var { data: autoChildren } = await sb.from('expenses').select('id, description, amount, category_id, is_auto_generated, parent_expense_id, period_from, period_to, expense_allocations(zone_id, amount, payer)').eq('is_auto_generated', true);
+      console.log('PDF HEAT DEBUG: auto-children in DB:', JSON.stringify((autoChildren || []).map(function(e) { return { id: e.id.substring(0,8), desc: (e.description||'').substring(0,30), amt: e.amount, catId: e.category_id.substring(0,8), period: e.period_from + '~' + e.period_to, allocCount: (e.expense_allocations||[]).length, hasB3zone: (e.expense_allocations||[]).some(function(a) { return zoneIds.indexOf(a.zone_id) >= 0; }) }; })));
       periodAllocs.forEach(function(a) {
         if (!a.expenses || !a.expenses.cost_categories) return;
         if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
