@@ -1249,13 +1249,16 @@ window.runConsistencyCheck = async function() {
       var subMs = typeMeters.filter(function(m) { return !m.is_main && !m.cost_category_id; });
       var meterIssues = [];
 
-      // 7a. Meters without zone assignments
-      subMs.forEach(function(m) {
-        var zones = checkMeterZones.filter(function(mz) { return mz.meter_id === m.id; });
-        if (zones.length === 0) {
-          meterIssues.push('<b>' + m.name + '</b>: <span class="text-red-600">nemá priradené zóny!</span>');
-        }
-      });
+      // 7a. Meters without zone assignments (skip gas and redirected meters - they don't need zones)
+      if (mType !== 'gas') {
+        subMs.forEach(function(m) {
+          if (m.cost_category_id) return; // redirected meter, no zones needed
+          var zones = checkMeterZones.filter(function(mz) { return mz.meter_id === m.id; });
+          if (zones.length === 0) {
+            meterIssues.push('<b>' + m.name + '</b>: <span class="text-red-600">nemá priradené zóny!</span>');
+          }
+        });
+      }
 
       // 7b. Meters with insufficient readings for period
       typeMeters.forEach(function(m) {
