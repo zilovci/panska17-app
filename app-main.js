@@ -1129,7 +1129,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Load allocations for this tenant's zones in period
   var { data: allocs = [] } = await sb.from('expense_allocations')
-    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, date, period_from, period_to, supplier, invoice_number, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, cost_categories(name))')
+    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
 
   // Filter by period overlap
@@ -1208,11 +1208,7 @@ window.generateInvoice = async function(existingInvoice) {
   y += 7;
   doc.setFontSize(11);
   doc.text(stripDia('za obdobie ' + periodLabel), M, y);
-  y += 4;
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), M, y);
-  y += 4;
+  y += 5;
 
   doc.setDrawColor(0);
   doc.setLineWidth(0.25);
@@ -1224,45 +1220,45 @@ window.generateInvoice = async function(existingInvoice) {
   // Two-column: Prenajímateľ (left) | Nájomca (right)
   var colL = M, colR = W / 2 + 5;
 
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.text(stripDia('Prenajimatel:'), colL, y);
   doc.text(stripDia('Najomca:'), colR, y);
   y += 4;
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
 
   // Left column - Owner
   var oy = y;
   if (owner) {
-    doc.text(stripDia(owner.company_name || owner.name), colL, oy); oy += 3.5;
-    if (owner.address) { doc.text(stripDia((owner.address || '') + ', ' + (owner.zip || '') + ' ' + (owner.city || '')), colL, oy); oy += 3.5; }
-    if (owner.ico) { doc.text(stripDia('ICO: ' + owner.ico + (owner.dic ? '  DIC: ' + owner.dic : '')), colL, oy); oy += 3.5; }
-    doc.text('IBAN: ' + (owner.iban || 'SK00 0000 0000 0000 0000 0000'), colL, oy); oy += 3.5;
-    if (owner.name && owner.company_name) { doc.text(stripDia('Kontakt: ' + owner.name), colL, oy); oy += 3.5; }
-    if (owner.phone) { doc.text(stripDia('Tel: ' + owner.phone), colL, oy); oy += 3.5; }
-    if (owner.email) { doc.text(stripDia('Email: ' + owner.email), colL, oy); oy += 3.5; }
+    doc.text(stripDia(owner.company_name || owner.name), colL, oy); oy += 4;
+    if (owner.address) { doc.text(stripDia((owner.address || '') + ', ' + (owner.zip || '') + ' ' + (owner.city || '')), colL, oy); oy += 4; }
+    if (owner.ico) { doc.text(stripDia('ICO: ' + owner.ico + (owner.dic ? '  DIC: ' + owner.dic : '')), colL, oy); oy += 4; }
+    doc.text('IBAN: ' + (owner.iban || 'SK00 0000 0000 0000 0000 0000'), colL, oy); oy += 4;
+    if (owner.name && owner.company_name) { doc.text(stripDia('Kontakt: ' + owner.name), colL, oy); oy += 4; }
+    if (owner.phone) { doc.text(stripDia('Tel: ' + owner.phone), colL, oy); oy += 4; }
+    if (owner.email) { doc.text(stripDia('Email: ' + owner.email), colL, oy); oy += 4; }
   } else {
-    doc.text(stripDia('Ing. Vladimir Zila, spravca'), colL, oy); oy += 3.5;
-    doc.text(stripDia('Panska 17, 811 01 Bratislava'), colL, oy); oy += 3.5;
+    doc.text(stripDia('Ing. Vladimir Zila, spravca'), colL, oy); oy += 4;
+    doc.text(stripDia('Panska 17, 811 01 Bratislava'), colL, oy); oy += 4;
   }
 
   // Right column - Tenant
   var ty = y;
-  doc.text(stripDia(tenant.company_name || tenant.name), colR, ty); ty += 3.5;
-  if (tenant.address) { doc.text(stripDia((tenant.address || '') + ', ' + (tenant.zip || '') + ' ' + (tenant.city || '')), colR, ty); ty += 3.5; }
-  if (tenant.ico) { doc.text(stripDia('ICO: ' + tenant.ico + (tenant.dic ? '  DIC: ' + tenant.dic : '')), colR, ty); ty += 3.5; }
-  if (tenant.name && tenant.company_name) { doc.text(stripDia('Kontakt: ' + tenant.name), colR, ty); ty += 3.5; }
-  if (tenant.phone) { doc.text(stripDia('Tel: ' + tenant.phone), colR, ty); ty += 3.5; }
-  if (tenant.email) { doc.text(stripDia('Email: ' + tenant.email), colR, ty); ty += 3.5; }
+  doc.text(stripDia(tenant.company_name || tenant.name), colR, ty); ty += 4;
+  if (tenant.address) { doc.text(stripDia((tenant.address || '') + ', ' + (tenant.zip || '') + ' ' + (tenant.city || '')), colR, ty); ty += 4; }
+  if (tenant.ico) { doc.text(stripDia('ICO: ' + tenant.ico + (tenant.dic ? '  DIC: ' + tenant.dic : '')), colR, ty); ty += 4; }
+  if (tenant.name && tenant.company_name) { doc.text(stripDia('Kontakt: ' + tenant.name), colR, ty); ty += 4; }
+  if (tenant.phone) { doc.text(stripDia('Tel: ' + tenant.phone), colR, ty); ty += 4; }
+  if (tenant.email) { doc.text(stripDia('Email: ' + tenant.email), colR, ty); ty += 4; }
 
-  y = Math.max(oy, ty) + 6;
+  y = Math.max(oy, ty) + 8;
 
   // COSTS TABLE: Položka | Mesačne | Suma
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text(stripDia('NAKLADY'), M, y);
-  y += 3;
+  y += 5;
 
   var numMonths = 12;
   if (dateFrom && dateTo) {
@@ -1285,7 +1281,7 @@ window.generateInvoice = async function(existingInvoice) {
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Polozka'), stripDia('Mesacne'), 'Suma']],
+    head: [[stripDia('Polozka'), { content: stripDia('Mesacne'), styles: { halign: 'right' } }, { content: 'Suma', styles: { halign: 'right' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left' },
@@ -1394,12 +1390,6 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('helvetica', 'bold');
     doc.text(stripDia('DETAILNY ROZPIS'), M, dy);
     dy += 5;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100);
-    doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), M, dy);
-    doc.setTextColor(0);
-    dy += 4;
     doc.setDrawColor(0); doc.setLineWidth(0.25);
     doc.line(M, dy, W - M, dy);
     dy += 8;
@@ -1477,7 +1467,7 @@ window.generateInvoice = async function(existingInvoice) {
         if (zoneIds.indexOf(a.zone_id) < 0) return;
         var desc = a.expenses.description || '';
         if (heatingInputs.some(function(h) { return h.expId === a.expenses.id; })) return;
-        heatingInputs.push({ expId: a.expenses.id, desc: desc, amount: parseFloat(a.expenses.amount) || 0 });
+        heatingInputs.push({ expId: a.expenses.id, desc: desc, supplier: a.expenses.supplier || '', amount: parseFloat(a.expenses.amount) || 0 });
         heatingTotal += parseFloat(a.expenses.amount) || 0;
       });
 
@@ -1508,21 +1498,15 @@ window.generateInvoice = async function(existingInvoice) {
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovana plocha budovy'), totalHeatedArea.toFixed(2) + ' m2']);
 
-      // Show zone breakdown
-      heatedZoneDetails.forEach(function(zd) {
-        var detail = zd.area.toFixed(2) + ' m2';
-        if (zd.pct < 100) detail += ' x ' + zd.pct + '% = ' + zd.effective.toFixed(2) + ' m2';
-        hRows.push([stripDia('  ' + zd.name), detail]);
-      });
-
       // Building cost composition
       if (heatingInputs.length > 0) {
         hRows.push(['', '']); // spacer
         hRows.push([{content: stripDia('Naklady na vykurovanie:'), styles: {fontStyle: 'bold'}}, '']);
       }
       heatingInputs.forEach(function(h) {
-        var shortDesc = h.desc.replace(/\s*-\s*\d{4}.*$/, '').replace(/\s*jan.*$/i, '').trim();
-        hRows.push([stripDia('  ' + shortDesc), fmtEur(h.amount) + ' EUR']);
+        var label = h.supplier ? h.supplier : '';
+        if (h.desc) label += (label ? ' - ' : '') + h.desc;
+        hRows.push([stripDia('  ' + label), fmtEur(h.amount) + ' EUR']);
       });
       if (heatingInputs.length > 1) {
         hRows.push([{content: stripDia('Naklady na vykurovanie celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
@@ -1592,6 +1576,16 @@ window.generateInvoice = async function(existingInvoice) {
     // Invoice number on all pages
     doc.setFontSize(8);
     doc.text(stripDia('Cislo: ' + invNumber), W - M, 290, { align: 'right' });
+    // Priestor on all pages (top right)
+    if (pi > 1) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100);
+      doc.text(stripDia('Cislo: ' + invNumber), W - M, 20, { align: 'right' });
+      doc.setFontSize(8);
+      doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), W - M, 25, { align: 'right' });
+      doc.setTextColor(0);
+    }
   }
 
   doc.setPage(1);
@@ -1599,6 +1593,8 @@ window.generateInvoice = async function(existingInvoice) {
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100);
   doc.text(stripDia('Cislo: ' + invNumber), W - M, 20, { align: 'right' });
+  doc.setFontSize(8);
+  doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), W - M, 25, { align: 'right' });
   doc.setTextColor(0);
 
   // Save PDF
