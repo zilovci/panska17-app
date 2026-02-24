@@ -2874,13 +2874,15 @@ window.calcMeterAllocation = async function() {
 
   totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
-  // Calculate redirected amounts first (proportional to main meter)
+  // Calculate redirected amounts first (proportional to main meter or total if no main)
   var redirectedTotalAmount = 0;
   var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
   var mainCons3 = mainMc3 ? mainMc3.consumption : 0;
+  // If no main meter, use sum of all sub-meters + redirected as base
+  var redirectBase = mainCons3 > 0 ? mainCons3 : (subMeterTotal + redirectedTotal);
   zoneAllocs.forEach(function(a) {
     if (a.payer === 'redirect') {
-      a.amount = mainCons3 > 0 ? (a.consumption / mainCons3 * amount) : 0;
+      a.amount = redirectBase > 0 ? (a.consumption / redirectBase * amount) : 0;
       a.amount = parseFloat(a.amount.toFixed(2));
       a.pct = 0;
       redirectedTotalAmount += a.amount;
