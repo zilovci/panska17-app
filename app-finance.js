@@ -1425,6 +1425,202 @@ window.runConsistencyCheck = async function() {
   }
 };
 
+// ============ RECONCILIATION REPORT ============
+window.runReconciliation = async function() {
+  var report = document.getElementById('consistency-report');
+  if (!report) return;
+  report.classList.remove('hidden');
+  report.innerHTML = '<p class="text-[9px] text-slate-400">Načítavam...</p>';
+
+  var year = document.getElementById('fin-year').value;
+  if (!year) { report.innerHTML = '<p class="text-[9px] text-red-400">Vyberte rok.</p>'; return; }
+
+  var periodStart = year + '-01-01', periodEnd = year + '-12-31';
+
+  // Load ALL expenses (not just filtered by zone)
+  var { data: expenses = [] } = await sb.from('expenses')
+    .select('id, description, supplier, amount, date, period_from, period_to, category_id, alloc_method, cost_type, amort_years, ref_number, is_auto_generated, auto_source_meter_id, parent_expense_id, cost_categories(name), expense_allocations(amount, payer, zone_id, zones(name, tenant_name))')
+    .gte('date', periodStart).lte('date', periodEnd)
+    .order('date');
+
+  // Also include expenses outside date range but with period overlap
+  var { data: periodExpenses = [] } = await sb.from('expenses')
+    .select('id, description, supplier, amount, date, period_from, period_to, category_id, alloc_method, cost_type, amort_years, ref_number, is_auto_generated, auto_source_meter_id, parent_expense_id, cost_categories(name), expense_allocations(amount, payer, zone_id, zones(name, tenant_name))')
+    .lte('period_from', periodEnd).gte('period_to', periodStart)
+    .order('date');
+
+  // Merge and deduplicate
+  var expMap = {};
+  expenses.concat(periodExpenses).forEach(function(e) { expMap[e.id] = e; });
+  var allExp = Object.values(expMap);
+
+  // Load all zones for name lookup
+  var { data: zones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+  var zoneMap = {};
+  zones.forEach(function(z) { zoneMap[z.id] = z; });
+
+  // Load tenants
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, is_owner');
+  var tenantMap = {};
+  tenants.forEach(function(t) { tenantMap[t.id] = t; });
+
+  // Build per-category reconciliation
+  var byCat = {};
+  var grandTotals = { expAmount: 0, allocTenant: 0, allocOwner: 0, allocTotal: 0, diff: 0 };
+
+  allExp.forEach(function(e) {
+    var catName = e.cost_categories ? e.cost_categories.name : 'Bez kategórie';
+    if (!byCat[catName]) byCat[catName] = { expenses: [], expTotal: 0, tenantTotal: 0, ownerTotal: 0, allocTotal: 0 };
+
+    var expAmount = parseFloat(e.amount) || 0;
+    // For amortized, use yearly amount
+    if (e.cost_type === 'amortized' && e.amort_years > 0) {
+      expAmount = expAmount / e.amort_years;
+    }
+
+    var allocs = e.expense_allocations || [];
+    var tenantSum = 0, ownerSum = 0;
+    allocs.forEach(function(a) {
+      var amt = parseFloat(a.amount) || 0;
+      if (a.payer === 'owner') ownerSum += amt;
+      else tenantSum += amt;
+    });
+    var allocTotal = tenantSum + ownerSum;
+    var diff = Math.abs(expAmount - allocTotal);
+
+    byCat[catName].expenses.push({
+      id: e.id,
+      ref: e.ref_number || '',
+      desc: e.description || '',
+      supplier: e.supplier || '',
+      method: e.alloc_method || 'area',
+      isAmort: e.cost_type === 'amortized',
+      amortYears: e.amort_years,
+      fullAmount: parseFloat(e.amount) || 0,
+      amount: expAmount,
+      tenantSum: tenantSum,
+      ownerSum: ownerSum,
+      allocTotal: allocTotal,
+      diff: diff,
+      isAuto: e.is_auto_generated,
+      hasChild: !!e.parent_expense_id === false && allExp.some(function(ch) { return ch.parent_expense_id === e.id; }),
+      allocCount: allocs.length
+    });
+
+    byCat[catName].expTotal += expAmount;
+    byCat[catName].tenantTotal += tenantSum;
+    byCat[catName].ownerTotal += ownerSum;
+    byCat[catName].allocTotal += allocTotal;
+
+    grandTotals.expAmount += expAmount;
+    grandTotals.allocTenant += tenantSum;
+    grandTotals.allocOwner += ownerSum;
+    grandTotals.allocTotal += allocTotal;
+  });
+
+  grandTotals.diff = Math.abs(grandTotals.expAmount - grandTotals.allocTotal);
+
+  // Build HTML
+  var catNames = Object.keys(byCat).sort();
+  var html = '<div class="bg-white border border-teal-200 rounded-xl p-4 space-y-3 max-h-[80vh] overflow-y-auto">' +
+    '<div class="flex justify-between items-center mb-2">' +
+      '<span class="text-[11px] font-black text-teal-700 uppercase">📊 Reconciliácia ' + year + '</span>' +
+      '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-slate-300 hover:text-slate-500 text-sm">&times;</button>' +
+    '</div>';
+
+  // Grand summary first
+  var grandColor = grandTotals.diff > 1 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
+  var grandIcon = grandTotals.diff > 1 ? '⚠' : '✅';
+  html += '<div class="' + grandColor + ' border rounded-lg p-3">' +
+    '<table class="w-full text-[9px]">' +
+    '<tr><td class="font-bold text-slate-600">Faktúry celkom:</td><td class="text-right font-black">' + fmtE(grandTotals.expAmount) + '</td></tr>' +
+    '<tr><td class="text-blue-600">Nájomcovia:</td><td class="text-right font-bold text-blue-600">' + fmtE(grandTotals.allocTenant) + '</td></tr>' +
+    '<tr><td class="text-orange-600">Vlastník:</td><td class="text-right font-bold text-orange-600">' + fmtE(grandTotals.allocOwner) + '</td></tr>' +
+    '<tr class="border-t border-slate-200"><td class="font-bold pt-1">Alokované celkom:</td><td class="text-right font-black pt-1">' + fmtE(grandTotals.allocTotal) + '</td></tr>' +
+    (grandTotals.diff > 1 ? '<tr class="text-red-600"><td class="font-bold">' + grandIcon + ' Rozdiel:</td><td class="text-right font-black">' + fmtE(grandTotals.diff) + '</td></tr>' : '<tr class="text-green-600"><td class="font-bold">' + grandIcon + ' Rozdiel:</td><td class="text-right font-bold">OK (' + grandTotals.diff.toFixed(2) + ' €)</td></tr>') +
+    '</table></div>';
+
+  // Per category
+  catNames.forEach(function(catName) {
+    var cat = byCat[catName];
+    var catDiff = Math.abs(cat.expTotal - cat.allocTotal);
+    var catOk = catDiff <= 1;
+    var catIcon = catOk ? '✅' : '⚠';
+    var catBg = catOk ? 'bg-slate-50' : 'bg-red-50';
+
+    html += '<div class="' + catBg + ' border border-slate-200 rounded-lg p-3">' +
+      '<div class="flex justify-between items-center cursor-pointer" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">' +
+        '<span class="text-[10px] font-black text-slate-700">' + catIcon + ' ' + catName + ' <span class="text-[8px] text-slate-400">(' + cat.expenses.length + ' fakt.)</span></span>' +
+        '<span class="text-[9px] font-bold">' +
+          '<span class="text-blue-600 mr-2">N: ' + fmtE(cat.tenantTotal) + '</span>' +
+          '<span class="text-orange-600 mr-2">V: ' + fmtE(cat.ownerTotal) + '</span>' +
+          '<span class="text-slate-800">= ' + fmtE(cat.allocTotal) + '</span>' +
+          (catDiff > 1 ? ' <span class="text-red-600 ml-1">⚠ ' + fmtE(catDiff) + '</span>' : '') +
+        '</span>' +
+      '</div>';
+
+    // Detail table (collapsed by default)
+    html += '<div class="hidden mt-2">' +
+      '<table class="w-full text-[8px]">' +
+      '<tr class="text-slate-400 border-b border-slate-200">' +
+        '<th class="text-left py-1">Ref.</th>' +
+        '<th class="text-left">Popis</th>' +
+        '<th class="text-right">Faktúra</th>' +
+        '<th class="text-right">Nájomcovia</th>' +
+        '<th class="text-right">Vlastník</th>' +
+        '<th class="text-right">Alokované</th>' +
+        '<th class="text-right">Rozdiel</th>' +
+      '</tr>';
+
+    cat.expenses.forEach(function(exp) {
+      var rowBg = exp.diff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : '');
+      var methodBadge = exp.method === 'meter' ? '<span class="text-[6px] bg-purple-100 text-purple-600 px-1 rounded ml-1">M</span>' : '';
+      var autoBadge = exp.isAuto ? '<span class="text-[6px] bg-blue-100 text-blue-600 px-1 rounded ml-1">AUTO</span>' : '';
+      var amortBadge = exp.isAmort ? '<span class="text-[6px] bg-amber-100 text-amber-600 px-1 rounded ml-1">' + exp.amortYears + 'r</span>' : '';
+      var childBadge = exp.hasChild ? '<span class="text-[6px] bg-teal-100 text-teal-600 px-1 rounded ml-1">→</span>' : '';
+      var noAllocBadge = exp.allocCount === 0 ? '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded ml-1">∅</span>' : '';
+
+      html += '<tr' + rowBg + '>' +
+        '<td class="py-0.5 text-slate-500">' + exp.ref + '</td>' +
+        '<td class="truncate max-w-[150px]">' + exp.desc.substring(0, 40) + methodBadge + autoBadge + amortBadge + childBadge + noAllocBadge + '</td>' +
+        '<td class="text-right font-bold">' + fmtE(exp.amount) + (exp.isAmort ? '<br><span class="text-[7px] text-slate-400">z ' + fmtE(exp.fullAmount) + '</span>' : '') + '</td>' +
+        '<td class="text-right text-blue-600">' + fmtE(exp.tenantSum) + '</td>' +
+        '<td class="text-right text-orange-600">' + fmtE(exp.ownerSum) + '</td>' +
+        '<td class="text-right">' + fmtE(exp.allocTotal) + '</td>' +
+        '<td class="text-right' + (exp.diff > 1 ? ' text-red-600 font-bold' : ' text-green-600') + '">' + (exp.diff > 1 ? fmtE(exp.diff) : 'OK') + '</td>' +
+      '</tr>';
+    });
+
+    // Category totals
+    html += '<tr class="border-t border-slate-300 font-bold">' +
+      '<td colspan="2" class="py-1">Spolu ' + catName + '</td>' +
+      '<td class="text-right">' + fmtE(cat.expTotal) + '</td>' +
+      '<td class="text-right text-blue-600">' + fmtE(cat.tenantTotal) + '</td>' +
+      '<td class="text-right text-orange-600">' + fmtE(cat.ownerTotal) + '</td>' +
+      '<td class="text-right">' + fmtE(cat.allocTotal) + '</td>' +
+      '<td class="text-right' + (catDiff > 1 ? ' text-red-600' : ' text-green-600') + '">' + (catDiff > 1 ? fmtE(catDiff) : 'OK') + '</td>' +
+    '</tr>';
+
+    html += '</table></div></div>';
+  });
+
+  // Legend
+  html += '<div class="text-[7px] text-slate-400 mt-2 flex flex-wrap gap-3">' +
+    '<span><span class="bg-purple-100 text-purple-600 px-1 rounded">M</span> Merač</span>' +
+    '<span><span class="bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> Automaticky generované</span>' +
+    '<span><span class="bg-amber-100 text-amber-600 px-1 rounded">Xr</span> Amortizácia (X rokov)</span>' +
+    '<span><span class="bg-teal-100 text-teal-600 px-1 rounded">→</span> Má auto-child</span>' +
+    '<span><span class="bg-red-100 text-red-600 px-1 rounded">∅</span> Bez alokácií</span>' +
+    '<span class="ml-4"><span class="text-blue-600 font-bold">N:</span> Nájomcovia</span>' +
+    '<span><span class="text-orange-600 font-bold">V:</span> Vlastník</span>' +
+  '</div>';
+
+  html += '</div>';
+  report.innerHTML = html;
+};
+
+function fmtE(n) { return (parseFloat(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' \u20AC'; }
+
 // ============ RECALCULATE ALL EXPENSES ============
 window.recalcAllExpenses = async function() {
   var year = document.getElementById('fin-year').value;
