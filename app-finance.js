@@ -1453,14 +1453,25 @@ window.runReconciliation = async function() {
   exp1.concat(exp2).forEach(function(e) { expMap[e.id] = e; });
   var allExp = Object.values(expMap);
 
+  // Build map of parent → child expenses (redirected amounts)
+  var childAmountsByParent = {};
+  var childExpenseIds = {};
+  allExp.forEach(function(e) {
+    if (e.parent_expense_id) {
+      if (!childAmountsByParent[e.parent_expense_id]) childAmountsByParent[e.parent_expense_id] = 0;
+      childAmountsByParent[e.parent_expense_id] += parseFloat(e.amount) || 0;
+      childExpenseIds[e.id] = true;
+    }
+  });
+
   // Process each expense
   var byCat = {};
   var byType = { operating: { label: 'Prevádzkové', amount: 0, alloc: 0, count: 0 }, amortized: { label: 'Amortizované (ročný podiel)', amount: 0, alloc: 0, count: 0 }, investment: { label: 'Investičné', amount: 0, alloc: 0, count: 0 } };
-  var grandTotals = { expAmount: 0, expFull: 0, allocTenant: 0, allocOwner: 0, allocTotal: 0, noAlloc: 0, count: 0 };
+  var grandTotals = { expAmount: 0, expFull: 0, allocTenant: 0, allocOwner: 0, allocTotal: 0, noAlloc: 0, count: 0, childRedirected: 0 };
 
   allExp.forEach(function(e) {
     var catName = e.cost_categories ? e.cost_categories.name : 'Bez kategórie';
-    if (!byCat[catName]) byCat[catName] = { expenses: [], expTotal: 0, expFull: 0, tenantTotal: 0, ownerTotal: 0, allocTotal: 0 };
+    if (!byCat[catName]) byCat[catName] = { expenses: [], expTotal: 0, expFull: 0, tenantTotal: 0, ownerTotal: 0, allocTotal: 0, childTotal: 0 };
 
     var fullAmount = parseFloat(e.amount) || 0;
     var yearlyAmount = fullAmount;
@@ -1478,7 +1489,13 @@ window.runReconciliation = async function() {
       else tenantSum += amt;
     });
     var allocTotal = tenantSum + ownerSum;
-    var diff = yearlyAmount - allocTotal;
+
+    // For parent expenses: add child (redirected) amounts to allocated total
+    var childAmount = childAmountsByParent[e.id] || 0;
+    var effectiveAlloc = allocTotal + childAmount;
+    var diff = yearlyAmount - effectiveAlloc;
+
+    var isChild = !!childExpenseIds[e.id];
 
     byCat[catName].expenses.push({
       ref: e.ref_number || '',
@@ -1492,8 +1509,11 @@ window.runReconciliation = async function() {
       tenantSum: tenantSum,
       ownerSum: ownerSum,
       allocTotal: allocTotal,
+      childAmount: childAmount,
+      effectiveAlloc: effectiveAlloc,
       diff: diff,
       isAuto: e.is_auto_generated,
+      isChild: isChild,
       allocCount: allocs.length,
       periodFrom: e.period_from,
       periodTo: e.period_to
@@ -1504,23 +1524,25 @@ window.runReconciliation = async function() {
     byCat[catName].tenantTotal += tenantSum;
     byCat[catName].ownerTotal += ownerSum;
     byCat[catName].allocTotal += allocTotal;
+    byCat[catName].childTotal += childAmount;
 
     grandTotals.expAmount += yearlyAmount;
     grandTotals.expFull += fullAmount;
     grandTotals.allocTenant += tenantSum;
     grandTotals.allocOwner += ownerSum;
     grandTotals.allocTotal += allocTotal;
+    grandTotals.childRedirected += childAmount;
     grandTotals.count++;
-    if (allocs.length === 0) grandTotals.noAlloc++;
+    if (allocs.length === 0 && !isChild) grandTotals.noAlloc++;
 
     if (byType[costType]) {
       byType[costType].amount += yearlyAmount;
-      byType[costType].alloc += allocTotal;
+      byType[costType].alloc += effectiveAlloc;
       byType[costType].count++;
     }
   });
 
-  grandTotals.diff = grandTotals.expAmount - grandTotals.allocTotal;
+  grandTotals.diff = grandTotals.expAmount - grandTotals.allocTotal - grandTotals.childRedirected;
 
   // Build HTML
   var catNames = Object.keys(byCat).sort();
@@ -1538,7 +1560,8 @@ window.runReconciliation = async function() {
     '<tr><td class="font-bold text-slate-600">\uD83D\uDCC4 Fakt\u00FAry (' + grandTotals.count + '):</td><td class="text-right font-black">' + fmtE(grandTotals.expAmount) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expFull !== grandTotals.expAmount ? '(pln\u00E1 hodnota: ' + fmtE(grandTotals.expFull) + ')' : '') + '</td></tr>' +
     '<tr><td class="text-blue-600">\uD83D\uDC65 N\u00E1jomcovia:</td><td class="text-right font-bold text-blue-600">' + fmtE(grandTotals.allocTenant) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expAmount > 0 ? (grandTotals.allocTenant / grandTotals.expAmount * 100).toFixed(1) + '%' : '') + '</td></tr>' +
     '<tr><td class="text-orange-600">\uD83C\uDFE0 Vlastn\u00EDk:</td><td class="text-right font-bold text-orange-600">' + fmtE(grandTotals.allocOwner) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expAmount > 0 ? (grandTotals.allocOwner / grandTotals.expAmount * 100).toFixed(1) + '%' : '') + '</td></tr>' +
-    '<tr class="border-t border-slate-200"><td class="font-bold pt-1">Alokovan\u00E9 celkom:</td><td class="text-right font-black pt-1">' + fmtE(grandTotals.allocTotal) + '</td><td></td></tr>' +
+    '<tr class="border-t border-slate-200"><td class="font-bold pt-1">Alokovan\u00E9 celkom:</td><td class="text-right font-black pt-1">' + fmtE(grandTotals.allocTotal + grandTotals.childRedirected) + '</td><td></td></tr>' +
+    (grandTotals.childRedirected > 0 ? '<tr><td class="text-teal-600 text-[8px]">\u00A0\u00A0z toho presmerovan\u00E9 (auto-fakt\u00FAry):</td><td class="text-right text-teal-600 text-[8px]">' + fmtE(grandTotals.childRedirected) + '</td><td></td></tr>' : '') +
     '<tr class="' + (grandOk ? 'text-green-600' : 'text-red-600') + '"><td class="font-bold">' + (grandOk ? '\u2705' : '\u26A0') + ' Rozdiel:</td><td class="text-right font-black">' + fmtE(Math.abs(grandTotals.diff)) + '</td><td class="text-[7px] pl-2">' + (grandTotals.noAlloc > 0 ? grandTotals.noAlloc + ' fakt\u00FAr bez alok\u00E1ci\u00ED' : '') + '</td></tr>' +
     '</table></div>';
 
@@ -1559,7 +1582,7 @@ window.runReconciliation = async function() {
   // Per category
   catNames.forEach(function(catName) {
     var cat = byCat[catName];
-    var catDiff = cat.expTotal - cat.allocTotal;
+    var catDiff = cat.expTotal - cat.allocTotal - cat.childTotal;
     var catOk = Math.abs(catDiff) <= 1;
     var catBg = catOk ? 'bg-slate-50' : 'bg-red-50';
 
@@ -1570,6 +1593,7 @@ window.runReconciliation = async function() {
           '<span class="font-bold mr-3">' + fmtE(cat.expTotal) + '</span>' +
           '<span class="text-blue-600 mr-1">N:' + fmtE(cat.tenantTotal) + '</span>' +
           '<span class="text-orange-600 mr-1">V:' + fmtE(cat.ownerTotal) + '</span>' +
+          (cat.childTotal > 0 ? '<span class="text-teal-600 mr-1">\u2192' + fmtE(cat.childTotal) + '</span>' : '') +
           (Math.abs(catDiff) > 1 ? '<span class="text-red-600 font-bold">\u0394 ' + fmtE(catDiff) + '</span>' : '') +
         '</span>' +
       '</div>';
@@ -1584,12 +1608,13 @@ window.runReconciliation = async function() {
 
     cat.expenses.forEach(function(exp) {
       var absDiff = Math.abs(exp.diff);
-      var rowCls = absDiff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : '');
+      var rowCls = absDiff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : (exp.isChild ? ' class="bg-teal-50 opacity-80"' : ''));
       var badges = '';
       if (exp.method === 'meter') badges += '<span class="text-[6px] bg-purple-100 text-purple-600 px-1 rounded">M</span> ';
-      if (exp.isAuto) badges += '<span class="text-[6px] bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> ';
+      if (exp.isAuto || exp.isChild) badges += '<span class="text-[6px] bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> ';
       if (exp.costType === 'amortized') badges += '<span class="text-[6px] bg-amber-100 text-amber-600 px-1 rounded">' + exp.amortYears + 'r</span> ';
-      if (exp.allocCount === 0) badges += '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded">\u2205</span> ';
+      if (exp.childAmount > 0) badges += '<span class="text-[6px] bg-teal-100 text-teal-600 px-1 rounded">\u2192 ' + fmtE(exp.childAmount) + '</span> ';
+      if (exp.allocCount === 0 && !exp.isChild) badges += '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded">\u2205</span> ';
 
       html += '<tr' + rowCls + '>' +
         '<td class="py-0.5 text-slate-500">' + exp.ref + '</td>' +
@@ -1620,6 +1645,7 @@ window.runReconciliation = async function() {
     '<span><span class="bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> Auto-generovan\u00E9</span>' +
     '<span><span class="bg-amber-100 text-amber-600 px-1 rounded">Xr</span> Amortiz\u00E1cia</span>' +
     '<span><span class="bg-red-100 text-red-600 px-1 rounded">\u2205</span> Bez alok\u00E1ci\u00ED</span>' +
+    '<span><span class="bg-teal-100 text-teal-600 px-1 rounded">\u2192</span> Presmerovan\u00E9 (auto-child)</span>' +
     '<span class="ml-4"><span class="text-blue-600 font-bold">N:</span> N\u00E1jomcovia</span>' +
     '<span><span class="text-orange-600 font-bold">V:</span> Vlastn\u00EDk</span>' +
   '</div></div>';
