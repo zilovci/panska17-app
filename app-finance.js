@@ -529,7 +529,7 @@ async function loadMeters() {
   }).join('') + '</div>';
 }
 
-window.showAddMeter = function() {
+window.showAddMeter = async function() {
   editingMeterId = null;
   document.getElementById('meter-modal-title').innerText = 'Nový merač';
   document.getElementById('mtr-name').value = '';
@@ -544,6 +544,12 @@ window.showAddMeter = function() {
   document.getElementById('mtr-deduction-note').value = '';
   document.getElementById('mtr-has-deduction').checked = false;
   document.getElementById('mtr-deduction-row').classList.add('hidden');
+  document.getElementById('mtr-deduction-zone').value = '';
+  // Populate deduction zone dropdown
+  var dedZoneSel = document.getElementById('mtr-deduction-zone');
+  dedZoneSel.innerHTML = '<option value="">-- Zóna pre odpočet (kam alokovať) --</option>';
+  var { data: dzones = [] } = await sb.from('zones').select('id, name, tenant_name').order('name');
+  dzones.forEach(function(z) { dedZoneSel.innerHTML += '<option value="' + z.id + '">' + (z.tenant_name ? z.tenant_name + ' – ' : '') + z.name + '</option>'; });
   document.getElementById('modal-meter').classList.remove('hidden');
 };
 
@@ -569,6 +575,12 @@ window.editMeter = async function(id) {
   document.getElementById('mtr-has-deduction').checked = m.has_deduction || false;
   // Show deduction row if category is set (redirected meter)
   document.getElementById('mtr-deduction-row').classList.toggle('hidden', !m.cost_category_id);
+  // Populate deduction zone dropdown
+  var dedZoneSel2 = document.getElementById('mtr-deduction-zone');
+  dedZoneSel2.innerHTML = '<option value="">-- Zóna pre odpočet (kam alokovať) --</option>';
+  var { data: dzones2 = [] } = await sb.from('zones').select('id, name, tenant_name').order('name');
+  dzones2.forEach(function(z) { dedZoneSel2.innerHTML += '<option value="' + z.id + '">' + (z.tenant_name ? z.tenant_name + ' – ' : '') + z.name + '</option>'; });
+  dedZoneSel2.value = m.deduction_zone_id || '';
 
   // Load zone assignments
   var { data: mzList = [] } = await sb.from('meter_zones').select('zone_id').eq('meter_id', id);
@@ -593,16 +605,26 @@ window.saveMeter = async function() {
     cost_category_id: document.getElementById('mtr-category').value || null,
     note: document.getElementById('mtr-note').value.trim() || null,
     has_deduction: document.getElementById('mtr-has-deduction').checked || false,
-    deduction_note: document.getElementById('mtr-deduction-note').value.trim() || null
+    deduction_note: document.getElementById('mtr-deduction-note').value.trim() || null,
+    deduction_zone_id: document.getElementById('mtr-deduction-zone').value || null
   };
   if (!data.name) { alert('Vyplňte názov.'); return; }
 
   var meterId;
   if (editingMeterId) {
-    await sb.from('meters').update(data).eq('id', editingMeterId);
+    var { error: updErr } = await sb.from('meters').update(data).eq('id', editingMeterId);
+    if (updErr && updErr.message && updErr.message.indexOf('deduction_zone_id') >= 0) {
+      delete data.deduction_zone_id;
+      await sb.from('meters').update(data).eq('id', editingMeterId);
+    }
     meterId = editingMeterId;
   } else {
-    var { data: inserted } = await sb.from('meters').insert(data).select('id').single();
+    var { data: inserted, error: insErr } = await sb.from('meters').insert(data).select('id').single();
+    if (insErr && insErr.message && insErr.message.indexOf('deduction_zone_id') >= 0) {
+      delete data.deduction_zone_id;
+      var { data: inserted2 } = await sb.from('meters').insert(data).select('id').single();
+      inserted = inserted2;
+    }
     meterId = inserted.id;
   }
 
@@ -2686,7 +2708,24 @@ window.calcMeterAllocation = async function() {
       mc.redirectedConsumption = redirectedCons;
       mc.deduction = deduction;
       mc.deductionNote = mc.meter.deduction_note || '';
-      redirectedTotal += mc.consumption; // Full consumption subtracted from main
+
+      // Only NET consumption goes to other category (Vykurovanie)
+      redirectedTotal += redirectedCons;
+
+      // Deduction stays in THIS category's pool (e.g., chladničky stay in Elektrina)
+      if (deduction > 0) {
+        subMeterTotal += deduction;
+        var dedZoneId = mc.meter.deduction_zone_id || null;
+        var dedZone = dedZoneId ? allZones.find(function(z) { return z.id === dedZoneId; }) : null;
+        zoneAllocs.push({
+          zoneId: dedZoneId,
+          zoneName: dedZone ? (dedZone.tenant_name || dedZone.name) : (mc.meter.deduction_note || 'Odpočet z ' + mc.meter.name),
+          consumption: deduction,
+          meterName: mc.meter.name + ' (odpočet)',
+          payer: dedZoneId ? 'tenant' : 'owner',
+          note: mc.meter.deduction_note || 'odpočet z presmerovaného merača'
+        });
+      }
       return;
     }
 
@@ -2834,22 +2873,6 @@ window.calcMeterAllocation = async function() {
     // Redirected meters are subtracted from main but not allocated to this expense
     var remainder = mainConsumption - subMeterTotal - redirectedTotal;
 
-    // Add redirected consumption as informational line
-    var redirectedMcs = meterConsumption.filter(function(mc) { return mc.isRedirected; });
-    redirectedMcs.forEach(function(rmc) {
-      zoneAllocs.push({
-        zoneId: null,
-        zoneName: '→ ' + (rmc.redirectedCatName || 'Iná kategória'),
-        consumption: rmc.redirectedConsumption !== undefined ? rmc.redirectedConsumption : rmc.consumption,
-        fullConsumption: rmc.consumption,
-        deduction: rmc.deduction || 0,
-        deductionNote: rmc.deductionNote || '',
-        meterName: rmc.meter.name,
-        payer: 'redirect',
-        note: rmc.meter.meter_number ? '#' + rmc.meter.meter_number : ''
-      });
-    });
-
     if (remainder > 0.01) {
       zoneAllocs.push({
         zoneId: null,
@@ -2871,6 +2894,22 @@ window.calcMeterAllocation = async function() {
       });
     }
   }
+
+  // Add redirected consumption as informational line (works with or without main meter)
+  var redirectedMcs = meterConsumption.filter(function(mc) { return mc.isRedirected; });
+  redirectedMcs.forEach(function(rmc) {
+    zoneAllocs.push({
+      zoneId: null,
+      zoneName: '→ ' + (rmc.redirectedCatName || 'Iná kategória'),
+      consumption: rmc.redirectedConsumption !== undefined ? rmc.redirectedConsumption : rmc.consumption,
+      fullConsumption: rmc.consumption,
+      deduction: rmc.deduction || 0,
+      deductionNote: rmc.deductionNote || '',
+      meterName: rmc.meter.name,
+      payer: 'redirect',
+      note: rmc.meter.meter_number ? '#' + rmc.meter.meter_number : ''
+    });
+  });
 
   totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
@@ -2924,12 +2963,16 @@ window.calcMeterAllocation = async function() {
   var summaryMainCons = mainMc ? mainMc.consumption : 0;
   var summarySubCons = subMeterTotal;
   var summaryRedirCons = redirectedTotal;
+  // Calculate deduction totals from redirected meters
+  var summaryDeductCons = meterConsumption.filter(function(mc) { return mc.isRedirected; }).reduce(function(s, mc) { return s + (mc.deduction || 0); }, 0);
+  var summarySubWithoutDeduct = summarySubCons - summaryDeductCons;
   var summaryRemainder = summaryMainCons - summarySubCons - summaryRedirCons;
   var summaryColor = !mainMc ? 'bg-red-50 border-red-200' : (summaryRemainder < -0.5 ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200');
 
   // Store summary for audit trail
   window._meterSummary = 'Hlavný: ' + summaryMainCons.toFixed(0) + ' ' + unit +
-    ' | Podmerače: ' + summarySubCons.toFixed(0) + ' ' + unit +
+    ' | Podmerače: ' + summarySubWithoutDeduct.toFixed(0) + ' ' + unit +
+    (summaryDeductCons > 0 ? ' | Odpočet: ' + summaryDeductCons.toFixed(0) + ' ' + unit : '') +
     (summaryRedirCons > 0 ? ' | Presm.: ' + summaryRedirCons.toFixed(0) + ' ' + unit : '') +
     (mainMc ? ' | Rozdiel: ' + summaryRemainder.toFixed(0) + ' ' + unit + ' (' + (summaryMainCons > 0 ? (summaryRemainder / summaryMainCons * 100).toFixed(1) : '0') + '%)' : ' | Hlavný merač chýba!');
 
@@ -2939,8 +2982,9 @@ window.calcMeterAllocation = async function() {
       '<div class="flex justify-between"><span>Hlavný merač:</span><span class="font-bold">' + summaryMainCons.toFixed(2) + ' ' + unit + '</span></div>' : 
       '<div class="flex justify-between text-red-600"><span>Hlavný merač:</span><span class="font-bold">nenájdený / bez odčítaní</span></div>'
     ) +
-    '<div class="flex justify-between"><span>Podmerače spolu:</span><span class="font-bold">' + summarySubCons.toFixed(2) + ' ' + unit + '</span></div>' +
-    (summaryRedirCons > 0 ? '<div class="flex justify-between text-blue-600"><span>Presmerované:</span><span class="font-bold">' + summaryRedirCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
+    '<div class="flex justify-between"><span>Podmerače spolu:</span><span class="font-bold">' + summarySubWithoutDeduct.toFixed(2) + ' ' + unit + '</span></div>' +
+    (summaryDeductCons > 0 ? '<div class="flex justify-between text-amber-600"><span>Odpočet (zostáva tu):</span><span class="font-bold">' + summaryDeductCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
+    (summaryRedirCons > 0 ? '<div class="flex justify-between text-blue-600"><span>Presmerované (→ iná kat.):</span><span class="font-bold">' + summaryRedirCons.toFixed(2) + ' ' + unit + '</span></div>' : '') +
     (mainMc ?
       '<div class="flex justify-between border-t border-slate-200 pt-1 mt-1' + (summaryRemainder < -0.5 ? ' text-red-600' : summaryRemainder > 0.01 ? ' text-orange-600' : ' text-green-600') + '">' +
         '<span>Rozdiel (straty):</span><span class="font-bold">' + summaryRemainder.toFixed(2) + ' ' + unit + 
