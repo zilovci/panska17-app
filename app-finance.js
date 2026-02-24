@@ -2485,7 +2485,6 @@ window.calcMeterAllocation = async function() {
     if (catId) {
       var { data: redirMeters = [] } = await sb.from('meters').select('*, cost_categories(name)').eq('type', meterType).not('cost_category_id', 'is', null).neq('cost_category_id', catId);
       redirectedMeters = redirMeters;
-      console.log('Redirected meters found:', redirectedMeters.map(function(m) { return m.name + ' → ' + (m.cost_categories ? m.cost_categories.name : '?'); }));
     }
   }
 
@@ -3109,7 +3108,6 @@ window.calcMeterAllocation = async function() {
       calculatedAmount: a.amount  // pre-calculated proportional amount
     };
   });
-  console.log('Stored _redirectedAllocations:', JSON.stringify(window._redirectedAllocations));
 };
 
 // Recalc meter when period changes
