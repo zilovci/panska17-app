@@ -3564,14 +3564,16 @@ window.saveExpense = async function() {
         await sb.from('expense_allocations').delete().eq('expense_id', childExpenseId);
 
         // Get zones from last heating allocation preset or all heated zones
-        var { data: lastHeating } = await sb.from('expenses')
+        var { data: lastHeatingArr, error: lhErr } = await sb.from('expenses')
           .select('id, expense_allocations(zone_id, payer, percentage, amount, tempering_used, area_used)')
           .eq('category_id', redir.targetCategoryId)
           .neq('id', childExpenseId)
           .or('is_auto_generated.is.null,is_auto_generated.eq.false')
           .order('date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        var lastHeating = (lastHeatingArr && lastHeatingArr.length > 0) ? lastHeatingArr[0] : null;
+
+        console.log('Auto-child alloc: lastHeating=', lastHeating, 'error=', lhErr, 'childExpenseId=', childExpenseId, 'targetCatId=', redir.targetCategoryId);
 
         if (lastHeating && lastHeating.expense_allocations && lastHeating.expense_allocations.length > 0) {
           // Reuse zone distribution from last heating expense, just scale amounts
@@ -3590,6 +3592,7 @@ window.saveExpense = async function() {
               };
             });
             await sb.from('expense_allocations').insert(childAllocs);
+            console.log('Auto-child: created', childAllocs.length, 'allocations from lastHeating');
           }
         } else {
           // Fallback: allocate by area to all zones (like a standard area-based expense)
@@ -3610,6 +3613,9 @@ window.saveExpense = async function() {
               };
             });
             await sb.from('expense_allocations').insert(fbAllocs);
+            console.log('Auto-child: created', fbAllocs.length, 'fallback allocations from', heatedZones.length, 'heated zones');
+          } else {
+            console.error('Auto-child: NO zones found for allocation!');
           }
         }
       }
