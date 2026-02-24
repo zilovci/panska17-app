@@ -1208,10 +1208,14 @@ window.generateInvoice = async function(existingInvoice) {
   y += 7;
   doc.setFontSize(11);
   doc.text(stripDia('za obdobie ' + periodLabel), M, y);
-  y += 5;
+  y += 4;
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), M, y);
+  y += 4;
 
   doc.setDrawColor(0);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(0.25);
   doc.line(M, y, W - M, y);
   y += 8;
 
@@ -1220,11 +1224,12 @@ window.generateInvoice = async function(existingInvoice) {
   // Two-column: Prenajímateľ (left) | Nájomca (right)
   var colL = M, colR = W / 2 + 5;
 
-  doc.setFontSize(8);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text(stripDia('Prenajimatel:'), colL, y);
   doc.text(stripDia('Najomca:'), colR, y);
   y += 4;
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
 
   // Left column - Owner
@@ -1251,9 +1256,7 @@ window.generateInvoice = async function(existingInvoice) {
   if (tenant.phone) { doc.text(stripDia('Tel: ' + tenant.phone), colR, ty); ty += 3.5; }
   if (tenant.email) { doc.text(stripDia('Email: ' + tenant.email), colR, ty); ty += 3.5; }
 
-  y = Math.max(oy, ty) + 4;
-  doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), M, y);
-  y += 7;
+  y = Math.max(oy, ty) + 6;
 
   // COSTS TABLE: Položka | Mesačne | Suma
   doc.setFontSize(11);
@@ -1288,7 +1291,7 @@ window.generateInvoice = async function(existingInvoice) {
     styles: { fontSize: 9, cellPadding: 2, halign: 'left' },
     headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
     columnStyles: {
-      0: { cellWidth: 80 },
+      0: { cellWidth: 90 },
       1: { cellWidth: 40, halign: 'right' },
       2: { cellWidth: 40, halign: 'right' }
     }
@@ -1391,15 +1394,15 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('helvetica', 'bold');
     doc.text(stripDia('DETAILNY ROZPIS'), M, dy);
     dy += 5;
-    doc.setFontSize(8);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100);
     doc.text(stripDia('Priestor: ' + zoneLabel + ' - ' + totalArea.toFixed(2) + ' m2'), M, dy);
     doc.setTextColor(0);
-    dy += 3;
-    doc.setDrawColor(0); doc.setLineWidth(0.5);
+    dy += 4;
+    doc.setDrawColor(0); doc.setLineWidth(0.25);
     doc.line(M, dy, W - M, dy);
-    dy += 6;
+    dy += 8;
 
     // Helper: detail section with consistent format
     function detailSection(title, rows) {
@@ -1409,7 +1412,7 @@ window.generateInvoice = async function(existingInvoice) {
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(0);
       doc.text(stripDia(title), M, dy);
-      dy += 4;
+      dy += 5;
 
       doc.autoTable({
         startY: dy,
@@ -1419,7 +1422,7 @@ window.generateInvoice = async function(existingInvoice) {
         styles: { fontSize: 8, cellPadding: 1.2 },
         columnStyles: { 0: { cellWidth: 75 }, 1: { cellWidth: 55, halign: 'right' } }
       });
-      dy = doc.lastAutoTable.finalY + 6;
+      dy = doc.lastAutoTable.finalY + 10;
     }
 
     // --- VODA A KANALIZÁCIA ---
@@ -1478,17 +1481,45 @@ window.generateInvoice = async function(existingInvoice) {
         heatingTotal += parseFloat(a.expenses.amount) || 0;
       });
 
-      // Get total heated area from building zones (with tempering)
-      var totalHeatedArea = allZones.reduce(function(s, z) {
-        if (!z.is_active) return s;
+      // Get total heated area from building zones
+      // Occupied zones = full area, empty/owner zones = area * tempering%
+      var totalHeatedArea = 0;
+      var heatedZoneDetails = [];
+      allZones.forEach(function(z) {
+        if (!z.is_active) return;
+        var area = parseFloat(z.area_m2) || 0;
         var temp = parseFloat(z.tempering_pct) || 0;
-        return s + ((parseFloat(z.area_m2) || 0) * temp / 100);
-      }, 0);
+        if (area === 0) return;
+        var effectiveArea;
+        if (z.tenant_id) {
+          // Occupied zone - full area
+          effectiveArea = area;
+          heatedZoneDetails.push({ name: z.tenant_name || z.name, area: area, effective: effectiveArea, pct: 100 });
+        } else if (temp > 0) {
+          // Empty zone with tempering
+          effectiveArea = area * temp / 100;
+          heatedZoneDetails.push({ name: z.name + ' (temperovanie ' + temp + '%)', area: area, effective: effectiveArea, pct: temp });
+        } else {
+          return; // not heated at all
+        }
+        totalHeatedArea += effectiveArea;
+      });
 
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovana plocha budovy'), totalHeatedArea.toFixed(2) + ' m2']);
 
+      // Show zone breakdown
+      heatedZoneDetails.forEach(function(zd) {
+        var detail = zd.area.toFixed(2) + ' m2';
+        if (zd.pct < 100) detail += ' x ' + zd.pct + '% = ' + zd.effective.toFixed(2) + ' m2';
+        hRows.push([stripDia('  ' + zd.name), detail]);
+      });
+
       // Building cost composition
+      if (heatingInputs.length > 0) {
+        hRows.push(['', '']); // spacer
+        hRows.push([{content: stripDia('Naklady na vykurovanie:'), styles: {fontStyle: 'bold'}}, '']);
+      }
       heatingInputs.forEach(function(h) {
         var shortDesc = h.desc.replace(/\s*-\s*\d{4}.*$/, '').replace(/\s*jan.*$/i, '').trim();
         hRows.push([stripDia('  ' + shortDesc), fmtEur(h.amount) + ' EUR']);
@@ -1497,8 +1528,14 @@ window.generateInvoice = async function(existingInvoice) {
         hRows.push([{content: stripDia('Naklady na vykurovanie celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       }
 
-      // Tenant's portion
+      // Tenant's portion with percentage
+      hRows.push(['', '']); // spacer
+      hRows.push([{content: stripDia('Vas podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vasa plocha'), totalArea.toFixed(2) + ' m2']);
+      if (totalHeatedArea > 0) {
+        var heatPct = totalArea / totalHeatedArea * 100;
+        hRows.push([stripDia('Podiel na vykurovani'), heatPct.toFixed(2) + ' %']);
+      }
       if (heatAmount > 0 && totalArea > 0) {
         hRows.push([stripDia('Naklad na m2 / rok'), fmtEur(heatAmount / totalArea) + ' EUR/m2']);
         hRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmount / totalArea / 12) + ' EUR/m2/mes.']);
