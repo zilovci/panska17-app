@@ -3468,174 +3468,18 @@ window.saveExpense = async function() {
     }
   }
 
-  // Create/update child expenses for redirected meters (e.g., vodomer kotolne → Vykurovanie)
-  if (expenseId && currentAllocMethod === 'meter' && window._redirectedAllocations && window._redirectedAllocations.length > 0) {
-    var parentAmount = parseFloat(document.getElementById('exp-amount').value) || 0;
-    var childResults = [];
+  // Redirected meter amounts (water/electricity → Vykurovanie) are handled
+  // directly in PDF via meter_redirected_consumption field on the parent expense.
+  // No auto-child expenses needed.
+  window._redirectedAllocations = null;
 
-    for (var ri = 0; ri < window._redirectedAllocations.length; ri++) {
-      var redir = window._redirectedAllocations[ri];
-      // Use pre-calculated amount from allocation preview (works with or without main meter)
-      var childAmount = redir.calculatedAmount || 0;
-      if (!redir.targetCategoryId || childAmount <= 0) {
-        childResults.push({ name: redir.meterName, amount: 0, status: 'PRESKOČENÉ: chýba kategória alebo suma' });
-        continue;
-      }
-
-      var childData = {
-        date: data.date,
-        category_id: redir.targetCategoryId,
-        description: data.description + ' – ' + redir.meterName,
-        supplier: data.supplier,
-        amount: childAmount,
-        zone_id: null,
-        invoice_number: data.invoice_number,
-        billing_period_from: data.billing_period_from,
-        billing_period_to: data.billing_period_to,
-        period_from: data.period_from,
-        period_to: data.period_to,
-        note: 'Auto: ' + redir.consumption.toFixed(2) + ' ' + redir.unit + (redir.mainConsumption > 0 ? ' z ' + redir.mainConsumption.toFixed(2) + ' ' + redir.unit + ' (' + (redir.consumption / redir.mainConsumption * 100).toFixed(1) + '%)' : '') + ' = ' + childAmount.toFixed(2) + ' €',
-        cost_type: 'operating',
-        alloc_method: 'area',
-        parent_expense_id: expenseId,
-        is_auto_generated: true,
-        auto_source_meter_id: redir.meterId,
-        created_by: currentUserId
-      };
-
-      // Check if child already exists for this parent + meter
-      var existingChild = null;
-      try {
-        var { data: ec } = await sb.from('expenses').select('id')
-          .eq('parent_expense_id', expenseId)
-          .eq('auto_source_meter_id', redir.meterId)
-          .maybeSingle();
-        existingChild = ec;
-      } catch(e) {
-        // Columns might not exist - try creating them
-        console.warn('Child expense lookup failed, attempting migration:', e.message);
-        try {
-          await sb.rpc('exec_sql', { sql: "ALTER TABLE expenses ADD COLUMN IF NOT EXISTS parent_expense_id uuid REFERENCES expenses(id) ON DELETE CASCADE; ALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false; ALTER TABLE expenses ADD COLUMN IF NOT EXISTS auto_source_meter_id uuid REFERENCES meters(id);" });
-        } catch(migErr) {
-          // RPC may not exist, that's OK - user needs to run migration manually
-          console.warn('Auto-migration failed:', migErr.message);
-        }
-      }
-
-      var childExpenseId;
-      try {
-        if (existingChild) {
-          await sb.from('expenses').update(childData).eq('id', existingChild.id);
-          childExpenseId = existingChild.id;
-        } else {
-          var { data: newChild, error: childErr } = await sb.from('expenses').insert(childData).select('id').single();
-          if (childErr) {
-            console.error('Child expense insert error:', childErr);
-            // Try without new columns
-            delete childData.parent_expense_id;
-            delete childData.is_auto_generated;
-            delete childData.auto_source_meter_id;
-            childData.note = '[AUTO-CHILD of ' + expenseId + '] ' + childData.note;
-            var { data: newChild2, error: childErr2 } = await sb.from('expenses').insert(childData).select('id').single();
-            if (childErr2) {
-              childResults.push({ name: redir.meterName, amount: childAmount, status: 'CHYBA: ' + childErr2.message });
-              continue;
-            }
-            childExpenseId = newChild2 ? newChild2.id : null;
-          } else {
-            childExpenseId = newChild ? newChild.id : null;
-          }
-        }
-      } catch(insertErr) {
-        childResults.push({ name: redir.meterName, amount: childAmount, status: 'CHYBA: ' + insertErr.message });
-        continue;
-      }
-
-      childResults.push({ name: redir.meterName, amount: childAmount, status: childExpenseId ? 'OK' : 'CHYBA' });
-
-      // Run area-based allocation on child expense (same logic as Vykurovanie)
-      if (childExpenseId) {
-        await sb.from('expense_allocations').delete().eq('expense_id', childExpenseId);
-
-        // Get zones from last heating allocation preset or all heated zones
-        var { data: lastHeatingArr, error: lhErr } = await sb.from('expenses')
-          .select('id, expense_allocations(zone_id, payer, percentage, amount, tempering_used, area_used)')
-          .eq('category_id', redir.targetCategoryId)
-          .neq('id', childExpenseId)
-          .or('is_auto_generated.is.null,is_auto_generated.eq.false')
-          .order('date', { ascending: false })
-          .limit(1);
-        var lastHeating = (lastHeatingArr && lastHeatingArr.length > 0) ? lastHeatingArr[0] : null;
-
-
-        if (lastHeating && lastHeating.expense_allocations && lastHeating.expense_allocations.length > 0) {
-          // Reuse zone distribution from last heating expense, just scale amounts
-          var lastTotal = lastHeating.expense_allocations.reduce(function(s, a) { return s + Math.abs(parseFloat(a.amount) || 0); }, 0);
-          if (lastTotal > 0) {
-            var childAllocs = lastHeating.expense_allocations.map(function(a) {
-              var ratio = Math.abs(parseFloat(a.amount) || 0) / lastTotal;
-              return {
-                expense_id: childExpenseId,
-                zone_id: a.zone_id,
-                percentage: parseFloat((ratio * 100).toFixed(2)),
-                amount: parseFloat((childAmount * ratio).toFixed(2)),
-                payer: 'tenant',
-                tempering_used: a.tempering_used,
-                area_used: a.area_used
-              };
-            });
-            var { error: allocInsertErr } = await sb.from('expense_allocations').insert(childAllocs);
-          }
-        } else {
-          // Fallback: allocate by area to all zones (like a standard area-based expense)
-          console.warn('No lastHeating found for auto-child, using area-based fallback');
-          var { data: fallbackZones = [] } = await sb.from('zones').select('id, name, area_m2, is_heated, is_tempered').order('name');
-          var heatedZones = fallbackZones.filter(function(z) { return z.is_heated || z.is_tempered; });
-          if (heatedZones.length === 0) heatedZones = fallbackZones.filter(function(z) { return parseFloat(z.area_m2) > 0; });
-          var totalArea = heatedZones.reduce(function(s, z) { return s + (parseFloat(z.area_m2) || 0); }, 0);
-          if (totalArea > 0) {
-            var fbAllocs = heatedZones.map(function(z) {
-              var share = (parseFloat(z.area_m2) || 0) / totalArea;
-              return {
-                expense_id: childExpenseId,
-                zone_id: z.id,
-                percentage: parseFloat((share * 100).toFixed(2)),
-                amount: parseFloat((childAmount * share).toFixed(2)),
-                payer: 'tenant'
-              };
-            });
-            await sb.from('expense_allocations').insert(fbAllocs);
-          } else {
-            console.error('Auto-child: NO zones found for allocation!');
-          }
-        }
-      }
-    }
-    // Show feedback about child expenses
-    if (childResults.length > 0) {
-      var msg = 'Automatické faktúry (presmerované merače):\n\n';
-      childResults.forEach(function(cr) {
-        msg += (cr.status === 'OK' ? '✅' : '❌') + ' ' + cr.name + ': ' + cr.amount.toFixed(2) + ' € – ' + cr.status + '\n';
-      });
-      var hasError = childResults.some(function(cr) { return cr.status !== 'OK'; });
-      if (hasError) {
-        msg += '\n⚠ Niektoré auto-faktúry sa nepodarilo vytvoriť.\nSpustite migráciu v Supabase SQL Editor:\n\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS parent_expense_id uuid REFERENCES expenses(id) ON DELETE CASCADE;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS auto_source_meter_id uuid REFERENCES meters(id);';
-      }
-      alert(msg);
-    }
-    window._redirectedAllocations = null;
-  }
-
-  // Delete orphaned child expenses if no longer redirected
-  if (expenseId && currentAllocMethod === 'meter') {
-    var redirectedMeterIds = (window._redirectedAllocations || []).map(function(r) { return r.meterId; }).filter(Boolean);
-    var { data: existingChildren = [] } = await sb.from('expenses').select('id, auto_source_meter_id')
-      .eq('parent_expense_id', expenseId);
-    for (var ci = 0; ci < existingChildren.length; ci++) {
-      if (redirectedMeterIds.indexOf(existingChildren[ci].auto_source_meter_id) < 0) {
-        await sb.from('expense_allocations').delete().eq('expense_id', existingChildren[ci].id);
-        await sb.from('expenses').delete().eq('id', existingChildren[ci].id);
-      }
+  // Clean up any legacy auto-children from previous versions
+  if (expenseId) {
+    var { data: legacyChildren = [] } = await sb.from('expenses').select('id')
+      .eq('parent_expense_id', expenseId).eq('is_auto_generated', true);
+    for (var ci = 0; ci < legacyChildren.length; ci++) {
+      await sb.from('expense_allocations').delete().eq('expense_id', legacyChildren[ci].id);
+      await sb.from('expenses').delete().eq('id', legacyChildren[ci].id);
     }
   }
 
