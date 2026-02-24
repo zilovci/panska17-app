@@ -1142,6 +1142,16 @@ window.generateInvoice = async function(existingInvoice) {
     return e.date && e.date >= dateFrom && e.date <= dateTo;
   });
 
+  // Load expenses with redirected meter consumption (water/electricity → heating)
+  var redirectedExpenses = [];
+  try {
+    var rResult = await sb.from('expenses')
+      .select('id, amount, description, supplier, date, period_from, period_to, alloc_method, meter_main_consumption, meter_redirected_consumption, meter_consumption_unit, cost_categories(name)')
+      .gt('meter_redirected_consumption', 0)
+      .lte('period_from', dateTo).gte('period_to', dateFrom);
+    redirectedExpenses = rResult.data || [];
+  } catch(e) { /* column may not exist */ }
+
   // Only tenant-paid allocations
   var tenantAllocs = periodAllocs.filter(function(a) { return a.payer !== 'owner'; });
 
@@ -1518,6 +1528,57 @@ window.generateInvoice = async function(existingInvoice) {
         heatGroups[group].items.push(h);
       });
 
+      // Add redirected amounts from other categories (water/electricity → heating)
+      // Find from already-loaded periodAllocs: expenses with meter_redirected_consumption > 0
+      var seenRedirected = {};
+      periodAllocs.forEach(function(a) {
+        if (!a.expenses) return;
+        var e = a.expenses;
+        if (seenRedirected[e.id]) return;
+        var catName = e.cost_categories ? e.cost_categories.name : '';
+        if (catName === 'Vykurovanie') return; // skip heating itself
+        var mainCons = parseFloat(e.meter_main_consumption) || 0;
+        var redirCons = parseFloat(e.meter_redirected_consumption) || 0;
+        if (mainCons <= 0 || redirCons <= 0) return;
+        seenRedirected[e.id] = true;
+
+        var redirAmount = parseFloat(((redirCons / mainCons) * (parseFloat(e.amount) || 0)).toFixed(2));
+        var group;
+        if (catName.match(/[Vv]od|[Kk]anal/)) {
+          group = 'voda';
+        } else if (catName.match(/[Ee]lektr/)) {
+          group = 'elektrina';
+        } else {
+          group = 'kuric';
+        }
+        heatGroups[group].amount += redirAmount;
+        heatGroups[group].items.push({
+          desc: (e.description || catName) + ' (kotolna)',
+          supplier: e.supplier || '',
+          amount: redirAmount,
+          isRedirected: true
+        });
+        heatingTotal += redirAmount;
+      });
+      // Also check redirectedExpenses query (for expenses not in tenant's allocs)
+      redirectedExpenses.forEach(function(re) {
+        if (seenRedirected[re.id]) return;
+        var mainCons = parseFloat(re.meter_main_consumption) || 0;
+        var redirCons = parseFloat(re.meter_redirected_consumption) || 0;
+        var reAmount = parseFloat(re.amount) || 0;
+        if (mainCons <= 0 || redirCons <= 0) return;
+        seenRedirected[re.id] = true;
+
+        var redirAmount = parseFloat(((redirCons / mainCons) * reAmount).toFixed(2));
+        var catName = re.cost_categories ? re.cost_categories.name.toLowerCase() : '';
+        var group;
+        if (catName.match(/vod|kanal/)) group = 'voda';
+        else if (catName.match(/elektr/)) group = 'elektrina';
+        else group = 'kuric';
+        heatGroups[group].amount += redirAmount;
+        heatingTotal += redirAmount;
+      });
+
       // Get total heated area from building zones
       // Occupied zones = full area, empty/owner zones = area * tempering%
       var totalHeatedArea = 0;
@@ -1548,6 +1609,18 @@ window.generateInvoice = async function(existingInvoice) {
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
 
       // Tenant's portion with percentage
+      // heatAmount = direct Vykurovanie allocations to tenant zones
+      // Redirected amounts (water/electricity for kotolňa) are building-level,
+      // so tenant gets proportional share by area
+      var redirectedTotal = 0;
+      ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(key) {
+        heatGroups[key].items.forEach(function(item) {
+          if (item.isRedirected) redirectedTotal += item.amount;
+        });
+      });
+      var tenantRedirShare = totalHeatedArea > 0 ? parseFloat((redirectedTotal * totalArea / totalHeatedArea).toFixed(2)) : 0;
+      var heatAmountWithRedir = heatAmount + tenantRedirShare;
+
       hRows.push(['', '']); // spacer
       hRows.push([{content: stripDia('Vas podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vasa plocha'), totalArea.toFixed(2) + ' m2']);
@@ -1555,12 +1628,12 @@ window.generateInvoice = async function(existingInvoice) {
         var heatPct = totalArea / totalHeatedArea * 100;
         hRows.push([stripDia('Podiel na vykurovani'), heatPct.toFixed(2) + ' %']);
       }
-      if (heatAmount > 0 && totalArea > 0) {
-        hRows.push([stripDia('Naklad na m2 / rok'), fmtEur(heatAmount / totalArea) + ' EUR/m2']);
-        hRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmount / totalArea / 12) + ' EUR/m2/mes.']);
+      if (heatAmountWithRedir > 0 && totalArea > 0) {
+        hRows.push([stripDia('Naklad na m2 / rok'), fmtEur(heatAmountWithRedir / totalArea) + ' EUR/m2']);
+        hRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmountWithRedir / totalArea / 12) + ' EUR/m2/mes.']);
       }
-      hRows.push([stripDia('Mesacny naklad'), fmtEur(heatAmount / 12) + ' EUR/mes.']);
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([stripDia('Mesacny naklad'), fmtEur(heatAmountWithRedir / 12) + ' EUR/mes.']);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmountWithRedir) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
 
