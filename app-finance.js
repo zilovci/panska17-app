@@ -3577,11 +3577,11 @@ window.saveExpense = async function() {
 
         if (lastHeating && lastHeating.expense_allocations && lastHeating.expense_allocations.length > 0) {
           // Reuse zone distribution from last heating expense, just scale amounts
-          var lastTotal = lastHeating.expense_allocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+          var lastTotal = lastHeating.expense_allocations.reduce(function(s, a) { return s + Math.abs(parseFloat(a.amount) || 0); }, 0);
           console.log('Auto-child: lastTotal=', lastTotal, 'allocCount=', lastHeating.expense_allocations.length, 'childAmount=', childAmount);
           if (lastTotal > 0) {
             var childAllocs = lastHeating.expense_allocations.map(function(a) {
-              var ratio = (parseFloat(a.amount) || 0) / lastTotal;
+              var ratio = Math.abs(parseFloat(a.amount) || 0) / lastTotal;
               return {
                 expense_id: childExpenseId,
                 zone_id: a.zone_id,
