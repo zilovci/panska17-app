@@ -2461,6 +2461,8 @@ window.calcMeterAllocation = async function() {
     preview.classList.add('hidden');
     return;
   }
+  console.log('=== PERIOD DEBUG ===');
+  console.log('periodFrom:', periodFrom, 'periodTo:', periodTo, 'amount:', amount);
 
   // Determine meter type from category
   var catSel = document.getElementById('exp-category');
@@ -2598,6 +2600,10 @@ window.calcMeterAllocation = async function() {
       // Find reading closest to periodTo (before or at, with 14-day tolerance after)
       var endReadings = normalReadings.filter(function(r) { return r.date <= periodTo; });
       var endR = endReadings.length > 0 ? endReadings[endReadings.length - 1] : null;
+
+      console.log('METER:', m.name, '| readings:', normalReadings.map(function(r){return r.date+':'+r.value;}).join(', '),
+        '| startR:', startR ? startR.date+':'+startR.value : 'null',
+        '| endR:', endR ? endR.date+':'+endR.value : 'null');
 
       // If no end reading found in period, check for readings just after period end (up to 14 days)
       if (!endR || (endR.id === startR.id)) {
