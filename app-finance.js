@@ -1437,45 +1437,37 @@ window.runReconciliation = async function() {
 
   var periodStart = year + '-01-01', periodEnd = year + '-12-31';
 
-  // Load ALL expenses (not just filtered by zone)
-  var { data: expenses = [] } = await sb.from('expenses')
-    .select('id, description, supplier, amount, date, period_from, period_to, category_id, alloc_method, cost_type, amort_years, ref_number, is_auto_generated, auto_source_meter_id, parent_expense_id, cost_categories(name), expense_allocations(amount, payer, zone_id, zones(name, tenant_name))')
-    .gte('date', periodStart).lte('date', periodEnd)
-    .order('date');
+  // Use SAME query logic as overview (billing period overlap)
+  var fields = 'id, description, supplier, amount, date, period_from, period_to, category_id, alloc_method, cost_type, amort_years, ref_number, is_auto_generated, parent_expense_id, cost_categories(name), expense_allocations(amount, payer, zone_id, zones(name, tenant_name))';
 
-  // Also include expenses outside date range but with period overlap
-  var { data: periodExpenses = [] } = await sb.from('expenses')
-    .select('id, description, supplier, amount, date, period_from, period_to, category_id, alloc_method, cost_type, amort_years, ref_number, is_auto_generated, auto_source_meter_id, parent_expense_id, cost_categories(name), expense_allocations(amount, payer, zone_id, zones(name, tenant_name))')
-    .lte('period_from', periodEnd).gte('period_to', periodStart)
-    .order('date');
+  // 1. Expenses with billing period overlapping the year
+  var { data: exp1 = [] } = await sb.from('expenses').select(fields)
+    .lte('period_from', periodEnd).gte('period_to', periodStart);
 
-  // Merge and deduplicate
+  // 2. Expenses without billing period but with date in year
+  var { data: exp2 = [] } = await sb.from('expenses').select(fields)
+    .is('period_from', null).gte('date', periodStart).lte('date', periodEnd);
+
+  // Deduplicate
   var expMap = {};
-  expenses.concat(periodExpenses).forEach(function(e) { expMap[e.id] = e; });
+  exp1.concat(exp2).forEach(function(e) { expMap[e.id] = e; });
   var allExp = Object.values(expMap);
 
-  // Load all zones for name lookup
-  var { data: zones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
-  var zoneMap = {};
-  zones.forEach(function(z) { zoneMap[z.id] = z; });
-
-  // Load tenants
-  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, is_owner');
-  var tenantMap = {};
-  tenants.forEach(function(t) { tenantMap[t.id] = t; });
-
-  // Build per-category reconciliation
+  // Process each expense
   var byCat = {};
-  var grandTotals = { expAmount: 0, allocTenant: 0, allocOwner: 0, allocTotal: 0, diff: 0 };
+  var byType = { operating: { label: 'Prevádzkové', amount: 0, alloc: 0, count: 0 }, amortized: { label: 'Amortizované (ročný podiel)', amount: 0, alloc: 0, count: 0 }, investment: { label: 'Investičné', amount: 0, alloc: 0, count: 0 } };
+  var grandTotals = { expAmount: 0, expFull: 0, allocTenant: 0, allocOwner: 0, allocTotal: 0, noAlloc: 0, count: 0 };
 
   allExp.forEach(function(e) {
     var catName = e.cost_categories ? e.cost_categories.name : 'Bez kategórie';
-    if (!byCat[catName]) byCat[catName] = { expenses: [], expTotal: 0, tenantTotal: 0, ownerTotal: 0, allocTotal: 0 };
+    if (!byCat[catName]) byCat[catName] = { expenses: [], expTotal: 0, expFull: 0, tenantTotal: 0, ownerTotal: 0, allocTotal: 0 };
 
-    var expAmount = parseFloat(e.amount) || 0;
-    // For amortized, use yearly amount
-    if (e.cost_type === 'amortized' && e.amort_years > 0) {
-      expAmount = expAmount / e.amort_years;
+    var fullAmount = parseFloat(e.amount) || 0;
+    var yearlyAmount = fullAmount;
+    var costType = e.cost_type || 'operating';
+
+    if (costType === 'amortized' && e.amort_years > 0) {
+      yearlyAmount = fullAmount / e.amort_years;
     }
 
     var allocs = e.expense_allocations || [];
@@ -1486,119 +1478,137 @@ window.runReconciliation = async function() {
       else tenantSum += amt;
     });
     var allocTotal = tenantSum + ownerSum;
-    var diff = Math.abs(expAmount - allocTotal);
+    var diff = yearlyAmount - allocTotal;
 
     byCat[catName].expenses.push({
-      id: e.id,
       ref: e.ref_number || '',
       desc: e.description || '',
       supplier: e.supplier || '',
       method: e.alloc_method || 'area',
-      isAmort: e.cost_type === 'amortized',
+      costType: costType,
       amortYears: e.amort_years,
-      fullAmount: parseFloat(e.amount) || 0,
-      amount: expAmount,
+      fullAmount: fullAmount,
+      yearlyAmount: yearlyAmount,
       tenantSum: tenantSum,
       ownerSum: ownerSum,
       allocTotal: allocTotal,
       diff: diff,
       isAuto: e.is_auto_generated,
-      hasChild: !!e.parent_expense_id === false && allExp.some(function(ch) { return ch.parent_expense_id === e.id; }),
-      allocCount: allocs.length
+      allocCount: allocs.length,
+      periodFrom: e.period_from,
+      periodTo: e.period_to
     });
 
-    byCat[catName].expTotal += expAmount;
+    byCat[catName].expTotal += yearlyAmount;
+    byCat[catName].expFull += fullAmount;
     byCat[catName].tenantTotal += tenantSum;
     byCat[catName].ownerTotal += ownerSum;
     byCat[catName].allocTotal += allocTotal;
 
-    grandTotals.expAmount += expAmount;
+    grandTotals.expAmount += yearlyAmount;
+    grandTotals.expFull += fullAmount;
     grandTotals.allocTenant += tenantSum;
     grandTotals.allocOwner += ownerSum;
     grandTotals.allocTotal += allocTotal;
+    grandTotals.count++;
+    if (allocs.length === 0) grandTotals.noAlloc++;
+
+    if (byType[costType]) {
+      byType[costType].amount += yearlyAmount;
+      byType[costType].alloc += allocTotal;
+      byType[costType].count++;
+    }
   });
 
-  grandTotals.diff = Math.abs(grandTotals.expAmount - grandTotals.allocTotal);
+  grandTotals.diff = grandTotals.expAmount - grandTotals.allocTotal;
 
   // Build HTML
   var catNames = Object.keys(byCat).sort();
   var html = '<div class="bg-white border border-teal-200 rounded-xl p-4 space-y-3 max-h-[80vh] overflow-y-auto">' +
     '<div class="flex justify-between items-center mb-2">' +
-      '<span class="text-[11px] font-black text-teal-700 uppercase">📊 Reconciliácia ' + year + '</span>' +
+      '<span class="text-[11px] font-black text-teal-700 uppercase">\uD83D\uDCCA Reconcili\u00E1cia ' + year + ' \u2013 podľa z\u00FA\u010Dtovacieho obdobia</span>' +
       '<button onclick="document.getElementById(\'consistency-report\').classList.add(\'hidden\')" class="text-slate-300 hover:text-slate-500 text-sm">&times;</button>' +
     '</div>';
 
-  // Grand summary first
-  var grandColor = grandTotals.diff > 1 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
-  var grandIcon = grandTotals.diff > 1 ? '⚠' : '✅';
+  // Grand summary
+  var grandOk = Math.abs(grandTotals.diff) <= 1;
+  var grandColor = grandOk ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
   html += '<div class="' + grandColor + ' border rounded-lg p-3">' +
     '<table class="w-full text-[9px]">' +
-    '<tr><td class="font-bold text-slate-600">Faktúry celkom:</td><td class="text-right font-black">' + fmtE(grandTotals.expAmount) + '</td></tr>' +
-    '<tr><td class="text-blue-600">Nájomcovia:</td><td class="text-right font-bold text-blue-600">' + fmtE(grandTotals.allocTenant) + '</td></tr>' +
-    '<tr><td class="text-orange-600">Vlastník:</td><td class="text-right font-bold text-orange-600">' + fmtE(grandTotals.allocOwner) + '</td></tr>' +
-    '<tr class="border-t border-slate-200"><td class="font-bold pt-1">Alokované celkom:</td><td class="text-right font-black pt-1">' + fmtE(grandTotals.allocTotal) + '</td></tr>' +
-    (grandTotals.diff > 1 ? '<tr class="text-red-600"><td class="font-bold">' + grandIcon + ' Rozdiel:</td><td class="text-right font-black">' + fmtE(grandTotals.diff) + '</td></tr>' : '<tr class="text-green-600"><td class="font-bold">' + grandIcon + ' Rozdiel:</td><td class="text-right font-bold">OK (' + grandTotals.diff.toFixed(2) + ' €)</td></tr>') +
+    '<tr><td class="font-bold text-slate-600">\uD83D\uDCC4 Fakt\u00FAry (' + grandTotals.count + '):</td><td class="text-right font-black">' + fmtE(grandTotals.expAmount) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expFull !== grandTotals.expAmount ? '(pln\u00E1 hodnota: ' + fmtE(grandTotals.expFull) + ')' : '') + '</td></tr>' +
+    '<tr><td class="text-blue-600">\uD83D\uDC65 N\u00E1jomcovia:</td><td class="text-right font-bold text-blue-600">' + fmtE(grandTotals.allocTenant) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expAmount > 0 ? (grandTotals.allocTenant / grandTotals.expAmount * 100).toFixed(1) + '%' : '') + '</td></tr>' +
+    '<tr><td class="text-orange-600">\uD83C\uDFE0 Vlastn\u00EDk:</td><td class="text-right font-bold text-orange-600">' + fmtE(grandTotals.allocOwner) + '</td><td class="text-[7px] text-slate-400 pl-2">' + (grandTotals.expAmount > 0 ? (grandTotals.allocOwner / grandTotals.expAmount * 100).toFixed(1) + '%' : '') + '</td></tr>' +
+    '<tr class="border-t border-slate-200"><td class="font-bold pt-1">Alokovan\u00E9 celkom:</td><td class="text-right font-black pt-1">' + fmtE(grandTotals.allocTotal) + '</td><td></td></tr>' +
+    '<tr class="' + (grandOk ? 'text-green-600' : 'text-red-600') + '"><td class="font-bold">' + (grandOk ? '\u2705' : '\u26A0') + ' Rozdiel:</td><td class="text-right font-black">' + fmtE(Math.abs(grandTotals.diff)) + '</td><td class="text-[7px] pl-2">' + (grandTotals.noAlloc > 0 ? grandTotals.noAlloc + ' fakt\u00FAr bez alok\u00E1ci\u00ED' : '') + '</td></tr>' +
     '</table></div>';
+
+  // Type breakdown
+  html += '<div class="bg-slate-50 border border-slate-200 rounded-lg p-3">' +
+    '<p class="text-[8px] font-black text-slate-500 uppercase mb-1">Podľa typu n\u00E1kladu</p>' +
+    '<table class="w-full text-[9px]">';
+  ['operating', 'amortized', 'investment'].forEach(function(key) {
+    var t = byType[key];
+    if (t.count === 0) return;
+    var tDiff = Math.abs(t.amount - t.alloc);
+    html += '<tr><td class="text-slate-600">' + t.label + ' (' + t.count + '):</td>' +
+      '<td class="text-right font-bold">' + fmtE(t.amount) + '</td>' +
+      '<td class="text-right text-slate-400 text-[8px]">' + (tDiff > 1 ? '<span class="text-red-500">\u0394 ' + fmtE(tDiff) + '</span>' : '\u2705') + '</td></tr>';
+  });
+  html += '</table></div>';
 
   // Per category
   catNames.forEach(function(catName) {
     var cat = byCat[catName];
-    var catDiff = Math.abs(cat.expTotal - cat.allocTotal);
-    var catOk = catDiff <= 1;
-    var catIcon = catOk ? '✅' : '⚠';
+    var catDiff = cat.expTotal - cat.allocTotal;
+    var catOk = Math.abs(catDiff) <= 1;
     var catBg = catOk ? 'bg-slate-50' : 'bg-red-50';
 
     html += '<div class="' + catBg + ' border border-slate-200 rounded-lg p-3">' +
       '<div class="flex justify-between items-center cursor-pointer" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">' +
-        '<span class="text-[10px] font-black text-slate-700">' + catIcon + ' ' + catName + ' <span class="text-[8px] text-slate-400">(' + cat.expenses.length + ' fakt.)</span></span>' +
-        '<span class="text-[9px] font-bold">' +
-          '<span class="text-blue-600 mr-2">N: ' + fmtE(cat.tenantTotal) + '</span>' +
-          '<span class="text-orange-600 mr-2">V: ' + fmtE(cat.ownerTotal) + '</span>' +
-          '<span class="text-slate-800">= ' + fmtE(cat.allocTotal) + '</span>' +
-          (catDiff > 1 ? ' <span class="text-red-600 ml-1">⚠ ' + fmtE(catDiff) + '</span>' : '') +
+        '<span class="text-[10px] font-black text-slate-700">' + (catOk ? '\u2705' : '\u26A0') + ' ' + catName + ' <span class="text-[8px] text-slate-400">(' + cat.expenses.length + ')</span></span>' +
+        '<span class="text-[9px]">' +
+          '<span class="font-bold mr-3">' + fmtE(cat.expTotal) + '</span>' +
+          '<span class="text-blue-600 mr-1">N:' + fmtE(cat.tenantTotal) + '</span>' +
+          '<span class="text-orange-600 mr-1">V:' + fmtE(cat.ownerTotal) + '</span>' +
+          (Math.abs(catDiff) > 1 ? '<span class="text-red-600 font-bold">\u0394 ' + fmtE(catDiff) + '</span>' : '') +
         '</span>' +
       '</div>';
 
-    // Detail table (collapsed by default)
-    html += '<div class="hidden mt-2">' +
+    // Detail table (collapsed)
+    html += '<div class="hidden mt-2 overflow-x-auto">' +
       '<table class="w-full text-[8px]">' +
       '<tr class="text-slate-400 border-b border-slate-200">' +
-        '<th class="text-left py-1">Ref.</th>' +
-        '<th class="text-left">Popis</th>' +
-        '<th class="text-right">Faktúra</th>' +
-        '<th class="text-right">Nájomcovia</th>' +
-        '<th class="text-right">Vlastník</th>' +
-        '<th class="text-right">Alokované</th>' +
-        '<th class="text-right">Rozdiel</th>' +
+        '<th class="text-left py-1">Ref.</th><th class="text-left">Popis</th><th class="text-left">Dodávateľ</th>' +
+        '<th class="text-right">Fakt\u00FAra</th><th class="text-right">N\u00E1jom.</th><th class="text-right">Vlastn.</th><th class="text-right">Rozdiel</th>' +
       '</tr>';
 
     cat.expenses.forEach(function(exp) {
-      var rowBg = exp.diff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : '');
-      var methodBadge = exp.method === 'meter' ? '<span class="text-[6px] bg-purple-100 text-purple-600 px-1 rounded ml-1">M</span>' : '';
-      var autoBadge = exp.isAuto ? '<span class="text-[6px] bg-blue-100 text-blue-600 px-1 rounded ml-1">AUTO</span>' : '';
-      var amortBadge = exp.isAmort ? '<span class="text-[6px] bg-amber-100 text-amber-600 px-1 rounded ml-1">' + exp.amortYears + 'r</span>' : '';
-      var childBadge = exp.hasChild ? '<span class="text-[6px] bg-teal-100 text-teal-600 px-1 rounded ml-1">→</span>' : '';
-      var noAllocBadge = exp.allocCount === 0 ? '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded ml-1">∅</span>' : '';
+      var absDiff = Math.abs(exp.diff);
+      var rowCls = absDiff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : '');
+      var badges = '';
+      if (exp.method === 'meter') badges += '<span class="text-[6px] bg-purple-100 text-purple-600 px-1 rounded">M</span> ';
+      if (exp.isAuto) badges += '<span class="text-[6px] bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> ';
+      if (exp.costType === 'amortized') badges += '<span class="text-[6px] bg-amber-100 text-amber-600 px-1 rounded">' + exp.amortYears + 'r</span> ';
+      if (exp.allocCount === 0) badges += '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded">\u2205</span> ';
 
-      html += '<tr' + rowBg + '>' +
+      html += '<tr' + rowCls + '>' +
         '<td class="py-0.5 text-slate-500">' + exp.ref + '</td>' +
-        '<td class="truncate max-w-[150px]">' + exp.desc.substring(0, 40) + methodBadge + autoBadge + amortBadge + childBadge + noAllocBadge + '</td>' +
-        '<td class="text-right font-bold">' + fmtE(exp.amount) + (exp.isAmort ? '<br><span class="text-[7px] text-slate-400">z ' + fmtE(exp.fullAmount) + '</span>' : '') + '</td>' +
+        '<td class="truncate max-w-[130px]">' + badges + exp.desc.substring(0, 35) + '</td>' +
+        '<td class="text-slate-400 truncate max-w-[80px]">' + exp.supplier.substring(0, 20) + '</td>' +
+        '<td class="text-right font-bold">' + fmtE(exp.yearlyAmount) + (exp.costType === 'amortized' ? '<br><span class="text-[6px] text-slate-400">z ' + fmtE(exp.fullAmount) + '</span>' : '') + '</td>' +
         '<td class="text-right text-blue-600">' + fmtE(exp.tenantSum) + '</td>' +
         '<td class="text-right text-orange-600">' + fmtE(exp.ownerSum) + '</td>' +
-        '<td class="text-right">' + fmtE(exp.allocTotal) + '</td>' +
-        '<td class="text-right' + (exp.diff > 1 ? ' text-red-600 font-bold' : ' text-green-600') + '">' + (exp.diff > 1 ? fmtE(exp.diff) : 'OK') + '</td>' +
+        '<td class="text-right' + (absDiff > 1 ? ' text-red-600 font-bold' : ' text-green-600') + '">' + (absDiff > 1 ? fmtE(exp.diff) : '\u2713') + '</td>' +
       '</tr>';
     });
 
     // Category totals
     html += '<tr class="border-t border-slate-300 font-bold">' +
-      '<td colspan="2" class="py-1">Spolu ' + catName + '</td>' +
+      '<td colspan="3" class="py-1">' + catName + '</td>' +
       '<td class="text-right">' + fmtE(cat.expTotal) + '</td>' +
       '<td class="text-right text-blue-600">' + fmtE(cat.tenantTotal) + '</td>' +
       '<td class="text-right text-orange-600">' + fmtE(cat.ownerTotal) + '</td>' +
-      '<td class="text-right">' + fmtE(cat.allocTotal) + '</td>' +
-      '<td class="text-right' + (catDiff > 1 ? ' text-red-600' : ' text-green-600') + '">' + (catDiff > 1 ? fmtE(catDiff) : 'OK') + '</td>' +
+      '<td class="text-right' + (Math.abs(catDiff) > 1 ? ' text-red-600' : ' text-green-600') + '">' + (Math.abs(catDiff) > 1 ? fmtE(catDiff) : '\u2713') + '</td>' +
     '</tr>';
 
     html += '</table></div></div>';
@@ -1606,16 +1616,14 @@ window.runReconciliation = async function() {
 
   // Legend
   html += '<div class="text-[7px] text-slate-400 mt-2 flex flex-wrap gap-3">' +
-    '<span><span class="bg-purple-100 text-purple-600 px-1 rounded">M</span> Merač</span>' +
-    '<span><span class="bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> Automaticky generované</span>' +
-    '<span><span class="bg-amber-100 text-amber-600 px-1 rounded">Xr</span> Amortizácia (X rokov)</span>' +
-    '<span><span class="bg-teal-100 text-teal-600 px-1 rounded">→</span> Má auto-child</span>' +
-    '<span><span class="bg-red-100 text-red-600 px-1 rounded">∅</span> Bez alokácií</span>' +
-    '<span class="ml-4"><span class="text-blue-600 font-bold">N:</span> Nájomcovia</span>' +
-    '<span><span class="text-orange-600 font-bold">V:</span> Vlastník</span>' +
-  '</div>';
+    '<span><span class="bg-purple-100 text-purple-600 px-1 rounded">M</span> Mera\u010D</span>' +
+    '<span><span class="bg-blue-100 text-blue-600 px-1 rounded">AUTO</span> Auto-generovan\u00E9</span>' +
+    '<span><span class="bg-amber-100 text-amber-600 px-1 rounded">Xr</span> Amortiz\u00E1cia</span>' +
+    '<span><span class="bg-red-100 text-red-600 px-1 rounded">\u2205</span> Bez alok\u00E1ci\u00ED</span>' +
+    '<span class="ml-4"><span class="text-blue-600 font-bold">N:</span> N\u00E1jomcovia</span>' +
+    '<span><span class="text-orange-600 font-bold">V:</span> Vlastn\u00EDk</span>' +
+  '</div></div>';
 
-  html += '</div>';
   report.innerHTML = html;
 };
 
