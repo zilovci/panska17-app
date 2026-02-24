@@ -1655,6 +1655,40 @@ window.runReconciliation = async function() {
 
 function fmtE(n) { return (parseFloat(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' \u20AC'; }
 
+// Debug: check auto-generated expenses
+window.debugAutoExpenses = async function() {
+  var { data: all, error } = await sb.from('expenses')
+    .select('id, description, amount, date, period_from, period_to, category_id, is_auto_generated, parent_expense_id, auto_source_meter_id, cost_categories(name)')
+    .or('is_auto_generated.eq.true,parent_expense_id.not.is.null');
+  
+  if (error) {
+    // Columns might not exist
+    var { data: all2 } = await sb.from('expenses')
+      .select('id, description, amount, date, period_from, period_to, category_id, note, cost_categories(name)')
+      .ilike('note', '%AUTO-CHILD%');
+    
+    if (all2 && all2.length > 0) {
+      alert('Auto-child fakt\u00FAry (bez spr\u00E1vnych st\u013Apcov):\n\n' + all2.map(function(e) {
+        return e.description + ' | ' + e.amount + ' \u20AC | ' + (e.cost_categories ? e.cost_categories.name : '?') + ' | ' + (e.period_from || 'no period');
+      }).join('\n') + '\n\n\u26A0 St\u013Apce parent_expense_id, is_auto_generated, auto_source_meter_id neexistuj\u00FA!\nSpustite migr\u00E1ciu v Supabase SQL Editor.');
+    } else {
+      alert('Chyba: ' + (error ? error.message : 'Nezn\u00E1ma') + '\n\nSt\u013Apce pre auto-fakt\u00FAry pravdepodobne neexistuj\u00FA.\nSpustite migr\u00E1ciu v Supabase SQL Editor:\n\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS parent_expense_id uuid REFERENCES expenses(id) ON DELETE CASCADE;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS is_auto_generated boolean DEFAULT false;\nALTER TABLE expenses ADD COLUMN IF NOT EXISTS auto_source_meter_id uuid REFERENCES meters(id);');
+    }
+    return;
+  }
+
+  if (!all || all.length === 0) {
+    alert('\u017Diadne auto-generovan\u00E9 fakt\u00FAry v datab\u00E1ze.\n\nSt\u013Apce existuj\u00FA, ale \u017Eiadne auto-children sa nevytvorili.\n\nOtvorte fakt\u00FAru za vodu/elektrinu s presmerovan\u00FDm mera\u010Dom a kliknite Ulo\u017Ei\u0165.');
+    return;
+  }
+
+  var msg = 'Auto-generovan\u00E9 fakt\u00FAry v DB (' + all.length + '):\n\n';
+  all.forEach(function(e) {
+    msg += '\u2022 ' + (e.description || '?').substring(0, 40) + '\n  ' + e.amount + ' \u20AC | ' + (e.cost_categories ? e.cost_categories.name : '?') + '\n  Obdobie: ' + (e.period_from || 'NULL') + ' - ' + (e.period_to || 'NULL') + '\n  is_auto: ' + e.is_auto_generated + ' | parent: ' + (e.parent_expense_id ? 'YES' : 'NULL') + '\n\n';
+  });
+  alert(msg);
+};
+
 // ============ RECALCULATE ALL EXPENSES ============
 window.recalcAllExpenses = async function() {
   var year = document.getElementById('fin-year').value;
@@ -2450,6 +2484,7 @@ window.calcMeterAllocation = async function() {
     if (catId) {
       var { data: redirMeters = [] } = await sb.from('meters').select('*, cost_categories(name)').eq('type', meterType).not('cost_category_id', 'is', null).neq('cost_category_id', catId);
       redirectedMeters = redirMeters;
+      console.log('Redirected meters found:', redirectedMeters.map(function(m) { return m.name + ' → ' + (m.cost_categories ? m.cost_categories.name : '?'); }));
     }
   }
 
@@ -3040,6 +3075,7 @@ window.calcMeterAllocation = async function() {
       calculatedAmount: a.amount  // pre-calculated proportional amount
     };
   });
+  console.log('Stored _redirectedAllocations:', JSON.stringify(window._redirectedAllocations));
 };
 
 // Recalc meter when period changes
@@ -3399,6 +3435,12 @@ window.saveExpense = async function() {
   }
 
   // Create/update child expenses for redirected meters (e.g., vodomer kotolne → Vykurovanie)
+  console.log('Save: checking redirected allocations', {
+    expenseId: expenseId,
+    allocMethod: currentAllocMethod,
+    redirected: window._redirectedAllocations,
+    redirectedCount: window._redirectedAllocations ? window._redirectedAllocations.length : 0
+  });
   if (expenseId && currentAllocMethod === 'meter' && window._redirectedAllocations && window._redirectedAllocations.length > 0) {
     var parentAmount = parseFloat(document.getElementById('exp-amount').value) || 0;
     var childResults = [];
