@@ -1291,7 +1291,7 @@ window.generateInvoice = async function(existingInvoice) {
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Polozka'), { content: stripDia('Mesacne'), styles: { halign: 'right' } }, { content: 'Suma', styles: { halign: 'right' } }]],
+    head: [[stripDia('Polozka'), { content: stripDia('Mesacne'), styles: { halign: 'right' } }, { content: stripDia(numMonths >= 12 ? 'Rocne' : 'Za ' + numMonths + ' mes.'), styles: { halign: 'right' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left' },
@@ -1457,7 +1457,7 @@ window.generateInvoice = async function(existingInvoice) {
         eRows.push([stripDia('Hlavny merac (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolna (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
-      eRows.push([stripDia('Spotreba podla meraca'), eCons.toFixed(2) + ' kWh']);
+      eRows.push([stripDia('Vas merac'), eCons.toFixed(2) + ' kWh']);
       if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotkova cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesacny naklad'), fmtEur(eAmount / numMonths) + ' EUR/mes.']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
@@ -1632,15 +1632,12 @@ window.generateInvoice = async function(existingInvoice) {
       hRows.push(['', '']); // spacer
       hRows.push([{content: stripDia('Vas podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vasa plocha'), totalArea.toFixed(2) + ' m2']);
-      if (totalHeatedArea > 0) {
-        var heatPct = totalArea / totalHeatedArea * 100;
-        hRows.push([stripDia('Podiel na vykurovani'), heatPct.toFixed(2) + ' %']);
-      }
+      var periodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
       if (heatAmountWithRedir > 0 && totalArea > 0) {
-        hRows.push([stripDia('Naklad na m2 / rok'), fmtEur(heatAmountWithRedir / totalArea) + ' EUR/m2']);
-        hRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmountWithRedir / totalArea / 12) + ' EUR/m2/mes.']);
+        hRows.push([stripDia('Naklad na m2 / ' + periodLabel), fmtEur(heatAmountWithRedir / totalArea) + ' EUR/m2']);
+        hRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(heatAmountWithRedir / totalArea / numMonths) + ' EUR/m2/mes.']);
       }
-      hRows.push([stripDia('Mesacny naklad'), fmtEur(heatAmountWithRedir / 12) + ' EUR/mes.']);
+      hRows.push([stripDia('Mesacny naklad'), fmtEur(heatAmountWithRedir / numMonths) + ' EUR/mes.']);
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmountWithRedir) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
@@ -1657,7 +1654,11 @@ window.generateInvoice = async function(existingInvoice) {
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chranena plocha budovy'), totalProtectedArea.toFixed(2) + ' m2']);
       epsRows.push([stripDia('Vasa plocha'), totalArea.toFixed(2) + ' m2']);
-      if (epsAmount > 0 && totalArea > 0) epsRows.push([stripDia('Naklad na m2'), fmtEur(epsAmount / totalArea) + ' EUR/m2']);
+      var epsPeriodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
+      if (epsAmount > 0 && totalArea > 0) {
+        epsRows.push([stripDia('Naklad na m2 / ' + epsPeriodLabel), fmtEur(epsAmount / totalArea) + ' EUR/m2']);
+        epsRows.push([stripDia('Naklad na m2 / mesiac'), fmtEur(epsAmount / totalArea / numMonths) + ' EUR/m2/mes.']);
+      }
       epsRows.push([stripDia('Mesacny naklad'), fmtEur(epsAmount / numMonths) + ' EUR/mes.']);
       epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('EPS a PO', epsRows);

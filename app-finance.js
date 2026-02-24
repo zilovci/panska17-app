@@ -3469,12 +3469,6 @@ window.saveExpense = async function() {
   }
 
   // Create/update child expenses for redirected meters (e.g., vodomer kotolne → Vykurovanie)
-  console.log('Save: checking redirected allocations', {
-    expenseId: expenseId,
-    allocMethod: currentAllocMethod,
-    redirected: window._redirectedAllocations,
-    redirectedCount: window._redirectedAllocations ? window._redirectedAllocations.length : 0
-  });
   if (expenseId && currentAllocMethod === 'meter' && window._redirectedAllocations && window._redirectedAllocations.length > 0) {
     var parentAmount = parseFloat(document.getElementById('exp-amount').value) || 0;
     var childResults = [];
@@ -3573,12 +3567,10 @@ window.saveExpense = async function() {
           .limit(1);
         var lastHeating = (lastHeatingArr && lastHeatingArr.length > 0) ? lastHeatingArr[0] : null;
 
-        console.log('Auto-child alloc: lastHeating=', lastHeating, 'error=', lhErr, 'childExpenseId=', childExpenseId, 'targetCatId=', redir.targetCategoryId);
 
         if (lastHeating && lastHeating.expense_allocations && lastHeating.expense_allocations.length > 0) {
           // Reuse zone distribution from last heating expense, just scale amounts
           var lastTotal = lastHeating.expense_allocations.reduce(function(s, a) { return s + Math.abs(parseFloat(a.amount) || 0); }, 0);
-          console.log('Auto-child: lastTotal=', lastTotal, 'allocCount=', lastHeating.expense_allocations.length, 'childAmount=', childAmount);
           if (lastTotal > 0) {
             var childAllocs = lastHeating.expense_allocations.map(function(a) {
               var ratio = Math.abs(parseFloat(a.amount) || 0) / lastTotal;
@@ -3593,7 +3585,6 @@ window.saveExpense = async function() {
               };
             });
             var { error: allocInsertErr } = await sb.from('expense_allocations').insert(childAllocs);
-            console.log('Auto-child: created', childAllocs.length, 'allocations from lastHeating', allocInsertErr ? 'ERROR: ' + allocInsertErr.message : 'OK');
           }
         } else {
           // Fallback: allocate by area to all zones (like a standard area-based expense)
@@ -3614,7 +3605,6 @@ window.saveExpense = async function() {
               };
             });
             await sb.from('expense_allocations').insert(fbAllocs);
-            console.log('Auto-child: created', fbAllocs.length, 'fallback allocations from', heatedZones.length, 'heated zones');
           } else {
             console.error('Auto-child: NO zones found for allocation!');
           }
