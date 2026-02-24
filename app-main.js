@@ -1146,7 +1146,7 @@ window.generateInvoice = async function(existingInvoice) {
   var redirectedExpenses = [];
   try {
     var rResult = await sb.from('expenses')
-      .select('id, amount, description, supplier, date, period_from, period_to, alloc_method, meter_main_consumption, meter_redirected_consumption, meter_consumption_unit, cost_categories(name)')
+      .select('id, amount, description, supplier, date, period_from, period_to, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_consumption_unit, cost_categories(name)')
       .gt('meter_redirected_consumption', 0)
       .lte('period_from', dateTo).gte('period_to', dateFrom);
     redirectedExpenses = rResult.data || [];
@@ -1471,11 +1471,6 @@ window.generateInvoice = async function(existingInvoice) {
       // Collect heating composition (building-level expenses for this category)
       var heatingInputs = [];
       var heatingTotal = 0;
-      console.log('PDF HEAT DEBUG: Vykurovanie allocs count:', periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).length);
-      console.log('PDF HEAT DEBUG: items:', JSON.stringify(periodAllocs.filter(function(a) { return a.expenses && a.expenses.cost_categories && a.expenses.cost_categories.name === 'Vykurovanie'; }).map(function(a) { return { desc: (a.expenses.description || '').substring(0, 40), isAuto: a.expenses.is_auto_generated, amt: a.amount }; })));
-      // Direct DB check for auto-children
-      var { data: autoChildren } = await sb.from('expenses').select('id, description, amount, category_id, is_auto_generated, parent_expense_id, period_from, period_to, expense_allocations(zone_id, amount, payer)').eq('is_auto_generated', true);
-      console.log('PDF HEAT DEBUG: auto-children in DB:', JSON.stringify((autoChildren || []).map(function(e) { return { id: e.id.substring(0,8), desc: (e.description||'').substring(0,30), amt: e.amount, catId: e.category_id.substring(0,8), period: e.period_from + '~' + e.period_to, allocCount: (e.expense_allocations||[]).length, hasB3zone: (e.expense_allocations||[]).some(function(a) { return zoneIds.indexOf(a.zone_id) >= 0; }) }; })));
       periodAllocs.forEach(function(a) {
         if (!a.expenses || !a.expenses.cost_categories) return;
         if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
@@ -1543,11 +1538,16 @@ window.generateInvoice = async function(existingInvoice) {
         var catName = e.cost_categories ? e.cost_categories.name : '';
         if (catName === 'Vykurovanie') return; // skip heating itself
         var mainCons = parseFloat(e.meter_main_consumption) || 0;
+        var subCons = parseFloat(e.meter_sub_consumption) || 0;
         var redirCons = parseFloat(e.meter_redirected_consumption) || 0;
-        if (mainCons <= 0 || redirCons <= 0) return;
+        if (redirCons <= 0) return;
+        // For water: mainCons > 0, use it as denominator
+        // For electricity (no main meter): use subCons + redirCons
+        var denominator = mainCons > 0 ? mainCons : (subCons + redirCons);
+        if (denominator <= 0) return;
         seenRedirected[e.id] = true;
 
-        var redirAmount = parseFloat(((redirCons / mainCons) * (parseFloat(e.amount) || 0)).toFixed(2));
+        var redirAmount = parseFloat(((redirCons / denominator) * (parseFloat(e.amount) || 0)).toFixed(2));
         var group;
         if (catName.match(/[Vv]od|[Kk]anal/)) {
           group = 'voda';
@@ -1569,12 +1569,15 @@ window.generateInvoice = async function(existingInvoice) {
       redirectedExpenses.forEach(function(re) {
         if (seenRedirected[re.id]) return;
         var mainCons = parseFloat(re.meter_main_consumption) || 0;
+        var subCons = parseFloat(re.meter_sub_consumption) || 0;
         var redirCons = parseFloat(re.meter_redirected_consumption) || 0;
         var reAmount = parseFloat(re.amount) || 0;
-        if (mainCons <= 0 || redirCons <= 0) return;
+        if (redirCons <= 0) return;
+        var denominator = mainCons > 0 ? mainCons : (subCons + redirCons);
+        if (denominator <= 0) return;
         seenRedirected[re.id] = true;
 
-        var redirAmount = parseFloat(((redirCons / mainCons) * reAmount).toFixed(2));
+        var redirAmount = parseFloat(((redirCons / denominator) * reAmount).toFixed(2));
         var catName = re.cost_categories ? re.cost_categories.name.toLowerCase() : '';
         var group;
         if (catName.match(/vod|kanal/)) group = 'voda';
