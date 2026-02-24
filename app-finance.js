@@ -3568,7 +3568,7 @@ window.saveExpense = async function() {
           .select('id, expense_allocations(zone_id, payer, percentage, amount, tempering_used, area_used)')
           .eq('category_id', redir.targetCategoryId)
           .neq('id', childExpenseId)
-          .neq('is_auto_generated', true)
+          .or('is_auto_generated.is.null,is_auto_generated.eq.false')
           .order('date', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -3590,6 +3590,26 @@ window.saveExpense = async function() {
               };
             });
             await sb.from('expense_allocations').insert(childAllocs);
+          }
+        } else {
+          // Fallback: allocate by area to all zones (like a standard area-based expense)
+          console.warn('No lastHeating found for auto-child, using area-based fallback');
+          var { data: fallbackZones = [] } = await sb.from('zones').select('id, name, area_m2, is_heated, is_tempered').order('name');
+          var heatedZones = fallbackZones.filter(function(z) { return z.is_heated || z.is_tempered; });
+          if (heatedZones.length === 0) heatedZones = fallbackZones.filter(function(z) { return parseFloat(z.area_m2) > 0; });
+          var totalArea = heatedZones.reduce(function(s, z) { return s + (parseFloat(z.area_m2) || 0); }, 0);
+          if (totalArea > 0) {
+            var fbAllocs = heatedZones.map(function(z) {
+              var share = (parseFloat(z.area_m2) || 0) / totalArea;
+              return {
+                expense_id: childExpenseId,
+                zone_id: z.id,
+                percentage: parseFloat((share * 100).toFixed(2)),
+                amount: parseFloat((childAmount * share).toFixed(2)),
+                payer: 'tenant'
+              };
+            });
+            await sb.from('expense_allocations').insert(fbAllocs);
           }
         }
       }
