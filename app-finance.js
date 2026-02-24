@@ -2595,9 +2595,22 @@ window.calcMeterAllocation = async function() {
       var startReadings = normalReadings.filter(function(r) { return r.date <= periodFrom; });
       var startR = startReadings.length > 0 ? startReadings[startReadings.length - 1] : normalReadings[0];
 
-      // Find reading closest to periodTo (before or at)
+      // Find reading closest to periodTo (before or at, with 7-day tolerance after)
       var endReadings = normalReadings.filter(function(r) { return r.date <= periodTo; });
       var endR = endReadings.length > 0 ? endReadings[endReadings.length - 1] : null;
+
+      // If no end reading found in period, check for readings just after period end (up to 7 days)
+      if (!endR || (endR.id === startR.id)) {
+        var toleranceDate = new Date(periodTo);
+        toleranceDate.setDate(toleranceDate.getDate() + 7);
+        var toleranceDateStr = toleranceDate.toISOString().split('T')[0];
+        var nearbyReadings = normalReadings.filter(function(r) {
+          return r.date > periodTo && r.date <= toleranceDateStr;
+        });
+        if (nearbyReadings.length > 0) {
+          endR = nearbyReadings[0]; // closest reading after period end
+        }
+      }
 
       if (!endR) {
         if (!m._redirected && !m.is_main) {
