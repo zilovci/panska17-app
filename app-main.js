@@ -1440,7 +1440,7 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnost'), wLoss.toFixed(2) + ' m3']);
       }
       wRows.push([stripDia('Vas merac'), wCons.toFixed(2) + ' m3']);
-      if (wCons > 0 && wAmount > 0) wRows.push([stripDia('Jednotkova cena'), fmtEur(wAmount / wCons) + ' EUR/m3']);
+      if (wCons > 0 && wAmount > 0) wRows.push([stripDia('Jednotkova cena'), (wAmount / wCons).toFixed(6) + ' EUR/m3']);
       wRows.push([stripDia('Mesacny naklad'), fmtEur(wAmount / numMonths) + ' EUR/mes.']);
       wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizacia', wRows);
@@ -1458,7 +1458,7 @@ window.generateInvoice = async function(existingInvoice) {
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolna (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Spotreba podla meraca'), eCons.toFixed(2) + ' kWh']);
-      if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotkova cena'), fmtEur(eAmount / eCons) + ' EUR/kWh']);
+      if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotkova cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesacny naklad'), fmtEur(eAmount / numMonths) + ' EUR/mes.']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
