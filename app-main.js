@@ -1997,8 +1997,8 @@ function applyPermissions() {
   // Admin nav - only for admin
   var na = document.getElementById('n-admin'); if (na) na.classList.toggle('hidden', currentRole !== 'admin');
   var nam = document.getElementById('n-admin-mob'); if (nam) nam.classList.toggle('hidden', currentRole !== 'admin');
-  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
-  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', !['admin', 'spravca'].includes(currentRole));
+  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', currentRole !== 'admin');
+  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', currentRole !== 'admin');
 
   // Pozorovateľ: hide add buttons, edit buttons etc via CSS class on body
   if (currentRole === 'pozorovatel') {
