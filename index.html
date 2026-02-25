@@ -637,11 +637,11 @@
                     <div class="flex justify-between items-center p-4 md:p-5">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Prehľad nákladov</h3>
                         <div class="flex items-center gap-2">
+                            <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                             <div id="fin-overview-mode" class="flex bg-slate-100 rounded-lg p-0.5 text-[9px] font-bold">
                                 <button onclick="window.setOverviewMode('period')" data-mode="period" class="px-2 py-1 rounded-md bg-white text-slate-800 shadow-sm">Podľa obdobia</button>
                                 <button onclick="window.setOverviewMode('payment')" data-mode="payment" class="px-2 py-1 rounded-md text-slate-400">Podľa zaplatenia</button>
                             </div>
-                            <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                         </div>
                     </div>
                     <div class="px-6 md:px-8 pb-6 md:pb-8">
@@ -653,6 +653,9 @@
                 <div class="bg-white rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center p-4 md:p-5">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Vyúčtovanie</h3>
+                        <button onclick="window.generateInvoice()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">
+                            <i class="fa-solid fa-file-pdf mr-1"></i> Generovať PDF
+                        </button>
                     </div>
                     <div class="px-6 md:px-8 pb-6 md:pb-8">
                     <div class="flex flex-wrap items-center gap-3 mb-4">
@@ -665,9 +668,6 @@
                             <label class="text-[9px] font-black text-slate-400">DO</label>
                             <input type="date" id="fin-inv-to" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold">
                         </div>
-                        <button onclick="window.generateInvoice()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">
-                            <i class="fa-solid fa-file-pdf mr-1"></i> Generovať PDF
-                        </button>
                     </div>
                     <div id="fin-inv-preview" class="hidden bg-slate-50 rounded-xl p-4 text-[10px] font-mono whitespace-pre-wrap"></div>
                     <div class="flex items-center gap-2 mt-4 mb-2">
