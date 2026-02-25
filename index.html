@@ -633,8 +633,8 @@
                 </div>
 
                 <!-- PREHĽAD PER NÁJOMCA -->
-                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <div class="flex justify-between items-center mb-4">
+                <div class="bg-white rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center p-4 md:p-5">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Prehľad nákladov</h3>
                         <div class="flex items-center gap-2">
                             <div id="fin-overview-mode" class="flex bg-slate-100 rounded-lg p-0.5 text-[9px] font-bold">
@@ -644,14 +644,17 @@
                             <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                         </div>
                     </div>
-                    <div id="fin-overview-table" class="overflow-x-auto"></div>
+                    <div class="px-6 md:px-8 pb-6 md:pb-8">
+                        <div id="fin-overview-table" class="overflow-x-auto"></div>
+                    </div>
                 </div>
 
                 <!-- VYÚČTOVANIE -->
-                <div class="bg-white p-6 md:p-8 rounded-[2rem] shadow-sm">
-                    <div class="flex justify-between items-center mb-4">
+                <div class="bg-white rounded-[2rem] shadow-sm">
+                    <div class="flex justify-between items-center p-4 md:p-5">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Vyúčtovanie</h3>
                     </div>
+                    <div class="px-6 md:px-8 pb-6 md:pb-8">
                     <div class="flex flex-wrap items-center gap-3 mb-4">
                         <select id="fin-inv-tenant" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                         <div class="flex items-center gap-1">
@@ -674,6 +677,7 @@
                         </select>
                     </div>
                     <div id="fin-inv-list"></div>
+                    </div>
                 </div>
 
                 <!-- MODAL - Detail vyúčtovania -->
