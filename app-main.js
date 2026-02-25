@@ -1178,7 +1178,15 @@ window.generateInvoice = async function(existingInvoice) {
 
   var paidAdvances = payments.filter(function(p) { return p.paid; }).reduce(function(s, p) { return s + (parseFloat(p.amount) || 0); }, 0);
 
-  var balance = totalCosts - paidAdvances;
+  // Load settlement payments (priebežné úhrady) in period
+  var { data: settlementPays = [] } = await sb.from('tenant_payments').select('*')
+    .eq('tenant_id', tenantId).eq('type', 'settlement')
+    .lte('period_from', dateTo)
+    .gte('period_to', dateFrom);
+
+  var paidSettlements = settlementPays.filter(function(p) { return p.paid; }).reduce(function(s, p) { return s + (parseFloat(p.amount) || 0); }, 0);
+
+  var balance = totalCosts - paidAdvances - paidSettlements;
 
   // Period label
   var periodLabel = fmtD(dateFrom) + ' - ' + fmtD(dateTo);
@@ -1316,6 +1324,10 @@ window.generateInvoice = async function(existingInvoice) {
     [stripDia('Náklady spolu'), fmtEur(totalCosts) + ' EUR'],
     [stripDia('Zálohy zaplatené'), fmtEur(paidAdvances) + ' EUR']
   ];
+
+  if (paidSettlements > 0) {
+    balanceRows.push([stripDia('Priebežné úhrady'), fmtEur(paidSettlements) + ' EUR']);
+  }
 
   // balance already calculated above
   var balLabel = balance > 0.01 ? 'Nedoplatok' : (balance < -0.01 ? 'Preplatok' : 'Vyrovnané');
@@ -1676,6 +1688,7 @@ window.generateInvoice = async function(existingInvoice) {
       period_to: dateTo,
       total_costs: parseFloat(totalCosts.toFixed(2)),
       total_advances: parseFloat(paidAdvances.toFixed(2)),
+      total_settlements: parseFloat(paidSettlements.toFixed(2)),
       balance: parseFloat(balance.toFixed(2)),
       due_date: dueDateStr,
       status: 'draft'
@@ -1840,6 +1853,7 @@ window.showInvoiceDetail = async function(id) {
     '<div class="bg-slate-50 rounded-xl p-4 space-y-2">' +
       '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Náklady</span><input type="number" step="0.01" id="inv-edit-costs" value="' + (inv.total_costs || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
       '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Zálohy zaplatené</span><input type="number" step="0.01" id="inv-edit-advances" value="' + (inv.total_advances || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
+      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Priebežné úhrady</span><input type="number" step="0.01" id="inv-edit-settlements" value="' + (inv.total_settlements || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
       '<div class="flex justify-between border-t border-slate-200 pt-2"><span class="text-[9px] font-black text-slate-400 uppercase">Výsledok</span><span id="inv-edit-balance" class="font-black text-base ' + balCls + '">' + balLabel + '</span></div>' +
       (inv.due_date ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Splatnosť</span><span>' + fmtD(inv.due_date) + '</span></div>' : '') +
     '</div>' +
@@ -1869,7 +1883,8 @@ window.closeInvoiceModal = function() {
 window.recalcInvoiceBalance = function() {
   var costs = parseFloat(document.getElementById('inv-edit-costs').value) || 0;
   var advances = parseFloat(document.getElementById('inv-edit-advances').value) || 0;
-  var balance = costs - advances;
+  var settlements = parseFloat(document.getElementById('inv-edit-settlements').value) || 0;
+  var balance = costs - advances - settlements;
   var el = document.getElementById('inv-edit-balance');
   if (balance > 0.01) { el.innerText = 'Nedoplatok: ' + fmtEur(balance) + ' €'; el.className = 'font-black text-base text-red-600'; }
   else if (balance < -0.01) { el.innerText = 'Preplatok: ' + fmtEur(Math.abs(balance)) + ' €'; el.className = 'font-black text-base text-green-600'; }
@@ -1880,8 +1895,9 @@ window.saveInvoiceAmounts = async function() {
   if (!currentInvoiceId) return;
   var costs = parseFloat(document.getElementById('inv-edit-costs').value) || 0;
   var advances = parseFloat(document.getElementById('inv-edit-advances').value) || 0;
-  var balance = costs - advances;
-  await sb.from('invoices').update({ total_costs: costs, total_advances: advances, balance: balance }).eq('id', currentInvoiceId);
+  var settlements = parseFloat(document.getElementById('inv-edit-settlements').value) || 0;
+  var balance = costs - advances - settlements;
+  await sb.from('invoices').update({ total_costs: costs, total_advances: advances, total_settlements: settlements, balance: balance }).eq('id', currentInvoiceId);
   alert('Uložené.');
   await window.loadInvoices();
 };
