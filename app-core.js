@@ -11,6 +11,13 @@ let allLocs = [], allIssues = [], allUpdates = [];
 let allZones = [], currentZoneId = null, userZoneIds = [];
 let currentEditingPhotoUrl = null;
 let removePhotoFlag = false;
+
+// Multi-photo support
+let pendingAddPhotos = [];    // [{file, previewUrl}] for new issue form
+let pendingEditPhotos = [];   // [{file, previewUrl}] for update form
+let existingEditPhotos = [];  // [{id, photo_url, photo_thumb_url}] from DB
+let photosToRemoveIds = [];   // photo IDs to delete on save
+let allIssuePhotos = [];      // all photos loaded from issue_photos table
 let currentRole = null;
 let currentUserId = null;
 
@@ -125,6 +132,71 @@ async function uploadPhotoWithThumb(file, baseName) {
     console.warn("Thumbnail failed:", e);
     return { photo_url, photo_thumb_url: null };
   }
+}
+
+// -------- Multi-photo helpers --------
+async function uploadMultiplePhotos(pendingArr) {
+  const results = [];
+  for (let i = 0; i < pendingArr.length; i++) {
+    const r = await uploadPhotoWithThumb(pendingArr[i].file, `upd_${Date.now()}_${i}`);
+    if (r.photo_url) results.push(r);
+  }
+  return results;
+}
+
+async function savePhotosForUpdate(updateId, newPhotos, removeIds) {
+  // Delete removed photos
+  if (removeIds && removeIds.length > 0) {
+    const { error } = await sb.from('issue_photos').delete().in('id', removeIds);
+    if (error) console.error('Error deleting photos:', error);
+  }
+  // Insert new photos
+  if (newPhotos && newPhotos.length > 0) {
+    const maxSort = existingEditPhotos.length;
+    const rows = newPhotos.map((p, i) => ({
+      issue_update_id: updateId,
+      photo_url: p.photo_url,
+      photo_thumb_url: p.photo_thumb_url,
+      sort_order: maxSort + i
+    }));
+    const { error } = await sb.from('issue_photos').insert(rows);
+    if (error) console.error('Error inserting photos:', error);
+  }
+}
+
+function renderPhotoGrid(containerId, photos, pending, opts) {
+  const c = document.getElementById(containerId);
+  if (!c) return;
+  opts = opts || {};
+  let html = '';
+
+  // Existing photos from DB
+  (photos || []).forEach(function(p) {
+    html += '<div class="relative inline-block mr-2 mb-2">' +
+      '<img src="' + (p.photo_thumb_url || p.photo_url) + '" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">' +
+      (opts.canRemove !== false ? '<button type="button" onclick="window.removeExistingPhoto(\'' + containerId + '\', \'' + p.id + '\')" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>' : '') +
+    '</div>';
+  });
+
+  // Pending (not yet uploaded) photos
+  (pending || []).forEach(function(p, i) {
+    html += '<div class="relative inline-block mr-2 mb-2">' +
+      '<img src="' + p.previewUrl + '" class="w-20 h-20 object-cover rounded-lg border-2 border-blue-300 shadow-sm opacity-80">' +
+      '<button type="button" onclick="window.removePendingPhoto(\'' + containerId + '\', ' + i + ')" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>' +
+    '</div>';
+  });
+
+  c.innerHTML = html;
+  c.classList.toggle('hidden', html === '');
+}
+
+function getPhotosForUpdate(updateId) {
+  return allIssuePhotos.filter(function(p) { return p.issue_update_id === updateId; });
+}
+
+function getPhotosForIssue(issueId) {
+  var updateIds = allUpdates.filter(function(u) { return u.issue_id === issueId; }).map(function(u) { return u.id; });
+  return allIssuePhotos.filter(function(p) { return updateIds.indexOf(p.issue_update_id) !== -1; });
 }
 
 async function switchView(v) {
@@ -325,6 +397,14 @@ async function loadSections() {
   const { data: updts } = await sb.from('issue_updates').select('*').order('event_date', { ascending: false });
   allUpdates = updts || [];
 
+  // Load multi-photos from issue_photos table (with fallback to issue_updates.photo_url)
+  try {
+    const { data: iPhotos } = await sb.from('issue_photos').select('*').order('sort_order', { ascending: true });
+    allIssuePhotos = iPhotos || [];
+  } catch (e) {
+    allIssuePhotos = [];
+  }
+
   container.innerHTML = '';
   const floors = [...new Set(allLocs.map(l => l.floor))];
 
@@ -342,8 +422,15 @@ async function loadSections() {
       const logs = allUpdates.filter(u => u.issue_id === i.id)
         .sort((a,b) => new Date(a.event_date) - new Date(b.event_date));
 
-      const photos = allUpdates
-        .filter(u => u.issue_id === i.id && u.photo_url)
+      // Use issue_photos table; fallback to issue_updates.photo_url for unmigrated data
+      let issuePhotos = getPhotosForIssue(i.id);
+      if (issuePhotos.length === 0) {
+        // Fallback: old single-photo on issue_updates
+        issuePhotos = allUpdates.filter(u => u.issue_id === i.id && u.photo_url).map(u => ({
+          id: u.id, photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url, issue_update_id: u.id
+        }));
+      }
+      const photos = issuePhotos
         .map(l => `<img loading="lazy" decoding="async" src="${l.photo_thumb_url || l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`)
         .join('');
 
@@ -445,6 +532,13 @@ async function loadReports() {
   });
   const { data: updts = [] } = await sb.from('issue_updates').select('*').order('event_date', { ascending: true });
 
+  // Load multi-photos for report
+  var repPhotos = [];
+  try {
+    const { data: rp } = await sb.from('issue_photos').select('*').order('sort_order', { ascending: true });
+    repPhotos = rp || [];
+  } catch (e) { repPhotos = []; }
+
   if (!isss || isss.length === 0) { list.innerHTML = '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy</td></tr>'; return; }
 
   // Naplň podlažia dropdown - zoradené podľa sort_order
@@ -511,7 +605,15 @@ async function loadReports() {
                 '</div>' +
                 '<p class="text-[9px] text-slate-700 leading-snug">' + (u.note || '--') + '</p>' +
               '</div>' +
-              (u.photo_url ? '<img loading="eager" decoding="async" src="' + (u.photo_thumb_url || u.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + u.photo_url + '\')">' : '') +
+              (function() {
+                var uPhotos = repPhotos.filter(function(p) { return p.issue_update_id === u.id; });
+                if (uPhotos.length === 0 && u.photo_url) {
+                  uPhotos = [{ photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
+                }
+                return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-1 ml-2">' + uPhotos.map(function(p) {
+                  return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">';
+                }).join('') + '</div>' : '';
+              })() +
             '</div>';
           }).join('') +
         '</div>' +
@@ -531,6 +633,10 @@ window.prepAdd = (fN) => {
   document.getElementById('f-add-loc-id').innerHTML = allLocs.filter(l => l.floor === fN).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
   var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
   var fi = document.getElementById('f-add-photo'); if (fi) fi.value = '';
+  // Reset multi-photo state
+  pendingAddPhotos = [];
+  window.addGalleryFile = null;
+  renderPhotoGrid('add-photos-grid', [], []);
   document.getElementById('m-add').classList.remove('hidden');
 };
 
@@ -574,6 +680,11 @@ window.prepStat = (id) => {
   document.getElementById('f-stat-note').value = '';
   currentEditingPhotoUrl = null;
   removePhotoFlag = false;
+  // Reset multi-photo state
+  pendingEditPhotos = [];
+  existingEditPhotos = [];
+  photosToRemoveIds = [];
+  renderPhotoGrid('edit-photos-grid', [], []);
 
   document.getElementById('f-stat-id').value = id;
   document.getElementById('f-stat-val').value = item.status;
@@ -600,7 +711,15 @@ window.prepStat = (id) => {
         <p><span class="uppercase">Nahlásil:</span> ${u.attendance || '--'}</p><p><span class="uppercase">Zodpovedný:</span> ${item.responsible_person || '--'}</p>
       </div>
       <p class="text-slate-500 leading-snug">${u.note || '--'}</p>
-      ${u.photo_url ? `<img loading="lazy" decoding="async" src="${u.photo_thumb_url || u.photo_url}" class="history-thumb" onclick="window.open('${u.photo_url}')">` : ''}
+      ${(() => {
+        let uPhotos = getPhotosForUpdate(u.id);
+        if (uPhotos.length === 0 && u.photo_url) {
+          uPhotos = [{ id: u.id, photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
+        }
+        return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-2 mt-2">' + uPhotos.map(p =>
+          `<img loading="lazy" decoding="async" src="${p.photo_thumb_url || p.photo_url}" class="history-thumb" onclick="window.open('${p.photo_url}')">`
+        ).join('') + '</div>' : '';
+      })()}
     </div>`;
   }).join('');
 
@@ -631,17 +750,20 @@ window.editHEntry = (id) => {
   document.getElementById('f-stat-val').value = e.status_to;
   document.getElementById('f-stat-reported-edit').value = e.attendance || "";
 
-  if(e.photo_url) {
-    document.getElementById('edit-photo-preview').classList.remove('hidden');
-    document.getElementById('edit-photo-img').src = e.photo_thumb_url || e.photo_url;
-    currentEditingPhotoUrl = e.photo_url;
-    removePhotoFlag = false;
-
-  } else {
-    document.getElementById('edit-photo-preview').classList.add('hidden');
-    currentEditingPhotoUrl = null;
-    removePhotoFlag = false;
+  // Load existing photos for this update (multi-photo)
+  existingEditPhotos = getPhotosForUpdate(e.id);
+  // Fallback: if no issue_photos rows, use legacy photo_url
+  if (existingEditPhotos.length === 0 && e.photo_url) {
+    existingEditPhotos = [{ id: '__legacy_' + e.id, photo_url: e.photo_url, photo_thumb_url: e.photo_thumb_url, issue_update_id: e.id }];
   }
+  pendingEditPhotos = [];
+  photosToRemoveIds = [];
+  currentEditingPhotoUrl = e.photo_url || null;
+  removePhotoFlag = false;
+
+  // Hide old single-photo preview, use multi-photo grid instead
+  var ep = document.getElementById('edit-photo-preview'); if (ep) ep.classList.add('hidden');
+  renderPhotoGrid('edit-photos-grid', existingEditPhotos, pendingEditPhotos);
 
   var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.remove('hidden');
 };
@@ -668,7 +790,11 @@ document.getElementById('f-add').onsubmit = async (e) => {
     if (!locId) { alert('Vyber miestnosť.'); btn.disabled = false; return; }
 
     const file = document.getElementById('f-add-photo').files[0] || window.addGalleryFile;
-    const up = file ? await uploadPhotoWithThumb(file, `upd_${Date.now()}`) : { photo_url: null, photo_thumb_url: null };
+    // Collect all pending photos (multi-photo: from pendingAddPhotos + legacy single file)
+    var allAddFiles = pendingAddPhotos.slice();
+    if (file && allAddFiles.length === 0) {
+      allAddFiles.push({ file: file, previewUrl: '' });
+    }
 
     const { data, error } = await sb.from('issues').insert([{
       location_id: locId,
@@ -681,21 +807,30 @@ document.getElementById('f-add').onsubmit = async (e) => {
     if (error) throw error;
 
     if (data?.[0]) {
-      const { error: upErr } = await sb.from('issue_updates').insert([{
+      const { data: updData, error: upErr } = await sb.from('issue_updates').insert([{
         issue_id: data[0].id,
         status_to: 'Zahlásené',
         note: document.getElementById('f-add-note').value,
         event_date: document.getElementById('f-add-date').value,
-        photo_url: up.photo_url,
-        photo_thumb_url: up.photo_thumb_url,
         attendance: document.getElementById('f-add-reported').value,
         created_by: currentUserId
-      }]);
+      }]).select();
       if (upErr) throw upErr;
+
+      // Upload and save multi-photos to issue_photos table
+      if (allAddFiles.length > 0 && updData?.[0]) {
+        const uploaded = await uploadMultiplePhotos(allAddFiles);
+        if (uploaded.length > 0) {
+          await savePhotosForUpdate(updData[0].id, uploaded, []);
+        }
+      }
 
       hideM('m-add');
       e.target.reset();
       var pp = document.getElementById('add-photo-preview'); if (pp) pp.classList.add('hidden');
+      var apg = document.getElementById('add-photos-grid'); if (apg) { apg.innerHTML = ''; apg.classList.add('hidden'); }
+      pendingAddPhotos = [];
+      window.addGalleryFile = null;
       await loadSections();
     }
   } catch (err) {
@@ -717,7 +852,11 @@ document.getElementById('f-stat').onsubmit = async (e) => {
     const st = document.getElementById('f-stat-val').value;
 
     const file = document.getElementById('f-stat-photo').files[0] || window.editGalleryFile;
-    const up = file ? await uploadPhotoWithThumb(file, `upd_${uId || Date.now()}`) : null;
+    // Collect pending edit photos (multi-photo: from pendingEditPhotos + legacy single file)
+    var allEditFiles = pendingEditPhotos.slice();
+    if (file && allEditFiles.length === 0) {
+      allEditFiles.push({ file: file, previewUrl: '' });
+    }
 
     const { error: issErr } = await sb.from('issues').update({
       title: document.getElementById('f-stat-title-edit').value,
@@ -730,6 +869,7 @@ document.getElementById('f-stat').onsubmit = async (e) => {
     if (issErr) throw issErr;
 
     if (uId) {
+      // Editing existing update
       const payload = {
         status_to: document.getElementById('f-stat-val').value,
         note: document.getElementById('f-stat-note').value,
@@ -737,31 +877,40 @@ document.getElementById('f-stat').onsubmit = async (e) => {
         attendance: document.getElementById('f-stat-reported-edit').value
       };
 
-      if (removePhotoFlag) {
-        payload.photo_url = null;
-        payload.photo_thumb_url = null;
-      } else if (up?.photo_url) {
-        payload.photo_url = up.photo_url;
-        if (up?.photo_thumb_url) payload.photo_thumb_url = up.photo_thumb_url;
-      } else if (currentEditingPhotoUrl) {
-        payload.photo_url = currentEditingPhotoUrl;
-      }
-
       const { error: updErr } = await sb.from('issue_updates').update(payload).eq('id', uId);
       if (updErr) throw updErr;
 
+      // Multi-photo: upload new, remove deleted
+      const uploaded = allEditFiles.length > 0 ? await uploadMultiplePhotos(allEditFiles) : [];
+      // Filter out legacy placeholder IDs
+      var realRemoveIds = photosToRemoveIds.filter(function(rid) { return !rid.startsWith('__legacy_'); });
+      await savePhotosForUpdate(uId, uploaded, realRemoveIds);
+
+      // Handle legacy photo_url removal if legacy photo was removed
+      var legacyRemoved = photosToRemoveIds.some(function(rid) { return rid.startsWith('__legacy_'); });
+      if (legacyRemoved) {
+        await sb.from('issue_updates').update({ photo_url: null, photo_thumb_url: null }).eq('id', uId);
+      }
+
     } else {
-      const { error: insErr } = await sb.from('issue_updates').insert([{
+      // Creating new update entry
+      const { data: newUpd, error: insErr } = await sb.from('issue_updates').insert([{
         issue_id: id,
         status_to: document.getElementById('f-stat-val').value,
         note: document.getElementById('f-stat-note').value,
         event_date: document.getElementById('f-stat-date').value,
-        photo_url: up?.photo_url || null,
-        photo_thumb_url: up?.photo_thumb_url || null,
         attendance: document.getElementById('f-stat-reported-edit').value,
         created_by: currentUserId
-      }]);
+      }]).select();
       if (insErr) throw insErr;
+
+      // Multi-photo: upload and save
+      if (allEditFiles.length > 0 && newUpd?.[0]) {
+        const uploaded = await uploadMultiplePhotos(allEditFiles);
+        if (uploaded.length > 0) {
+          await savePhotosForUpdate(newUpd[0].id, uploaded, []);
+        }
+      }
     }
 
     await syncIssueStatusFromLastEvent(id);
@@ -800,26 +949,28 @@ window.confirmDelete = async () => {
 };
 
 window.previewAddPhoto = function(input) {
-  var f = input.files[0];
-  var p = document.getElementById('add-photo-preview');
-  var im = document.getElementById('add-photo-img');
-  if (f && p && im) {
-    var r = new FileReader();
-    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
-    r.readAsDataURL(f);
-  } else if (p) { p.classList.add('hidden'); }
+  var files = input.files;
+  for (var i = 0; i < files.length; i++) {
+    (function(f) {
+      var r = new FileReader();
+      r.onload = function(e) {
+        pendingAddPhotos.push({ file: f, previewUrl: e.target.result });
+        renderPhotoGrid('add-photos-grid', [], pendingAddPhotos);
+      };
+      r.readAsDataURL(f);
+    })(files[i]);
+  }
+  input.value = '';
 };
 
 window.addGalleryFile = null;
 window.editGalleryFile = null;
 
 window.addPhotoFromGallery = function(input) {
-  window.addGalleryFile = input.files[0];
   window.previewAddPhoto(input);
 };
 
 window.editPhotoFromGallery = function(input) {
-  window.editGalleryFile = input.files[0];
   window.previewEditPhoto(input);
 };
 
@@ -827,19 +978,47 @@ window.clearAddPhoto = function() {
   var i = document.getElementById('f-add-photo'); if (i) i.value = '';
   var g = document.getElementById('f-add-photo-gallery'); if (g) g.value = '';
   window.addGalleryFile = null;
+  pendingAddPhotos = [];
   var p = document.getElementById('add-photo-preview'); if (p) p.classList.add('hidden');
+  renderPhotoGrid('add-photos-grid', [], []);
 };
 
 window.previewEditPhoto = function(input) {
-  var f = input.files[0];
-  var p = document.getElementById('edit-photo-preview');
-  var im = document.getElementById('edit-photo-img');
-  if (f && p && im) {
-    var r = new FileReader();
-    r.onload = function(e) { im.src = e.target.result; p.classList.remove('hidden'); };
-    r.readAsDataURL(f);
-    removePhotoFlag = false;
+  var files = input.files;
+  for (var i = 0; i < files.length; i++) {
+    (function(f) {
+      var r = new FileReader();
+      r.onload = function(e) {
+        pendingEditPhotos.push({ file: f, previewUrl: e.target.result });
+        renderPhotoGrid('edit-photos-grid', existingEditPhotos.filter(function(p) {
+          return photosToRemoveIds.indexOf(p.id) === -1;
+        }), pendingEditPhotos);
+      };
+      r.readAsDataURL(f);
+    })(files[i]);
   }
+  input.value = '';
+};
+
+// Multi-photo: remove pending photo from queue
+window.removePendingPhoto = function(containerId, index) {
+  if (containerId === 'add-photos-grid') {
+    pendingAddPhotos.splice(index, 1);
+    renderPhotoGrid('add-photos-grid', [], pendingAddPhotos);
+  } else {
+    pendingEditPhotos.splice(index, 1);
+    renderPhotoGrid('edit-photos-grid', existingEditPhotos.filter(function(p) {
+      return photosToRemoveIds.indexOf(p.id) === -1;
+    }), pendingEditPhotos);
+  }
+};
+
+// Multi-photo: mark existing photo for removal
+window.removeExistingPhoto = function(containerId, photoId) {
+  photosToRemoveIds.push(photoId);
+  renderPhotoGrid('edit-photos-grid', existingEditPhotos.filter(function(p) {
+    return photosToRemoveIds.indexOf(p.id) === -1;
+  }), pendingEditPhotos);
 };
 
 window.deleteOrphan = async (id) => {
@@ -858,6 +1037,11 @@ window.resetToNewEntry = function() {
   var eb = document.getElementById('edit-mode-bar'); if (eb) eb.classList.add('hidden');
   currentEditingPhotoUrl = null;
   removePhotoFlag = false;
+  // Reset multi-photo state
+  pendingEditPhotos = [];
+  existingEditPhotos = [];
+  photosToRemoveIds = [];
+  renderPhotoGrid('edit-photos-grid', [], []);
   // reset orange highlights
   document.querySelectorAll('#m-history-list [data-uid]').forEach(function(el) {
     el.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] mb-2 leading-tight';

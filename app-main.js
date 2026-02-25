@@ -2095,6 +2095,40 @@ window.migrateThumbs = async () => {
   alert("Migrácia hotová (pozri konzolu pre detaily).");
 };
 
+// Thumbnail migration for issue_photos table
+window.migrateThumbsIssuePhotos = async () => {
+  const { data: rows, error } = await sb
+    .from("issue_photos")
+    .select("id, photo_url, photo_thumb_url")
+    .not("photo_url", "is", null)
+    .is("photo_thumb_url", null);
+
+  if (error) { console.error(error); alert("DB error"); return; }
+  if (!rows || rows.length === 0) { alert("Nič na migráciu v issue_photos"); return; }
+
+  console.log("issue_photos na migráciu:", rows.length);
+
+  for (const r of rows) {
+    try {
+      const base = `iphoto_${r.id}`;
+      const thumbBlob = await makeThumbnailBlobFromUrl(r.photo_url, 420, 0.55);
+      const thumbUrl = await uploadThumbBlob(thumbBlob, base);
+
+      const { error: upErr } = await sb
+        .from("issue_photos")
+        .update({ photo_thumb_url: thumbUrl })
+        .eq("id", r.id);
+
+      if (upErr) throw upErr;
+      console.log("OK issue_photos", r.id);
+    } catch (e) {
+      console.warn("FAIL issue_photos", r.id, e);
+    }
+  }
+
+  alert("Migrácia issue_photos hotová.");
+};
+
 async function waitForImages(rootSelector = '#v-rep', timeoutMs = 20000) {
   const root = document.querySelector(rootSelector);
   if (!root) return;

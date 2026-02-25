@@ -883,13 +883,14 @@
                 <input type="text" id="f-add-title" class="w-full border border-slate-200 rounded-xl p-3 text-xs" placeholder="Názov položky" required>
                 <textarea id="f-add-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-24" placeholder="Popis..."></textarea>
                 <div class="space-y-2">
-                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotky</label>
                     <div id="add-photo-preview" class="hidden relative inline-block">
                         <img id="add-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                         <button type="button" onclick="window.clearAddPhoto()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <input type="file" id="f-add-photo" accept="image/*" capture="environment" onchange="window.previewAddPhoto(this)" class="hidden">
-                    <input type="file" id="f-add-photo-gallery" accept="image/*" onchange="window.addPhotoFromGallery(this)" class="hidden">
+                    <div id="add-photos-grid" class="hidden flex flex-wrap"></div>
+                    <input type="file" id="f-add-photo" accept="image/*" capture="environment" multiple onchange="window.previewAddPhoto(this)" class="hidden">
+                    <input type="file" id="f-add-photo-gallery" accept="image/*" multiple onchange="window.addPhotoFromGallery(this)" class="hidden">
                     <div class="flex space-x-2"><button type="button" onclick="document.getElementById('f-add-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-1"></i> Odfotiť</button><button type="button" onclick="document.getElementById('f-add-photo-gallery').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-image mr-1"></i> Galéria</button></div>
                 </div>
                 <div class="flex space-x-3 pt-4 font-bold">
@@ -914,13 +915,14 @@
                 </div>
                 <textarea id="f-stat-note" class="w-full border border-slate-200 rounded-xl p-3 text-xs h-20 outline-none focus:ring-1 ring-blue-500" placeholder="Poznámka k zmene..."></textarea>
                 <div class="space-y-2">
-                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotku</label>
+                    <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Pridať fotky</label>
                     <div id="edit-photo-preview" class="hidden relative inline-block">
                         <img id="edit-photo-img" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm">
                         <button type="button" onclick="window.removePhotoFromUpdate()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>
                     </div>
-                    <input type="file" id="f-stat-photo" accept="image/*" capture="environment" onchange="window.previewEditPhoto(this)" class="hidden">
-                    <input type="file" id="f-stat-photo-gallery" accept="image/*" onchange="window.editPhotoFromGallery(this)" class="hidden">
+                    <div id="edit-photos-grid" class="hidden flex flex-wrap"></div>
+                    <input type="file" id="f-stat-photo" accept="image/*" capture="environment" multiple onchange="window.previewEditPhoto(this)" class="hidden">
+                    <input type="file" id="f-stat-photo-gallery" accept="image/*" multiple onchange="window.editPhotoFromGallery(this)" class="hidden">
                     <div class="flex space-x-2"><button type="button" onclick="document.getElementById('f-stat-photo').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-camera mr-1"></i> Odfotiť</button><button type="button" onclick="document.getElementById('f-stat-photo-gallery').click()" class="border border-slate-200 rounded-xl px-4 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50"><i class="fa-solid fa-image mr-1"></i> Galéria</button></div>
                 </div>
                 <div id="edit-mode-bar" class="hidden flex items-center justify-between bg-blue-50 px-4 py-2 rounded-xl">
@@ -938,8 +940,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260224n"></script>
-    <script src="app-finance.js?v=20260224n"></script>
-    <script src="app-main.js?v=20260224n"></script>
+    <script src="app-core.js?v=20260224p"></script>
+    <script src="app-finance.js?v=20260224p"></script>
+    <script src="app-main.js?v=20260224p"></script>
 </body>
 </html>
