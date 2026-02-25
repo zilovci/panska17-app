@@ -8,14 +8,14 @@ async function loadAdmin() {
   const { data: users = [] } = await sb.from('user_profiles').select('*').order('created_at', { ascending: true });
   const { data: allAccess = [] } = await sb.from('user_zone_access').select('*');
 
-  var roleLabels = { admin: 'Admin', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
+  var roleLabels = { admin: 'Admin', ekonom: 'Ekonóm', spravca: 'Správca', pracovnik: 'Pracovník', pozorovatel: 'Pozorovateľ' };
 
   document.getElementById('admin-user-list').innerHTML = users.length === 0
     ? '<p class="text-center text-slate-300 text-[10px] font-bold uppercase py-6">Žiadni používatelia</p>'
     : users.map(u => {
       var userAccess = allAccess.filter(function(a) { return a.user_id === u.user_id; });
       var userZoneIds = userAccess.map(function(a) { return a.zone_id; });
-      var isAdminOrSpravca = u.role === 'admin' || u.role === 'spravca';
+      var isAdminOrSpravca = u.role === 'admin' || u.role === 'ekonom' || u.role === 'spravca';
 
       var zoneCheckboxes = isAdminOrSpravca
         ? '<p class="text-[8px] text-slate-400 italic mt-2">Admin/Správca má prístup ku všetkým zónam</p>'
@@ -40,7 +40,7 @@ async function loadAdmin() {
           </div>
           <div class="flex items-center space-x-3">
             <select onchange="window.changeUserRole('${u.id}', this.value)" class="text-[10px] font-bold border border-slate-200 rounded-lg px-2 py-1 ${u.user_id === currentUserId ? 'opacity-50' : ''}" ${u.user_id === currentUserId ? 'disabled' : ''}>
-              ${['admin','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
+              ${['admin','ekonom','spravca','pracovnik','pozorovatel'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${roleLabels[r]}</option>`).join('')}
             </select>
             ${u.user_id !== currentUserId ? `<button onclick="window.deleteUser('${u.id}')" class="text-red-300 hover:text-red-500 text-xs"><i class="fa-solid fa-trash"></i></button>` : ''}
           </div>
@@ -1954,7 +1954,7 @@ async function init() {
     }
 
     // Admin/spravca sees all zones
-    var isAdmin = currentRole === 'admin' || currentRole === 'spravca';
+    var isAdmin = currentRole === 'admin' || currentRole === 'ekonom' || currentRole === 'spravca';
     var availableZones = isAdmin ? allZones : allZones.filter(function(z) { return userZoneIds.indexOf(z.id) !== -1; });
 
     // If user has no zone access and is not admin, show first zone as fallback
@@ -1997,8 +1997,8 @@ function applyPermissions() {
   // Admin nav - only for admin
   var na = document.getElementById('n-admin'); if (na) na.classList.toggle('hidden', currentRole !== 'admin');
   var nam = document.getElementById('n-admin-mob'); if (nam) nam.classList.toggle('hidden', currentRole !== 'admin');
-  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', currentRole !== 'admin');
-  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', currentRole !== 'admin');
+  var nf = document.getElementById('n-fin'); if (nf) nf.classList.toggle('hidden', !['admin', 'ekonom'].includes(currentRole));
+  var nfm = document.getElementById('n-fin-mob'); if (nfm) nfm.classList.toggle('hidden', !['admin', 'ekonom'].includes(currentRole));
 
   // Pozorovateľ: hide add buttons, edit buttons etc via CSS class on body
   if (currentRole === 'pozorovatel') {
