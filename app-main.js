@@ -64,9 +64,25 @@ window.toggleUserZone = async (userId, zoneId, checked) => {
 };
 
 window.deleteUser = async (profileId) => {
-  if (!confirm('Vymazať tohto používateľa?')) return;
-  await sb.from('user_profiles').delete().eq('id', profileId);
-  await loadAdmin();
+  if (!confirm('Vymazať tohto používateľa? Vymaže sa aj prihlasovací účet.')) return;
+  try {
+    // Find user_id from profile before deleting
+    const { data: prof } = await sb.from('user_profiles').select('user_id').eq('id', profileId).single();
+    if (!prof) { alert('Profil sa nenašiel.'); return; }
+
+    // Delete zone access
+    await sb.from('user_zone_access').delete().eq('user_id', prof.user_id);
+    // Delete profile
+    await sb.from('user_profiles').delete().eq('id', profileId);
+    // Delete auth user via RPC
+    const { error: rpcErr } = await sb.rpc('delete_auth_user', { target_user_id: prof.user_id });
+    if (rpcErr) console.warn('Auth user delete failed (may need manual cleanup):', rpcErr.message);
+
+    await loadAdmin();
+  } catch (err) {
+    console.error(err);
+    alert('Chyba pri mazaní: ' + (err.message || 'Pozri konzolu.'));
+  }
 };
 
 window.changeOwnPassword = async () => {
