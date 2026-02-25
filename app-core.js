@@ -580,8 +580,9 @@ async function loadReports() {
     if (dateFrom || dateTo) {
       logs = logs.filter(function(u) {
         if (!u.event_date) return false;
-        if (dateFrom && u.event_date < dateFrom) return false;
-        if (dateTo && u.event_date > dateTo) return false;
+        var ed = (u.event_date || '').split('T')[0];
+        if (dateFrom && ed < dateFrom) return false;
+        if (dateTo && ed > dateTo) return false;
         return true;
       });
       if (logs.length === 0) return '';
