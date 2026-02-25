@@ -172,7 +172,7 @@ function renderPhotoGrid(containerId, photos, pending, opts) {
 
   // Existing photos from DB
   (photos || []).forEach(function(p) {
-    html += '<div class="relative inline-block mr-2 mb-2">' +
+    html += '<div class="relative inline-block mr-1 mb-1">' +
       '<img src="' + (p.photo_thumb_url || p.photo_url) + '" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">' +
       (opts.canRemove !== false ? '<button type="button" onclick="window.removeExistingPhoto(\'' + containerId + '\', \'' + p.id + '\')" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>' : '') +
     '</div>';
@@ -180,7 +180,7 @@ function renderPhotoGrid(containerId, photos, pending, opts) {
 
   // Pending (not yet uploaded) photos
   (pending || []).forEach(function(p, i) {
-    html += '<div class="relative inline-block mr-2 mb-2">' +
+    html += '<div class="relative inline-block mr-1 mb-1">' +
       '<img src="' + p.previewUrl + '" class="w-20 h-20 object-cover rounded-lg border-2 border-blue-300 shadow-sm opacity-80">' +
       '<button type="button" onclick="window.removePendingPhoto(\'' + containerId + '\', ' + i + ')" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>' +
     '</div>';
@@ -716,7 +716,7 @@ window.prepStat = (id) => {
         if (uPhotos.length === 0 && u.photo_url) {
           uPhotos = [{ id: u.id, photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
         }
-        return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-2 mt-2">' + uPhotos.map(p =>
+        return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-1 mt-2">' + uPhotos.map(p =>
           `<img loading="lazy" decoding="async" src="${p.photo_thumb_url || p.photo_url}" class="history-thumb" onclick="window.open('${p.photo_url}')">`
         ).join('') + '</div>' : '';
       })()}
