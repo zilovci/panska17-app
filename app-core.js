@@ -611,7 +611,7 @@ async function loadReports() {
                 if (uPhotos.length === 0 && u.photo_url) {
                   uPhotos = [{ photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
                 }
-                return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-1 ml-2">' + uPhotos.map(function(p) {
+                return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-0.5 ml-2">' + uPhotos.map(function(p) {
                   return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">';
                 }).join('') + '</div>' : '';
               })() +
