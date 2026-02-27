@@ -1122,9 +1122,10 @@ window.generateInvoice = async function(existingInvoice) {
   var owner = owners.length > 0 ? owners[0] : null;
 
   // Load zones for this tenant
-  var { data: tenantZones = [] } = await sb.from('zones').select('id, name, tenant_name, area_m2').eq('tenant_id', tenantId);
+  var { data: tenantZones = [] } = await sb.from('zones').select('id, name, tenant_name, area_m2, billing_area_m2').eq('tenant_id', tenantId);
   var zoneIds = tenantZones.map(function(z) { return z.id; });
-  var totalArea = tenantZones.reduce(function(s, z) { return s + (parseFloat(z.area_m2) || 0); }, 0);
+  // Display area: use billing_area_m2 (what tenant is charged for) if set, otherwise area_m2
+  var totalArea = tenantZones.reduce(function(s, z) { return s + (parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0); }, 0);
   var zoneLabel = tenantZones.map(function(z) { return z.name; }).join(', ');
 
   // Load allocations for this tenant's zones in period
