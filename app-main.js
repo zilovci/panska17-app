@@ -1210,6 +1210,54 @@ window.generateInvoice = async function(existingInvoice) {
     byCatBase[cat].items.push(a);
   });
 
+  // Calculate redirected heating share (water/electricity → kotolňa) and add to heating total
+  // This must happen BEFORE summary table so both summary and detail show the same number
+  var _redirectedHeatShare = 0;
+  if (byCatBase['Vykurovanie']) {
+    var _totalHeatedArea = 0;
+    allZones.forEach(function(z) {
+      if (!z.is_active) return;
+      var area = parseFloat(z.area_m2) || 0;
+      var temp = parseFloat(z.tempering_pct) || 0;
+      if (area === 0) return;
+      if (z.tenant_id) _totalHeatedArea += area;
+      else if (temp > 0) _totalHeatedArea += area * temp / 100;
+    });
+
+    var _seenRedir = {};
+    var _redirBuildingTotal = 0;
+    periodAllocs.forEach(function(a) {
+      if (!a.expenses) return;
+      var e = a.expenses;
+      if (_seenRedir[e.id]) return;
+      var catName = e.cost_categories ? e.cost_categories.name : '';
+      if (catName === 'Vykurovanie') return;
+      var mainC = parseFloat(e.meter_main_consumption) || 0;
+      var subC = parseFloat(e.meter_sub_consumption) || 0;
+      var redirC = parseFloat(e.meter_redirected_consumption) || 0;
+      if (redirC <= 0) return;
+      var denom = mainC > 0 ? mainC : (subC + redirC);
+      if (denom <= 0) return;
+      _seenRedir[e.id] = true;
+      _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(e.amount) || 0)).toFixed(2));
+    });
+    // Also from redirectedExpenses
+    redirectedExpenses.forEach(function(re) {
+      if (_seenRedir[re.id]) return;
+      var mainC = parseFloat(re.meter_main_consumption) || 0;
+      var subC = parseFloat(re.meter_sub_consumption) || 0;
+      var redirC = parseFloat(re.meter_redirected_consumption) || 0;
+      if (redirC <= 0) return;
+      var denom = mainC > 0 ? mainC : (subC + redirC);
+      if (denom <= 0) return;
+      _seenRedir[re.id] = true;
+      _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(re.amount) || 0)).toFixed(2));
+    });
+
+    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * totalArea / _totalHeatedArea).toFixed(2)) : 0;
+    byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
+  }
+
   var catNames = Object.keys(byCatBase).sort();
   var totalCosts = catNames.reduce(function(s, c) { return s + byCatBase[c].amount; }, 0);
 
@@ -1804,18 +1852,19 @@ window.generateInvoice = async function(existingInvoice) {
       });
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
 
-      // Tenant's portion - use heatAmount directly (= same as summary table)
-      // No redirected additions - keeps all numbers consistent
+      // Tenant's total (already includes redirected share from pre-calculation)
+      var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
+
       hRows.push(['', '']); // spacer
       hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m²']);
       var periodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-      if (heatAmount > 0 && totalArea > 0) {
-        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(heatAmount / totalArea) + ' EUR']);
-        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(heatAmount / totalArea / numMonths) + ' EUR']);
+      if (tenantHeatTotal > 0 && totalArea > 0) {
+        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(tenantHeatTotal / totalArea) + ' EUR']);
+        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(tenantHeatTotal / totalArea / numMonths) + ' EUR']);
       }
-      hRows.push([stripDia('Mesačný náklad'), fmtEur(heatAmount / numMonths) + ' EUR']);
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([stripDia('Mesačný náklad'), fmtEur(tenantHeatTotal / numMonths) + ' EUR']);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(tenantHeatTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
 
