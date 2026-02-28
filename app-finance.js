@@ -394,9 +394,15 @@ var editingMeterId = null;
 var currentReadingMeterId = null;
 
 async function loadMeters() {
-  var { data: meters } = await sb.from('meters').select('*, zones(name, tenant_name)').order('sort_order', { ascending: true });
+  console.log('loadMeters: starting...');
+  var { data: meters, error: mErr } = await sb.from('meters').select('*, zones(name, tenant_name)').order('sort_order', { ascending: true });
+  if (mErr) console.error('loadMeters: query error', mErr);
   meters = meters || [];
   allMeters = meters;
+  console.log('loadMeters: found', meters.length, 'meters');
+
+  var list = document.getElementById('fin-meters-list');
+  console.log('loadMeters: fin-meters-list element:', list ? 'FOUND' : 'MISSING');
 
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date', { ascending: false });
 
