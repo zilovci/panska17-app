@@ -152,23 +152,21 @@ async function loadFinance() {
     }
   };
 
+  window.setDefaultPayer = function(cb) {
+    if (!cb.checked) return;
+    var payerSel = document.querySelector('[data-payer-zone="' + cb.value + '"]');
+    if (!payerSel) return;
+    var hasTenant = cb.getAttribute('data-has-tenant') === 'true';
+    var leaseTo = cb.getAttribute('data-lease-to') || '';
+    var leaseFrom = cb.getAttribute('data-lease-from') || '';
+    var periodFrom = document.getElementById('exp-period-from').value;
+    var periodTo = document.getElementById('exp-period-to').value;
+    var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
+    payerSel.value = (!hasTenant || leaseExpired) ? 'owner' : 'tenant';
+  };
+
   window.onZoneCheck = function(cb) {
-    if (cb.checked) {
-      var payerSel = document.querySelector('[data-payer-zone="' + cb.value + '"]');
-      if (payerSel) {
-        var hasTenant = cb.getAttribute('data-has-tenant') === 'true';
-        var leaseTo = cb.getAttribute('data-lease-to') || '';
-        var leaseFrom = cb.getAttribute('data-lease-from') || '';
-        var periodFrom = document.getElementById('exp-period-from').value;
-        var periodTo = document.getElementById('exp-period-to').value;
-        var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
-        if (!hasTenant || leaseExpired) {
-          payerSel.value = 'owner';
-        } else {
-          payerSel.value = 'tenant';
-        }
-      }
-    }
+    window.setDefaultPayer(cb);
     window.updateAllocPreview();
   };
   window.styleAllPayerSelects = function() {
@@ -2110,7 +2108,10 @@ window.clearAllocChecks = function() {
 
 window.allocSelectAll = function(check) {
   var cbs = document.querySelectorAll('.alloc-zone-cb');
-  for (var i = 0; i < cbs.length; i++) cbs[i].checked = check;
+  for (var i = 0; i < cbs.length; i++) {
+    cbs[i].checked = check;
+    if (check) window.setDefaultPayer(cbs[i]);
+  }
   window.updateAllocPreview();
 };
 
