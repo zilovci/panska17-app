@@ -1937,7 +1937,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Save invoice to DB (if new)
   if (isNewInvoice) {
-    await sb.from('invoices').insert({
+    var invInsert = await sb.from('invoices').insert({
       tenant_id: tenantId,
       invoice_number: invNumber,
       period_from: dateFrom,
@@ -1948,7 +1948,14 @@ window.generateInvoice = async function(existingInvoice) {
       balance: parseFloat(balance.toFixed(2)),
       due_date: dueDateStr,
       status: 'draft'
-    });
+    }).select('id').single();
+
+    if (invInsert.error) {
+      console.error('Invoice insert failed:', invInsert.error);
+      alert('⚠ Faktúra sa nepodarila uložiť do databázy!\n\n' + invInsert.error.message);
+    } else {
+      console.log('Invoice saved:', invInsert.data);
+    }
 
     await window.loadInvoices();
   }
