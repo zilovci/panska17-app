@@ -2155,10 +2155,13 @@ window.updateAllocPreview = function() {
     if (payerSel) {
       payerSel.classList.toggle('hidden', !allCbs[k].checked);
       if (allCbs[k].checked) {
-        // Auto-set to owner if lease expired before period
+        // Auto-set to owner if: lease expired, or zone has no tenant
         var leaseTo = allCbs[k].getAttribute('data-lease-to') || '';
         var leaseFrom = allCbs[k].getAttribute('data-lease-from') || '';
-        if (periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo))) {
+        var zoneData = allZones.find(function(z) { return z.id === allCbs[k].value; });
+        var hasTenant = zoneData && zoneData.tenant_id;
+        var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
+        if (!hasTenant || leaseExpired) {
           payerSel.value = 'owner';
         }
         window.onPayerChange(payerSel);
