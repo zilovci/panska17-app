@@ -75,7 +75,7 @@ async function loadFinance() {
   // Must be called before any expense edit to ensure correct dates
   window.refreshZoneLeaseDates = async function() {
     try {
-      var { data: freshZones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+      var { data: freshZones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id, area_m2, billing_area_m2, tempering_pct');
       var { data: freshTenants = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
       var leaseMap = {};
       freshTenants.forEach(function(t) { leaseMap[t.id] = t; });
@@ -89,11 +89,21 @@ async function loadFinance() {
         var leaseTo = (lease && lease.lease_to) ? lease.lease_to : '';
         cbs[i].setAttribute('data-lease-from', leaseFrom);
         cbs[i].setAttribute('data-lease-to', leaseTo);
+        cbs[i].setAttribute('data-area', zone.area_m2 || 0);
+        cbs[i].setAttribute('data-billing-area', zone.billing_area_m2 || zone.area_m2 || 0);
+        cbs[i].setAttribute('data-temper', zone.tempering_pct || 0);
+        // Update allZones in memory too
+        var memZone = allZones.find(function(z) { return z.id === zoneId; });
+        if (memZone) {
+          memZone.area_m2 = zone.area_m2;
+          memZone.billing_area_m2 = zone.billing_area_m2;
+          memZone.tempering_pct = zone.tempering_pct;
+        }
         var label = zone.tenant_name || zone.name;
         var span = cbs[i].nextElementSibling;
         if (span) span.title = label + (leaseFrom ? ' • Zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') : ' • Bez dátumu zmluvy');
       }
-      console.log('Zone lease dates refreshed from DB');
+      console.log('Zone data refreshed from DB (areas, tempering, lease dates)');
     } catch(err) {
       console.warn('refreshZoneLeaseDates error:', err);
     }
