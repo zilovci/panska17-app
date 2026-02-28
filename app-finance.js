@@ -3011,12 +3011,19 @@ window.calcMeterAllocation = async function() {
 
   totalConsumption = zoneAllocs.filter(function(a) { return a.payer !== 'redirect' && a.payer !== 'correction'; }).reduce(function(s, a) { return s + a.consumption; }, 0);
 
+  // Check sub_type BEFORE redirect calculation - maintenance uses different formula
+  var subTypeSel = document.getElementById('exp-sub-type');
+  var currentSubType = subTypeSel && !subTypeSel.classList.contains('hidden') ? (subTypeSel.value || '') : '';
+  var isMaintenanceSub = currentSubType.match(/[Čč]isten|[Úú]držb/);
+
   // Calculate redirected amounts first (proportional to main meter or total if no main)
   var redirectedTotalAmount = 0;
   var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
   var mainCons3 = mainMc3 ? mainMc3.consumption : 0;
-  // Base for unit price: sub-meters + NET redirected (deduction is NOT in invoice)
-  var priceBase = subMeterTotal + redirectedTotal;
+
+  // For maintenance: unit price = amount / mainMeter (same for everyone)
+  // For regular: unit price = amount / (subMeters + redirected)
+  var priceBase = isMaintenanceSub && mainConsumption > 0 ? mainConsumption : (subMeterTotal + redirectedTotal);
 
   zoneAllocs.forEach(function(a) {
     if (a.payer === 'redirect') {
@@ -3029,10 +3036,7 @@ window.calcMeterAllocation = async function() {
 
   // Tenant/owner allocations use remaining amount after redirects
   // EXCEPT for maintenance/cleaning sub_types - those apply to ALL consumption (incl. redirected)
-  var subTypeSel = document.getElementById('exp-sub-type');
-  var currentSubType = subTypeSel && !subTypeSel.classList.contains('hidden') ? (subTypeSel.value || '') : '';
-  var isMaintenanceSub = currentSubType.match(/[Čč]isten|[Úú]držb/);
-  console.log('METER ALLOC DEBUG:', { currentSubType: currentSubType, isMaintenanceSub: !!isMaintenanceSub, amount: amount, redirectedTotalAmount: redirectedTotalAmount, mainConsumption: mainConsumption });
+  console.log('METER ALLOC DEBUG:', { currentSubType: currentSubType, isMaintenanceSub: !!isMaintenanceSub, amount: amount, redirectedTotalAmount: redirectedTotalAmount, mainConsumption: mainConsumption, priceBase: priceBase });
   var allocatableAmount = isMaintenanceSub ? amount : (amount - redirectedTotalAmount);
 
   // Calculate percentages and amounts
