@@ -3032,6 +3032,7 @@ window.calcMeterAllocation = async function() {
   var subTypeSel = document.getElementById('exp-sub-type');
   var currentSubType = subTypeSel && !subTypeSel.classList.contains('hidden') ? (subTypeSel.value || '') : '';
   var isMaintenanceSub = currentSubType.match(/[Čč]isten|[Úú]držb/);
+  console.log('METER ALLOC DEBUG:', { currentSubType: currentSubType, isMaintenanceSub: !!isMaintenanceSub, amount: amount, redirectedTotalAmount: redirectedTotalAmount, mainConsumption: mainConsumption });
   var allocatableAmount = isMaintenanceSub ? amount : (amount - redirectedTotalAmount);
 
   // Calculate percentages and amounts
