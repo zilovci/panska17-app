@@ -217,12 +217,16 @@ async function loadFinance() {
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
 
       // Auto-uncheck zones with 0 overlap (e.g. tenant left before or starts after this period)
+      // Only auto-uncheck if payer is tenant - owner zones should stay
       if (autoMonths === 0 && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo))) {
-        cb.checked = false;
         var payerSel = document.querySelector('[data-payer-zone="' + zoneId + '"]');
-        if (payerSel) payerSel.classList.add('hidden');
-        monthsWraps[m].classList.add('hidden');
-        continue;
+        var currentPayer = payerSel ? payerSel.value : 'tenant';
+        if (currentPayer === 'tenant' && inp && inp.getAttribute('data-auto') !== 'false') {
+          cb.checked = false;
+          if (payerSel) payerSel.classList.add('hidden');
+          monthsWraps[m].classList.add('hidden');
+          continue;
+        }
       }
       
       // Debug log for zones with lease dates
@@ -2021,8 +2025,8 @@ window.showAddExpense = async function() {
   document.getElementById('amort-years-wrap').classList.add('hidden');
   document.getElementById('amort-yearly-hint').classList.add('hidden');
   document.getElementById('exp-invoice').value = '';
-  document.getElementById('exp-billing-from').value = '';
-  document.getElementById('exp-billing-to').value = '';
+  document.getElementById('exp-billing-from').value = selYear + '-01-01';
+  document.getElementById('exp-billing-to').value = selYear + '-12-31';
   document.getElementById('exp-period-from').value = selYear + '-01-01';
   document.getElementById('exp-period-from').setAttribute('data-auto', 'false');
   document.getElementById('exp-period-to').value = selYear + '-12-31';
