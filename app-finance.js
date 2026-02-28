@@ -273,6 +273,9 @@ async function loadFinance() {
       var show = currentVal < totalMonths;
       // Also show if lease dates indicate partial overlap
       if (autoMonths !== null && autoMonths < totalMonths) show = true;
+      // Hide for owner zones - no months needed
+      var payerSel = document.querySelector('[data-payer-zone="' + zoneId + '"]');
+      if (payerSel && payerSel.value === 'owner') show = false;
       monthsWraps[m].classList.toggle('hidden', !show);
 
       // Warning if manual != auto
@@ -2144,12 +2147,22 @@ window.getSelectedAllocZones = function() {
 
 window.updateAllocPreview = function() {
   // Show/hide payer selectors based on checked state
+  var periodFrom = document.getElementById('exp-period-from').value;
+  var periodTo = document.getElementById('exp-period-to').value;
   var allCbs = document.querySelectorAll('.alloc-zone-cb');
   for (var k = 0; k < allCbs.length; k++) {
     var payerSel = document.querySelector('[data-payer-zone="' + allCbs[k].value + '"]');
     if (payerSel) {
       payerSel.classList.toggle('hidden', !allCbs[k].checked);
-      if (allCbs[k].checked) window.onPayerChange(payerSel);
+      if (allCbs[k].checked) {
+        // Auto-set to owner if lease expired before period
+        var leaseTo = allCbs[k].getAttribute('data-lease-to') || '';
+        var leaseFrom = allCbs[k].getAttribute('data-lease-from') || '';
+        if (periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo))) {
+          payerSel.value = 'owner';
+        }
+        window.onPayerChange(payerSel);
+      }
     }
   }
 
