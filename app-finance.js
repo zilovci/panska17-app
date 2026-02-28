@@ -2103,9 +2103,12 @@ window.getSelectedAllocZones = function() {
   var cbs = document.querySelectorAll('.alloc-zone-cb:checked');
   var zones = [];
   for (var i = 0; i < cbs.length; i++) {
-    var area = parseFloat(cbs[i].getAttribute('data-area')) || 0;
-    var billingArea = parseFloat(cbs[i].getAttribute('data-billing-area')) || area;
-    zones.push({ id: cbs[i].value, area: area, billingArea: billingArea });
+    // Always read current area from allZones (not stale checkbox attributes)
+    var zoneId = cbs[i].value;
+    var zoneData = allZones.find(function(z) { return z.id === zoneId; });
+    var area = zoneData ? (parseFloat(zoneData.area_m2) || 0) : (parseFloat(cbs[i].getAttribute('data-area')) || 0);
+    var billingArea = zoneData ? (parseFloat(zoneData.billing_area_m2) || area) : (parseFloat(cbs[i].getAttribute('data-billing-area')) || area);
+    zones.push({ id: zoneId, area: area, billingArea: billingArea });
   }
   return zones;
 };
@@ -2219,10 +2222,12 @@ window.updateAllocPreview = function() {
   if (isHeating) {
     for (var i = 0; i < allCbs.length; i++) {
       if (!allCbs[i].checked) {
-        var temper = parseFloat(allCbs[i].getAttribute('data-temper')) || 0;
+        var zoneId = allCbs[i].value;
+        var zoneData = allZones.find(function(z) { return z.id === zoneId; });
+        var temper = zoneData ? (parseFloat(zoneData.tempering_pct) || 0) : (parseFloat(allCbs[i].getAttribute('data-temper')) || 0);
         if (temper > 0) {
-          var area = parseFloat(allCbs[i].getAttribute('data-area')) || 0;
-          temperedZones.push({ id: allCbs[i].value, area: area, temper: temper, effectiveArea: area * temper / 100 });
+          var area = zoneData ? (parseFloat(zoneData.area_m2) || 0) : (parseFloat(allCbs[i].getAttribute('data-area')) || 0);
+          temperedZones.push({ id: zoneId, area: area, temper: temper, effectiveArea: area * temper / 100 });
         }
       }
     }
@@ -3497,6 +3502,16 @@ window.editExpense = async function(id) {
   window.toggleAmortFields();
 
   // Load existing allocations
+  // First refresh checkbox data attributes from current allZones
+  var cbsRefresh = document.querySelectorAll('.alloc-zone-cb');
+  for (var r = 0; r < cbsRefresh.length; r++) {
+    var zd = allZones.find(function(z) { return z.id === cbsRefresh[r].value; });
+    if (zd) {
+      cbsRefresh[r].setAttribute('data-area', zd.area_m2 || 0);
+      cbsRefresh[r].setAttribute('data-billing-area', zd.billing_area_m2 || zd.area_m2 || 0);
+      cbsRefresh[r].setAttribute('data-temper', zd.tempering_pct || 0);
+    }
+  }
   var { data: allocs = [] } = await sb.from('expense_allocations').select('zone_id, payer, months_occupied, months_total').eq('expense_id', id);
   var allocMap = {};
   allocs.forEach(function(a) {
