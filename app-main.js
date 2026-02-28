@@ -1214,10 +1214,10 @@ window.generateInvoice = async function(existingInvoice) {
   // This must happen BEFORE summary table so both summary and detail show the same number
   var _redirectedHeatShare = 0;
   if (byCatBase['Vykurovanie']) {
-    // Derive heated area from tenant's allocation percentage
+    // Derive heated area from one expense's allocation percentage
     var _tenantHeatPct = 0;
     byCatBase['Vykurovanie'].items.forEach(function(a) {
-      if (a.payer !== 'owner') _tenantHeatPct += parseFloat(a.percentage) || 0;
+      if (a.payer !== 'owner' && !_tenantHeatPct) _tenantHeatPct = parseFloat(a.percentage) || 0;
     });
     var _totalHeatedArea = (_tenantHeatPct > 0 && totalArea > 0) ? (totalArea / _tenantHeatPct * 100) : 0;
 
@@ -1822,10 +1822,17 @@ window.generateInvoice = async function(existingInvoice) {
 
       // Get total heated area from building zones
       // Occupied zones = full area, empty/owner zones = area * tempering%
-      // Derive heated area from allocation percentages (same pool that was used for allocation)
+      // Derive heated area from one expense's allocation percentage
       var heatItems = byCatBase['Vykurovanie'].items;
       var tenantHeatPct = 0;
-      heatItems.forEach(function(a) { if (a.payer !== 'owner') tenantHeatPct += parseFloat(a.percentage) || 0; });
+      var seenHeatPctExp = {};
+      heatItems.forEach(function(a) {
+        if (a.payer === 'owner') return;
+        var eid = a.expenses ? a.expenses.id : null;
+        if (!eid || seenHeatPctExp[eid]) return;
+        if (!tenantHeatPct) tenantHeatPct = parseFloat(a.percentage) || 0;
+        seenHeatPctExp[eid] = true;
+      });
       var totalHeatedArea = (tenantHeatPct > 0 && totalArea > 0) ? (totalArea / tenantHeatPct * 100) : 0;
 
       var hRows = [];
@@ -1862,15 +1869,23 @@ window.generateInvoice = async function(existingInvoice) {
     if (hasEps) {
       var epsAmount = byCatBase['EPS a PO'].amount;
 
-      // Derive building pool area from allocation percentages
-      // tenant billing area / (tenant percentage / 100) = total pool
+      // Building total = sum of full expense amounts (deduplicated)
+      var epsBuildingTotal = 0;
+      var seenEpsExp = {};
+      var epsOnePct = 0; // percentage from one representative expense
       var epsItems = byCatBase['EPS a PO'].items;
-      var tenantEpsPct = 0;
-      epsItems.forEach(function(a) { tenantEpsPct += parseFloat(a.percentage) || 0; });
-      var totalProtectedArea = (tenantEpsPct > 0 && totalArea > 0) ? (totalArea / tenantEpsPct * 100) : 0;
-
-      // Building-level EPS total derived from tenant share and percentage
-      var epsBuildingTotal = (tenantEpsPct > 0) ? (epsAmount / tenantEpsPct * 100) : 0;
+      epsItems.forEach(function(a) {
+        if (a.payer === 'owner') return;
+        var eid = a.expenses ? a.expenses.id : null;
+        if (!eid || seenEpsExp[eid]) return;
+        seenEpsExp[eid] = true;
+        var fullAmt = parseFloat(a.expenses.amount) || 0;
+        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+        epsBuildingTotal += isAmort ? fullAmt / a.expenses.amort_years : fullAmt;
+        if (!epsOnePct) epsOnePct = parseFloat(a.percentage) || 0;
+      });
+      // Pool = tenant area / (tenant percentage of one expense / 100)
+      var totalProtectedArea = (epsOnePct > 0 && totalArea > 0) ? (totalArea / epsOnePct * 100) : 0;
 
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m²']);
