@@ -216,18 +216,8 @@ async function loadFinance() {
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
 
-      // Auto-uncheck zones with 0 overlap (e.g. tenant left before or starts after this period)
-      // Only auto-uncheck if payer is tenant - owner zones should stay
-      if (autoMonths === 0 && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo))) {
-        var payerSel = document.querySelector('[data-payer-zone="' + zoneId + '"]');
-        var currentPayer = payerSel ? payerSel.value : 'tenant';
-        if (currentPayer === 'tenant' && inp && inp.getAttribute('data-auto') !== 'false') {
-          cb.checked = false;
-          if (payerSel) payerSel.classList.add('hidden');
-          monthsWraps[m].classList.add('hidden');
-          continue;
-        }
-      }
+      // If zone has 0 overlap, just set months to 0 - don't uncheck
+      // User can manually check it and set to owner if needed
       
       // Debug log for zones with lease dates
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
@@ -2103,9 +2093,23 @@ window.loadCategoryPreset = async function(catId) {
   var { data: presets = [] } = await sb.from('category_zone_presets').select('zone_id, payer').eq('category_id', catId);
   var presetMap = {};
   presets.forEach(function(p) { presetMap[p.zone_id] = p.payer || 'tenant'; });
+
+  var periodFrom = document.getElementById('exp-period-from').value;
+  var periodTo = document.getElementById('exp-period-to').value;
+
   var cbs = document.querySelectorAll('.alloc-zone-cb');
   for (var i = 0; i < cbs.length; i++) {
     var isPreset = presetMap.hasOwnProperty(cbs[i].value);
+
+    // Auto-skip tenant zones where lease doesn't overlap with period
+    if (isPreset && presetMap[cbs[i].value] === 'tenant' && periodFrom && periodTo) {
+      var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
+      var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
+      if ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo)) {
+        isPreset = false;
+      }
+    }
+
     cbs[i].checked = isPreset;
     var payerSel = document.querySelector('[data-payer-zone="' + cbs[i].value + '"]');
     if (payerSel) {
