@@ -362,8 +362,8 @@ window.loadOverview = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, is_auto_generated, cost_type, amort_years, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
-  var selectFieldsFallback = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, is_auto_generated, cost_type, amort_years, sub_type, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFieldsFallback = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, sub_type, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
   var allExp = [];
 
   if (overviewMode === 'payment') {
@@ -1167,7 +1167,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Load allocations for this tenant's zones in period
   var { data: allocs = [] } = await sb.from('expense_allocations')
-    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, cost_categories(name))')
+    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, sub_type, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
 
   // Filter by period overlap
@@ -1193,13 +1193,21 @@ window.generateInvoice = async function(existingInvoice) {
   // Only tenant-paid allocations
   var tenantAllocs = periodAllocs.filter(function(a) { return a.payer !== 'owner'; });
 
-  // Group by category
+  // Group by category + sub_type for cost table rows
   var byCat = {};
+  // Also keep grouping by base category name for detail sections
+  var byCatBase = {};
   tenantAllocs.forEach(function(a) {
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
-    if (!byCat[cat]) byCat[cat] = { amount: 0, items: [] };
-    byCat[cat].amount += parseFloat(a.amount) || 0;
-    byCat[cat].items.push(a);
+    var sub = a.expenses.sub_type || null;
+    var key = sub ? cat + ' – ' + sub : cat;
+    if (!byCat[key]) byCat[key] = { amount: 0, items: [], catName: cat, subType: sub };
+    byCat[key].amount += parseFloat(a.amount) || 0;
+    byCat[key].items.push(a);
+    // Base category group
+    if (!byCatBase[cat]) byCatBase[cat] = { amount: 0, items: [] };
+    byCatBase[cat].amount += parseFloat(a.amount) || 0;
+    byCatBase[cat].items.push(a);
   });
 
   var catNames = Object.keys(byCat).sort();
@@ -1440,8 +1448,8 @@ window.generateInvoice = async function(existingInvoice) {
   // Check if we have any detail content
   var hasWater = meterCategories['Voda a kanalizácia'] || meterCategories['Voda a kanalizácia'];
   var hasElec = meterCategories['Elektrina'];
-  var hasHeat = byCat['Vykurovanie'];
-  var hasEps = byCat['EPS a PO'];
+  var hasHeat = byCatBase['Vykurovanie'];
+  var hasEps = byCatBase['EPS a PO'];
 
   if (hasWater || hasElec || hasHeat || hasEps) {
     doc.addPage();
@@ -1480,9 +1488,9 @@ window.generateInvoice = async function(existingInvoice) {
     var waterKey = Object.keys(meterCategories).find(function(k) { return k.match(/vod|kanal/i); });
     if (waterKey) {
       var wc = meterCategories[waterKey];
-      var wItems = byCat[waterKey] ? byCat[waterKey].items : [];
+      var wItems = byCatBase[waterKey] ? byCatBase[waterKey].items : [];
       var wCons = wItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
-      var wAmount = byCat[waterKey] ? byCat[waterKey].amount : 0;
+      var wAmount = byCatBase[waterKey] ? byCatBase[waterKey].amount : 0;
       var wRows = [];
       if (wc.mainCons > 0) {
         wRows.push([stripDia('Hlavný merač (budova)'), wc.mainCons.toFixed(2) + ' m3']);
@@ -1500,9 +1508,9 @@ window.generateInvoice = async function(existingInvoice) {
     // --- ELEKTRINA ---
     if (hasElec) {
       var ec = meterCategories['Elektrina'];
-      var eItems = byCat['Elektrina'] ? byCat['Elektrina'].items : [];
+      var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
       var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
-      var eAmount = byCat['Elektrina'] ? byCat['Elektrina'].amount : 0;
+      var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
       var eRows = [];
       if (ec.mainCons > 0) {
         eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
@@ -1517,7 +1525,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     // --- VYKUROVANIE ---
     if (hasHeat) {
-      var heatAmount = byCat['Vykurovanie'].amount;
+      var heatAmount = byCatBase['Vykurovanie'].amount;
 
       // Collect heating composition (building-level expenses for this category)
       var heatingInputs = [];
@@ -1539,6 +1547,7 @@ window.generateInvoice = async function(existingInvoice) {
           supplier: a.expenses.supplier || '',
           fullAmount: fullAmount,
           amount: yearlyAmount,
+          subType: a.expenses.sub_type || null,
           isAuto: !!a.expenses.is_auto_generated,
           isAmort: isAmort,
           amortYears: a.expenses.amort_years || 0
@@ -1561,7 +1570,12 @@ window.generateInvoice = async function(existingInvoice) {
       heatingInputs.forEach(function(h) {
         var descLow = (h.desc + ' ' + h.supplier).toLowerCase();
         var group;
-        if (h.isAmort) {
+        // Use sub_type if available (deterministic)
+        if (h.subType === 'Plyn') {
+          group = 'plyn';
+        } else if (h.subType === 'Údržba, revízie') {
+          group = 'kuric';
+        } else if (h.isAmort) {
           // Amortized = always maintenance/repair, never media delivery
           group = 'kuric';
         } else if (h.isAuto && descLow.match(/vodomer|voda/)) {
@@ -1695,7 +1709,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     // --- EPS a PO ---
     if (hasEps) {
-      var epsAmount = byCat['EPS a PO'].amount;
+      var epsAmount = byCatBase['EPS a PO'].amount;
       // Get total protected area
       var totalProtectedArea = allZones.reduce(function(s, z) {
         if (!z.is_active) return s;

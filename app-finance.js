@@ -54,21 +54,45 @@ async function loadFinance() {
 
   // Category dropdown in modal - with preset loading
   var expCat = document.getElementById('exp-category');
+
+  // Sub-types per category name
+  var categorySubTypes = {
+    'Vykurovanie': ['Plyn', 'Údržba, revízie'],
+    'Voda a kanalizácia': ['Voda', 'Čistenie, údržba']
+  };
+
+  window.updateSubTypeSelect = function(catName, currentVal) {
+    var subSel = document.getElementById('exp-sub-type');
+    if (!subSel) return;
+    var subs = categorySubTypes[catName];
+    if (subs) {
+      subSel.innerHTML = subs.map(function(s) {
+        return '<option value="' + s + '"' + (s === currentVal ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+      subSel.classList.remove('hidden');
+    } else {
+      subSel.innerHTML = '';
+      subSel.classList.add('hidden');
+    }
+  };
+
   if (expCat) {
     expCat.innerHTML = cats.map(function(c) {
-      return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '" data-empty-rule="' + (c.empty_zone_rule || 'owner') + '">' + c.name + '</option>';
+      return '<option value="' + c.id + '" data-method="' + (c.allocation_method || 'area') + '" data-empty-rule="' + (c.empty_zone_rule || 'owner') + '" data-cat-name="' + c.name + '">' + c.name + '</option>';
     }).join('');
     expCat.onchange = async function() {
       // Check last expense for this category to reuse its method
       var catId = this.value;
       var opt = this.options[this.selectedIndex];
       var defaultMethod = opt ? (opt.getAttribute('data-method') || 'area') : 'area';
+      var catName = opt ? (opt.getAttribute('data-cat-name') || '') : '';
       var method = defaultMethod;
       try {
         var { data: lastExp } = await sb.from('expenses').select('alloc_method').eq('category_id', catId).order('date', { ascending: false }).limit(1).single();
         if (lastExp && lastExp.alloc_method) method = lastExp.alloc_method;
       } catch(e) {}
       window.setAllocMethod(method);
+      window.updateSubTypeSelect(catName, null);
       window.loadCategoryPreset(this.value);
       window.updateAllocPreview();
       if (window.updateMonthsVisibility) window.updateMonthsVisibility();
@@ -975,6 +999,7 @@ window.loadExpenses = async function() {
       zoneName = 'Celá budova';
     }
     var catName = e.cost_categories ? e.cost_categories.name : '--';
+    var subTypeBadge = e.sub_type ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-500">' + e.sub_type + '</span>' : '';
     var costTypeBadge = '';
     if (e.cost_type === 'amortized') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">⏱ ' + (e.amort_years || '?') + 'r</span>';
     else if (e.cost_type === 'investment') costTypeBadge = '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">💰 INV</span>';
@@ -1026,6 +1051,7 @@ window.loadExpenses = async function() {
           '<span class="text-[8px] font-black text-slate-400 uppercase">' + fmtD(e.date) + '</span>' +
           (e.ref_number ? '<span class="text-[8px] font-bold text-amber-500">#' + e.ref_number + '</span>' : '') +
           '<span class="text-[8px] font-bold text-blue-500 uppercase">' + catName + '</span>' +
+          subTypeBadge +
           costTypeBadge +
           warningHtml +
           '<span class="text-[8px] text-slate-300">' + zoneName + '</span>' +
@@ -2049,6 +2075,9 @@ window.showAddExpense = async function() {
   document.getElementById('period-hint').textContent = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-ref').value = '';
+  // Init sub-type for first category
+  var firstCatOpt = document.getElementById('exp-category').options[0];
+  if (firstCatOpt) window.updateSubTypeSelect(firstCatOpt.getAttribute('data-cat-name'), null);
   document.getElementById('exp-receipt').value = '';
   var receiptPreview = document.getElementById('exp-receipt-preview');
   receiptPreview.classList.add('hidden');
@@ -3188,6 +3217,7 @@ window.saveExpense = async function() {
     amort_years: parseInt(document.getElementById('exp-amort-years').value) || null,
     alloc_method: currentAllocMethod || 'area',
     ref_number: document.getElementById('exp-ref').value.trim() || null,
+    sub_type: document.getElementById('exp-sub-type').classList.contains('hidden') ? null : (document.getElementById('exp-sub-type').value || null),
     created_by: currentUserId
   };
 
@@ -3538,6 +3568,10 @@ window.editExpense = async function(id) {
   document.getElementById('expense-modal-title').innerText = 'Upraviť náklad';
   document.getElementById('exp-date').value = e.date;
   document.getElementById('exp-category').value = e.category_id;
+  // Set sub-type for this category
+  var catOpt = document.getElementById('exp-category').options[document.getElementById('exp-category').selectedIndex];
+  var catName = catOpt ? (catOpt.getAttribute('data-cat-name') || '') : '';
+  window.updateSubTypeSelect(catName, e.sub_type || null);
   document.getElementById('exp-desc').value = e.description;
   document.getElementById('exp-supplier').value = e.supplier || '';
   document.getElementById('exp-amount').value = e.amount;
@@ -3706,6 +3740,9 @@ window.duplicateExpense = async function(id) {
 
   document.getElementById('exp-date').value = shiftDate(orig.date) || new Date().toISOString().split('T')[0];
   document.getElementById('exp-category').value = orig.category_id;
+  var dupCatOpt = document.getElementById('exp-category').options[document.getElementById('exp-category').selectedIndex];
+  var dupCatName = dupCatOpt ? (dupCatOpt.getAttribute('data-cat-name') || '') : '';
+  window.updateSubTypeSelect(dupCatName, orig.sub_type || null);
   document.getElementById('exp-desc').value = orig.description || '';
   document.getElementById('exp-supplier').value = orig.supplier || '';
   document.getElementById('exp-amount').value = orig.amount || '';
@@ -3859,7 +3896,7 @@ window.aiExtractReceipt = async function() {
       content.push({ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } });
     }
 
-    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. DÔLEŽITÉ: "amount" má byť FAKTUROVANÁ SUMA (celková suma s DPH za služby), NIE preplatok, nedoplatok alebo zostatok. Ak je to vyúčtovacia faktúra, použi fakturovanú sumu s DPH. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD dátum vystavenia","description":"stručný popis napr. Plyn - vyúčtovanie 2025","supplier":"názov dodávateľa","amount":číslo fakturovanej sumy s DPH,"invoice_number":"číslo faktúry alebo null","period_from":"YYYY-MM-DD alebo null","period_to":"YYYY-MM-DD alebo null","category":"jedna z: Vykurovanie, EPS a PO, EZS, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Upratovanie, Opravy, Ostatné","meter_number":"číslo merača ak je na faktúre alebo null","consumption":"spotreba v m3 alebo kWh ak je na faktúre alebo null","consumption_unit":"m3 alebo kWh alebo null"}' });
+    content.push({ type: 'text', text: 'Analyzuj túto účtenku/faktúru. DÔLEŽITÉ: "amount" má byť FAKTUROVANÁ SUMA (celková suma s DPH za služby), NIE preplatok, nedoplatok alebo zostatok. Ak je to vyúčtovacia faktúra, použi fakturovanú sumu s DPH. Vráť LEN JSON bez markdown, bez backticks:\n{"date":"YYYY-MM-DD dátum vystavenia","description":"stručný popis napr. Plyn - vyúčtovanie 2025","supplier":"názov dodávateľa","amount":číslo fakturovanej sumy s DPH,"invoice_number":"číslo faktúry alebo null","period_from":"YYYY-MM-DD alebo null","period_to":"YYYY-MM-DD alebo null","category":"jedna z: Vykurovanie, EPS a PO, EZS, Odvoz smetí, Voda a kanalizácia, Elektrina, Správa, Náklady na budovu, Údržba, Upratovanie, Opravy, Ostatné","meter_number":"číslo merača ak je na faktúre alebo null","consumption":"spotreba v m3 alebo kWh ak je na faktúre alebo null","sub_type":"Pre Vykurovanie: Plyn alebo Údržba, revízie. Pre Voda a kanalizácia: Voda alebo Čistenie, údržba. Pre ostatné: null","consumption_unit":"m3 alebo kWh alebo null"}' });
 
     var resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -3932,6 +3969,14 @@ window.aiExtractReceipt = async function() {
         window.calcMeterAllocation();
       } else {
         window.updateAllocPreview();
+      }
+    }
+
+    // Set sub_type after category change (which resets the dropdown)
+    if (result.sub_type) {
+      var subSel = document.getElementById('exp-sub-type');
+      if (subSel && !subSel.classList.contains('hidden')) {
+        subSel.value = result.sub_type;
       }
     }
     // Ensure months visibility recalculates with new period
