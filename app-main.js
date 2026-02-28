@@ -1426,25 +1426,26 @@ window.generateInvoice = async function(existingInvoice) {
   periodAllocs.forEach(function(a) {
     if (!a.expenses || a.expenses.alloc_method !== 'meter') return;
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
-    // Skip maintenance sub_types for meter audit data (they duplicate primary expense readings)
-    var isMaintenanceSub = a.expenses.sub_type && a.expenses.sub_type.match(/[Čč]isten|[Úú]držba|[Rr]evíz/);
     if (!meterCategories[cat]) {
       meterCategories[cat] = {
         expenseIds: [], expenses: [],
         mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
-        totalAmount: 0
+        totalAmount: 0,
+        meterSourceSet: false
       };
     }
     var mc = meterCategories[cat];
     if (mc.expenseIds.indexOf(a.expenses.id) < 0) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
-      // Only aggregate meter readings from primary expenses (not maintenance)
-      if (!isMaintenanceSub) {
-        mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
-        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
-        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
+      // Meter readings are the SAME physical meters for all expenses in a category
+      // Only take readings from the first expense that has them (don't sum!)
+      if (!mc.meterSourceSet && (parseFloat(a.expenses.meter_main_consumption) || 0) > 0) {
+        mc.mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
+        mc.subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
+        mc.redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
+        mc.meterSourceSet = true;
       }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
@@ -1494,7 +1495,6 @@ window.generateInvoice = async function(existingInvoice) {
     if (waterKey) {
       var wc = meterCategories[waterKey];
       var wItems = byCatBase[waterKey] ? byCatBase[waterKey].items : [];
-      var wCons = wItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
       var wAmount = byCatBase[waterKey] ? byCatBase[waterKey].amount : 0;
 
       // Split into sub_type groups for cost breakdown
@@ -1538,6 +1538,16 @@ window.generateInvoice = async function(existingInvoice) {
 
       var wRows = [];
 
+      // Tenant consumption: take from first allocation with consumption (don't sum duplicates!)
+      var wCons = 0;
+      var seenConsTenant = false;
+      wItems.forEach(function(a) {
+        if (!seenConsTenant && (parseFloat(a.consumption) || 0) > 0) {
+          wCons = parseFloat(a.consumption) || 0;
+          seenConsTenant = true;
+        }
+      });
+
       // Building-level cost breakdown (only if multiple groups have amounts)
       var hasMultipleGroups = waterGroups.voda.amount > 0 && waterGroups.cistenie.amount > 0;
       if (hasMultipleGroups) {
@@ -1557,9 +1567,10 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), wLoss.toFixed(2) + ' m3']);
       }
       wRows.push([stripDia('Váš merač'), wCons.toFixed(2) + ' m3']);
-      // Unit price based on water-only amount (not čistenie)
-      var waterOnlyAmount = waterGroupTenant.voda > 0 ? waterGroupTenant.voda : wAmount;
-      if (wCons > 0 && waterOnlyAmount > 0) wRows.push([stripDia('Jednotková cena (voda)'), (waterOnlyAmount / wCons).toFixed(6) + ' EUR/m3']);
+      // Unit price from building data: BVS water amount / allocatable consumption
+      var allocatableCons = wc.mainCons - wc.redirCons;
+      var buildingWaterAmount = waterGroups.voda.amount > 0 ? waterGroups.voda.amount : wc.totalAmount;
+      if (wCons > 0 && allocatableCons > 0) wRows.push([stripDia('Jednotková cena (voda)'), (buildingWaterAmount / allocatableCons).toFixed(6) + ' EUR/m3']);
 
       // Tenant totals
       wRows.push(['', '']); // spacer
@@ -1577,7 +1588,11 @@ window.generateInvoice = async function(existingInvoice) {
     if (hasElec) {
       var ec = meterCategories['Elektrina'];
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
-      var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
+      // Take consumption from first allocation (don't sum duplicates)
+      var eCons = 0;
+      eItems.forEach(function(a) {
+        if (!eCons && (parseFloat(a.consumption) || 0) > 0) eCons = parseFloat(a.consumption) || 0;
+      });
       var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
       var eRows = [];
       if (ec.mainCons > 0) {
@@ -1585,7 +1600,13 @@ window.generateInvoice = async function(existingInvoice) {
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Váš merač'), eCons.toFixed(2) + ' kWh']);
-      if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotková cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
+      // Unit price from building data
+      var eAllocatable = ec.mainCons > 0 ? (ec.mainCons - ec.redirCons) : 0;
+      if (eCons > 0 && eAllocatable > 0) {
+        eRows.push([stripDia('Jednotková cena'), (ec.totalAmount / eAllocatable).toFixed(6) + ' EUR/kWh']);
+      } else if (eCons > 0 && eAmount > 0) {
+        eRows.push([stripDia('Jednotková cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
+      }
       eRows.push([stripDia('Mesačný náklad'), fmtEur(eAmount / numMonths) + ' EUR']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
