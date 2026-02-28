@@ -96,6 +96,7 @@ async function loadFinance() {
         cbs[i].setAttribute('data-area', zone.area_m2 || 0);
         cbs[i].setAttribute('data-billing-area', zone.billing_area_m2 || zone.area_m2 || 0);
         cbs[i].setAttribute('data-temper', zone.tempering_pct || 0);
+        cbs[i].setAttribute('data-has-tenant', zone.tenant_id ? 'true' : 'false');
         // Update allZones in memory too
         var memZone = allZones.find(function(z) { return z.id === zoneId; });
         if (memZone) {
@@ -123,8 +124,9 @@ async function loadFinance() {
       var leaseFrom = (lease && lease.lease_from) ? lease.lease_from : '';
       var leaseTo = (lease && lease.lease_to) ? lease.lease_to : '';
       var billingArea = z.billing_area_m2 || z.area_m2 || 0;
+      var hasTenant = z.tenant_id ? 'true' : 'false';
       return '<div class="flex flex-wrap items-center gap-1.5 bg-white rounded-lg px-2 py-1.5">' +
-        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-billing-area="' + billingArea + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" class="alloc-zone-cb rounded" onchange="window.updateAllocPreview()">' +
+        '<input type="checkbox" value="' + z.id + '" data-area="' + (z.area_m2 || 0) + '" data-billing-area="' + billingArea + '" data-temper="' + temper + '" data-lease-from="' + leaseFrom + '" data-lease-to="' + leaseTo + '" data-has-tenant="' + hasTenant + '" class="alloc-zone-cb rounded" onchange="window.onZoneCheck(this)">' +
         '<span class="text-[9px] font-bold text-slate-600 truncate flex-1" title="' + label + (leaseFrom ? ' • Zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') : ' • Bez dátumu zmluvy') + '">' + label + '</span>' +
         '<select data-payer-zone="' + z.id + '" class="alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5 hidden" onchange="window.onPayerChange(this);window.updateAllocPreview()">' +
           '<option value="tenant">nájomca</option>' +
@@ -148,6 +150,26 @@ async function loadFinance() {
     } else {
       sel.className = 'alloc-payer-sel text-[8px] border border-slate-200 rounded px-1 py-0.5';
     }
+  };
+
+  window.onZoneCheck = function(cb) {
+    if (cb.checked) {
+      var payerSel = document.querySelector('[data-payer-zone="' + cb.value + '"]');
+      if (payerSel) {
+        var hasTenant = cb.getAttribute('data-has-tenant') === 'true';
+        var leaseTo = cb.getAttribute('data-lease-to') || '';
+        var leaseFrom = cb.getAttribute('data-lease-from') || '';
+        var periodFrom = document.getElementById('exp-period-from').value;
+        var periodTo = document.getElementById('exp-period-to').value;
+        var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
+        if (!hasTenant || leaseExpired) {
+          payerSel.value = 'owner';
+        } else {
+          payerSel.value = 'tenant';
+        }
+      }
+    }
+    window.updateAllocPreview();
   };
   window.styleAllPayerSelects = function() {
     var sels = document.querySelectorAll('.alloc-payer-sel');
@@ -2104,11 +2126,12 @@ window.loadCategoryPreset = async function(catId) {
   for (var i = 0; i < cbs.length; i++) {
     var isPreset = presetMap.hasOwnProperty(cbs[i].value);
 
-    // Auto-skip tenant zones where lease doesn't overlap with period
+    // Auto-skip tenant zones where lease doesn't overlap with period or zone is empty
     if (isPreset && presetMap[cbs[i].value] === 'tenant' && periodFrom && periodTo) {
       var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
       var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
-      if ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo)) {
+      var hasTenant = cbs[i].getAttribute('data-has-tenant') === 'true';
+      if (!hasTenant || (leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo)) {
         isPreset = false;
       }
     }
@@ -2147,23 +2170,12 @@ window.getSelectedAllocZones = function() {
 
 window.updateAllocPreview = function() {
   // Show/hide payer selectors based on checked state
-  var periodFrom = document.getElementById('exp-period-from').value;
-  var periodTo = document.getElementById('exp-period-to').value;
   var allCbs = document.querySelectorAll('.alloc-zone-cb');
   for (var k = 0; k < allCbs.length; k++) {
     var payerSel = document.querySelector('[data-payer-zone="' + allCbs[k].value + '"]');
     if (payerSel) {
       payerSel.classList.toggle('hidden', !allCbs[k].checked);
       if (allCbs[k].checked) {
-        // Auto-set to owner if: lease expired, or zone has no tenant
-        var leaseTo = allCbs[k].getAttribute('data-lease-to') || '';
-        var leaseFrom = allCbs[k].getAttribute('data-lease-from') || '';
-        var zoneData = allZones.find(function(z) { return z.id === allCbs[k].value; });
-        var hasTenant = zoneData && zoneData.tenant_id;
-        var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
-        if (!hasTenant || leaseExpired) {
-          payerSel.value = 'owner';
-        }
         window.onPayerChange(payerSel);
       }
     }
