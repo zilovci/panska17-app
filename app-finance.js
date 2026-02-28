@@ -3642,10 +3642,13 @@ window.duplicateExpense = async function(id) {
   editingExpenseId = null;
   document.getElementById('expense-modal-title').innerText = 'Duplikát nákladu';
 
-  // Calculate year shift: from original year to selected filter year
-  var selYear = parseInt(document.getElementById('fin-year').value) || new Date().getFullYear();
-  var origYear = orig.period_from ? parseInt(orig.period_from.substring(0, 4)) : (orig.date ? parseInt(orig.date.substring(0, 4)) : selYear);
-  var yearDiff = selYear - origYear;
+  // Calculate year shift: ask target year
+  var origYear = orig.period_from ? parseInt(orig.period_from.substring(0, 4)) : (orig.date ? parseInt(orig.date.substring(0, 4)) : new Date().getFullYear());
+  var targetYear = prompt('Do ktorého roku kopírovať?', origYear + 1);
+  if (!targetYear) return;
+  targetYear = parseInt(targetYear);
+  if (isNaN(targetYear)) return;
+  var yearDiff = targetYear - origYear;
 
   function shiftDate(dateStr) {
     if (!dateStr || yearDiff === 0) return dateStr;
