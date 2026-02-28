@@ -1210,8 +1210,8 @@ window.generateInvoice = async function(existingInvoice) {
     byCatBase[cat].items.push(a);
   });
 
-  var catNames = Object.keys(byCat).sort();
-  var totalCosts = catNames.reduce(function(s, c) { return s + byCat[c].amount; }, 0);
+  var catNames = Object.keys(byCatBase).sort();
+  var totalCosts = catNames.reduce(function(s, c) { return s + byCatBase[c].amount; }, 0);
 
   // (allBuildingAllocs removed - detail pages now show only tenant's own data)
 
@@ -1333,8 +1333,8 @@ window.generateInvoice = async function(existingInvoice) {
   }
 
   var costRows = catNames.map(function(c) {
-    var monthlyAmt = byCat[c].amount / numMonths;
-    return [stripDia(c), fmtEur(monthlyAmt) + ' EUR', fmtEur(byCat[c].amount) + ' EUR'];
+    var monthlyAmt = byCatBase[c].amount / numMonths;
+    return [stripDia(c), fmtEur(monthlyAmt) + ' EUR', fmtEur(byCatBase[c].amount) + ' EUR'];
   });
 
   costRows.push([
@@ -1426,25 +1426,41 @@ window.generateInvoice = async function(existingInvoice) {
   periodAllocs.forEach(function(a) {
     if (!a.expenses || a.expenses.alloc_method !== 'meter') return;
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
-    // Maintenance sub_types (Čistenie, Údržba) duplicate primary meter readings - skip for meter data
-    var isMaintenanceSub = a.expenses.sub_type && a.expenses.sub_type.match(/[Čč]isten|[Úú]držba/);
     if (!meterCategories[cat]) {
       meterCategories[cat] = {
         expenseIds: [], expenses: [],
         mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
-        totalAmount: 0
+        totalAmount: 0,
+        meterPeriods: [] // track periods to avoid double-counting same meter readings
       };
     }
     var mc = meterCategories[cat];
     if (mc.expenseIds.indexOf(a.expenses.id) < 0) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
-      // Only sum meter readings from primary expenses (not maintenance duplicates)
-      if (!isMaintenanceSub) {
-        mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
+
+      // Only add meter readings if this expense's period doesn't overlap with already-counted periods
+      // (e.g., BVS water + cleaning both cover Jan-Dec = same meters, count once)
+      var ePFrom = a.expenses.period_from || '';
+      var ePTo = a.expenses.period_to || '';
+      var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
+      var isOverlapping = false;
+      if (mainCons > 0 && ePFrom && ePTo) {
+        for (var pi = 0; pi < mc.meterPeriods.length; pi++) {
+          var mp = mc.meterPeriods[pi];
+          if (ePFrom <= mp.to && ePTo >= mp.from) {
+            isOverlapping = true;
+            break;
+          }
+        }
+      }
+
+      if (mainCons > 0 && !isOverlapping) {
+        mc.mainCons += mainCons;
         mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
         mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
+        if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
       }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
@@ -1513,8 +1529,18 @@ window.generateInvoice = async function(existingInvoice) {
         var group;
         if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
           group = 'cistenie';
-        } else {
+        } else if (sub && sub.match(/[Vv]od/)) {
           group = 'voda';
+        } else {
+          // Fallback: use supplier/description heuristic
+          var descLow = ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase();
+          if (descLow.match(/bvs|bratislavsk|vodn|stočn/)) {
+            group = 'voda';
+          } else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) {
+            group = 'cistenie';
+          } else {
+            group = 'voda';
+          }
         }
         // Use yearly amount for amortized
         var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
@@ -1530,19 +1556,40 @@ window.generateInvoice = async function(existingInvoice) {
         var allocAmt = parseFloat(a.amount) || 0;
         if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
           waterGroupTenant.cistenie += allocAmt;
-        } else {
+        } else if (sub && sub.match(/[Vv]od/)) {
           waterGroupTenant.voda += allocAmt;
+        } else {
+          // Fallback heuristic
+          var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
+          if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) {
+            waterGroupTenant.cistenie += allocAmt;
+          } else {
+            waterGroupTenant.voda += allocAmt;
+          }
         }
       });
 
       var wRows = [];
 
-      // Tenant consumption: sum only from primary expenses (not maintenance duplicates)
+      // Tenant consumption: deduplicate overlapping periods (same meters, different expenses)
       var wCons = 0;
+      var wConsPeriods = [];
       wItems.forEach(function(a) {
-        var sub = a.expenses ? a.expenses.sub_type : null;
-        var isMaint = sub && sub.match(/[Čč]isten|[Úú]držba/);
-        if (!isMaint) wCons += parseFloat(a.consumption) || 0;
+        var cons = parseFloat(a.consumption) || 0;
+        if (cons <= 0) return;
+        var e = a.expenses || {};
+        var pf = e.period_from || '';
+        var pt = e.period_to || '';
+        var isOverlap = false;
+        if (pf && pt) {
+          for (var i = 0; i < wConsPeriods.length; i++) {
+            if (pf <= wConsPeriods[i].to && pt >= wConsPeriods[i].from) { isOverlap = true; break; }
+          }
+        }
+        if (!isOverlap) {
+          wCons += cons;
+          if (pf && pt) wConsPeriods.push({ from: pf, to: pt });
+        }
       });
 
       // Building-level cost breakdown (only if multiple groups have amounts)
