@@ -811,65 +811,49 @@ window.loadPayments = async function() {
     if (hasSettlement) types.push({ type: 'settlement', label: 'Vyúčtovanie', cls: 'text-orange-500' });
     if (types.length === 0) return;
 
-    // Tenant header with type labels
-    var typeLabels = types.map(function(tp) { return '<span class="' + tp.cls + '">' + tp.label + '</span>'; }).join(' · ');
-    html += '<tr class="border-t-2 border-slate-200"><td colspan="2" class="pt-3 pb-1 font-black text-slate-700">' + tLabel +
-      '<div class="text-[7px] font-bold uppercase mt-0.5">' + typeLabels + '</div></td>' +
-      '<td colspan="13"></td></tr>';
+    // Tenant header
+    html += '<tr class="border-t-2 border-slate-200"><td colspan="15" class="pt-3 pb-1 font-black text-slate-700">' + tLabel + '</td></tr>';
 
-    // Single row with all types per month cell
-    var typeTotals = {};
-    types.forEach(function(tp) { typeTotals[tp.type] = 0; });
+    types.forEach(function(tp) {
+      var rowTotal = 0;
+      html += '<tr class="border-b border-slate-50">' +
+        '<td colspan="2" class="py-1 pl-4 text-[8px] font-bold ' + tp.cls + ' uppercase">' + tp.label + '</td>';
 
-    html += '<tr class="border-b border-slate-100">' +
-      '<td colspan="2"></td>';
-
-    for (var m = 0; m < 12; m++) {
-      var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
-      var cellHtml = '';
-      var hasAny = false;
-
-      types.forEach(function(tp) {
+      for (var m = 0; m < 12; m++) {
+        var monthStr = year + '-' + String(m + 1).padStart(2, '0') + '-01';
         var cellPays = payments.filter(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
 
         if (cellPays.length > 0) {
-          hasAny = true;
+          html += '<td class="text-center py-1"><div class="flex flex-col gap-0.5">';
           cellPays.forEach(function(pay) {
             var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' :
               tp.type === 'settlement' ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' :
               'bg-blue-50 text-blue-400 hover:bg-blue-100';
             var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
             var cls = pay.paid ? paidCls : unpaidCls;
-            typeTotals[tp.type] += parseFloat(pay.amount) || 0;
+            rowTotal += parseFloat(pay.amount) || 0;
             var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') +
               (pay.period_from && pay.period_to ? ' • Obdobie: ' + pay.period_from.substring(0,7) + ' – ' + pay.period_to.substring(0,7) : '') +
               (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = upraviť';
-            cellHtml += '<div class="' + cls + ' rounded px-1 py-0.5 text-[8px] font-bold cursor-pointer pay-cell" ' +
+            html += '<div class="' + cls + ' rounded px-1 py-1 text-[8px] font-bold cursor-pointer pay-cell" ' +
               'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
               'title="' + tooltip + '">' +
               parseFloat(pay.amount).toFixed(0) +
               (pay.paid ? ' ✓' : '') +
             '</div>';
           });
+          html += '</div></td>';
+        } else {
+          html += '<td class="text-center py-1"><span class="text-slate-200">–</span></td>';
         }
-      });
-
-      if (hasAny) {
-        html += '<td class="text-center py-1"><div class="flex flex-row flex-wrap gap-0.5 justify-center">' + cellHtml + '</div></td>';
-      } else {
-        html += '<td class="text-center py-1"><span class="text-slate-200">–</span></td>';
       }
-    }
 
-    var rowTotal = 0;
-    types.forEach(function(tp) {
-      rowTotal += typeTotals[tp.type];
-      if (tp.type === 'rent') grandRent += typeTotals[tp.type];
-      else grandAdv += typeTotals[tp.type];
+      if (tp.type === 'rent') grandRent += rowTotal;
+      else grandAdv += rowTotal;
+
+      html += '<td class="text-right py-1 px-2 font-black text-slate-700">' + (rowTotal > 0 ? rowTotal.toFixed(0) + ' €' : '–') + '</td>';
+      html += '</tr>';
     });
-
-    html += '<td class="text-right py-1 px-2 font-black text-slate-700">' + (rowTotal > 0 ? rowTotal.toFixed(0) + ' €' : '–') + '</td>';
-    html += '</tr>';
   });
 
   // Totals
