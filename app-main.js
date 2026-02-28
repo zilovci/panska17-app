@@ -2003,7 +2003,7 @@ async function init() {
       document.getElementById('login-view').classList.add('hidden');
       document.getElementById('app-view').classList.remove('hidden');
       applyPermissions();
-      switchView('insp');
+      switchView(currentRole === 'admin' || currentRole === 'ekonom' ? 'fin' : 'insp');
       return;
     }
 
@@ -2040,7 +2040,7 @@ async function init() {
     document.getElementById('login-view').classList.add('hidden');
     document.getElementById('app-view').classList.remove('hidden');
     applyPermissions();
-    switchView('insp');
+    switchView(currentRole === 'admin' || currentRole === 'ekonom' ? 'fin' : 'insp');
   } else {
     document.getElementById('login-view').classList.remove('hidden');
     document.getElementById('app-view').classList.add('hidden');
