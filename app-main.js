@@ -1214,15 +1214,12 @@ window.generateInvoice = async function(existingInvoice) {
   // This must happen BEFORE summary table so both summary and detail show the same number
   var _redirectedHeatShare = 0;
   if (byCatBase['Vykurovanie']) {
-    var _totalHeatedArea = 0;
-    allZones.forEach(function(z) {
-      if (!z.is_active) return;
-      var area = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-      var temp = parseFloat(z.tempering_pct) || 0;
-      if (area === 0) return;
-      if (z.tenant_id) _totalHeatedArea += area;
-      else if (temp > 0) _totalHeatedArea += area * temp / 100;
+    // Derive heated area from tenant's allocation percentage
+    var _tenantHeatPct = 0;
+    byCatBase['Vykurovanie'].items.forEach(function(a) {
+      if (a.payer !== 'owner') _tenantHeatPct += parseFloat(a.percentage) || 0;
     });
+    var _totalHeatedArea = (_tenantHeatPct > 0 && totalArea > 0) ? (totalArea / _tenantHeatPct * 100) : 0;
 
     var _seenRedir = {};
     var _redirBuildingTotal = 0;
@@ -1825,18 +1822,11 @@ window.generateInvoice = async function(existingInvoice) {
 
       // Get total heated area from building zones
       // Occupied zones = full area, empty/owner zones = area * tempering%
-      var totalHeatedArea = 0;
-      allZones.forEach(function(z) {
-        if (!z.is_active) return;
-        var area = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-        var temp = parseFloat(z.tempering_pct) || 0;
-        if (area === 0) return;
-        if (z.tenant_id) {
-          totalHeatedArea += area;
-        } else if (temp > 0) {
-          totalHeatedArea += area * temp / 100;
-        }
-      });
+      // Derive heated area from allocation percentages (same pool that was used for allocation)
+      var heatItems = byCatBase['Vykurovanie'].items;
+      var tenantHeatPct = 0;
+      heatItems.forEach(function(a) { if (a.payer !== 'owner') tenantHeatPct += parseFloat(a.percentage) || 0; });
+      var totalHeatedArea = (tenantHeatPct > 0 && totalArea > 0) ? (totalArea / tenantHeatPct * 100) : 0;
 
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), totalHeatedArea.toFixed(2) + ' m²']);
@@ -1871,24 +1861,16 @@ window.generateInvoice = async function(existingInvoice) {
     // --- EPS a PO ---
     if (hasEps) {
       var epsAmount = byCatBase['EPS a PO'].amount;
-      // Get total protected area
-      var totalProtectedArea = allZones.reduce(function(s, z) {
-        if (!z.is_active) return s;
-        return s + (parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0);
-      }, 0);
 
-      // Building-level EPS total (from full expense amounts, not tenant allocations)
-      var epsBuildingTotal = 0;
-      var seenEpsExp = {};
-      periodAllocs.forEach(function(a) {
-        if (!a.expenses || !a.expenses.cost_categories) return;
-        if (a.expenses.cost_categories.name !== 'EPS a PO') return;
-        if (seenEpsExp[a.expenses.id]) return;
-        seenEpsExp[a.expenses.id] = true;
-        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
-        var amt = parseFloat(a.expenses.amount) || 0;
-        epsBuildingTotal += isAmort ? amt / a.expenses.amort_years : amt;
-      });
+      // Derive building pool area from allocation percentages
+      // tenant billing area / (tenant percentage / 100) = total pool
+      var epsItems = byCatBase['EPS a PO'].items;
+      var tenantEpsPct = 0;
+      epsItems.forEach(function(a) { tenantEpsPct += parseFloat(a.percentage) || 0; });
+      var totalProtectedArea = (tenantEpsPct > 0 && totalArea > 0) ? (totalArea / tenantEpsPct * 100) : 0;
+
+      // Building-level EPS total derived from tenant share and percentage
+      var epsBuildingTotal = (tenantEpsPct > 0) ? (epsAmount / tenantEpsPct * 100) : 0;
 
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m²']);
