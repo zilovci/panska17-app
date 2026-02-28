@@ -1578,60 +1578,47 @@ window.generateInvoice = async function(existingInvoice) {
       var wAmount = byCatBase[waterKey] ? byCatBase[waterKey].amount : 0;
 
       // Split into sub_type groups for cost breakdown
+      // Query full allocations for building-level amounts (not just tenant's zones)
       var waterGroups = {
         voda: { label: 'Voda (BVS)', amount: 0 },
         cistenie: { label: 'Cistenie, udrzba', amount: 0 }
       };
-      // Group expenses by sub_type
+      var waterGroupTenant = { voda: 0, cistenie: 0 };
+
+      // Collect unique water expense IDs
       var seenWaterExp = {};
-      periodAllocs.forEach(function(a) {
-        if (!a.expenses || !a.expenses.cost_categories) return;
-        if (a.expenses.cost_categories.name !== waterKey) return;
-        if (zoneIds.indexOf(a.zone_id) < 0) return;
-        if (seenWaterExp[a.expenses.id]) return;
-        seenWaterExp[a.expenses.id] = true;
-        var sub = a.expenses.sub_type;
-        var group;
-        if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
-          group = 'cistenie';
-        } else if (sub && sub.match(/[Vv]od/)) {
-          group = 'voda';
-        } else {
-          // Fallback: use supplier/description heuristic
+      var waterExpIds = [];
+      wItems.forEach(function(a) {
+        var eid = a.expenses ? a.expenses.id : null;
+        if (eid && !seenWaterExp[eid]) {
+          seenWaterExp[eid] = true;
+          waterExpIds.push(eid);
+          // Building total from full expense amount
+          var fullAmt = parseFloat(a.expenses.amount) || 0;
+          var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+          var yearlyAmt = isAmort ? fullAmt / a.expenses.amort_years : fullAmt;
+
+          var sub = a.expenses.sub_type;
           var descLow = ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase();
-          if (descLow.match(/bvs|bratislavsk|vodn|stočn/)) {
-            group = 'voda';
-          } else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) {
-            group = 'cistenie';
-          } else {
-            group = 'voda';
-          }
+          var group;
+          if (sub && sub.match(/[Čč]isten|[Úú]držba/)) { group = 'cistenie'; }
+          else if (sub && sub.match(/[Vv]od/)) { group = 'voda'; }
+          else if (descLow.match(/bvs|bratislavsk|vodn|stočn/)) { group = 'voda'; }
+          else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) { group = 'cistenie'; }
+          else { group = 'voda'; }
+          waterGroups[group].amount += yearlyAmt;
         }
-        // Use yearly amount for amortized
-        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
-        var amt = parseFloat(a.expenses.amount) || 0;
-        if (isAmort) amt = amt / a.expenses.amort_years;
-        waterGroups[group].amount += amt;
       });
 
-      // Calculate tenant's share of each group from allocations
-      var waterGroupTenant = { voda: 0, cistenie: 0 };
-      byCatBase[waterKey].items.forEach(function(a) {
+      // Tenant amounts from stored allocations (what they actually pay)
+      wItems.forEach(function(a) {
         var sub = a.expenses ? a.expenses.sub_type : null;
         var allocAmt = parseFloat(a.amount) || 0;
-        if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
-          waterGroupTenant.cistenie += allocAmt;
-        } else if (sub && sub.match(/[Vv]od/)) {
-          waterGroupTenant.voda += allocAmt;
-        } else {
-          // Fallback heuristic
-          var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
-          if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) {
-            waterGroupTenant.cistenie += allocAmt;
-          } else {
-            waterGroupTenant.voda += allocAmt;
-          }
-        }
+        var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
+        if (sub && sub.match(/[Čč]isten|[Úú]držba/)) { waterGroupTenant.cistenie += allocAmt; }
+        else if (sub && sub.match(/[Vv]od/)) { waterGroupTenant.voda += allocAmt; }
+        else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) { waterGroupTenant.cistenie += allocAmt; }
+        else { waterGroupTenant.voda += allocAmt; }
       });
 
       var wRows = [];
@@ -1676,10 +1663,10 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), wLoss.toFixed(2) + ' m3']);
       }
       wRows.push([stripDia('Váš merač'), wCons.toFixed(2) + ' m3']);
-      // Unit price from building data: BVS water amount / allocatable consumption
-      var allocatableCons = wc.mainCons - wc.redirCons;
-      var buildingWaterAmount = waterGroups.voda.amount > 0 ? waterGroups.voda.amount : wc.totalAmount;
-      if (wCons > 0 && allocatableCons > 0) wRows.push([stripDia('Jednotková cena (voda)'), (buildingWaterAmount / allocatableCons).toFixed(6) + ' EUR/m3']);
+      // Unit price = BVS total / main meter (BVS charges for all water incl. redirected)
+      if (wCons > 0 && wc.mainCons > 0 && waterGroups.voda.amount > 0) {
+        wRows.push([stripDia('Jednotková cena (voda)'), (waterGroups.voda.amount / wc.mainCons).toFixed(6) + ' EUR/m3']);
+      }
 
       // Tenant totals
       wRows.push(['', '']); // spacer
