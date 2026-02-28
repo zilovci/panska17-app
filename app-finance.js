@@ -3016,43 +3016,49 @@ window.calcMeterAllocation = async function() {
   var currentSubType = subTypeSel && !subTypeSel.classList.contains('hidden') ? (subTypeSel.value || '') : '';
   var isMaintenanceSub = currentSubType.match(/[Čč]isten|[Úú]držb/);
 
-  // Calculate redirected amounts first (proportional to main meter or total if no main)
-  var redirectedTotalAmount = 0;
-  var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
-  var mainCons3 = mainMc3 ? mainMc3.consumption : 0;
-
-  // For maintenance: unit price = amount / mainMeter (same for everyone)
-  // For regular: unit price = amount / (subMeters + redirected)
-  var priceBase = isMaintenanceSub && mainConsumption > 0 ? mainConsumption : (subMeterTotal + redirectedTotal);
-
-  zoneAllocs.forEach(function(a) {
-    if (a.payer === 'redirect') {
-      a.amount = priceBase > 0 ? (a.consumption / priceBase * amount) : 0;
-      a.amount = parseFloat(a.amount.toFixed(2));
-      a.pct = 0;
-      redirectedTotalAmount += a.amount;
+  if (isMaintenanceSub && mainConsumption > 0) {
+    // === MAINTENANCE: one unit price = amount / mainMeter, same for everyone ===
+    var unitPrice = amount / mainConsumption;
+    console.log('MAINTENANCE ALLOC:', { amount: amount, mainCons: mainConsumption, unitPrice: unitPrice });
+    var maintTotal = 0;
+    zoneAllocs.forEach(function(a) {
+      if (a.payer === 'correction') { a.pct = 0; a.amount = 0; return; }
+      a.amount = parseFloat((unitPrice * a.consumption).toFixed(2));
+      a.pct = mainConsumption > 0 ? (a.consumption / mainConsumption * 100) : 0;
+      maintTotal += a.amount;
+    });
+    // Fix rounding: adjust largest entry so total = amount exactly
+    var maintDiff = amount - maintTotal;
+    if (Math.abs(maintDiff) > 0.001 && zoneAllocs.length > 0) {
+      var largest = zoneAllocs.reduce(function(max, a) { return a.amount > max.amount ? a : max; }, zoneAllocs[0]);
+      largest.amount = parseFloat((largest.amount + maintDiff).toFixed(2));
     }
-  });
+    var redirectedTotalAmount = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; }).reduce(function(s, a) { return s + a.amount; }, 0);
+    console.log('MAINTENANCE RESULT:', { total: amount, tenants: maintTotal - redirectedTotalAmount, redirect: redirectedTotalAmount, roundingFix: maintDiff });
+  } else {
+    // === REGULAR: redirect gets subtracted, remainder split among tenants ===
+    var redirectedTotalAmount = 0;
+    var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
+    var priceBase = subMeterTotal + redirectedTotal;
 
-  // Tenant/owner allocations use remaining amount after redirects
-  // EXCEPT for maintenance/cleaning sub_types - those apply to ALL consumption (incl. redirected)
-  console.log('METER ALLOC DEBUG:', { currentSubType: currentSubType, isMaintenanceSub: !!isMaintenanceSub, amount: amount, redirectedTotalAmount: redirectedTotalAmount, mainConsumption: mainConsumption, priceBase: priceBase });
-  var allocatableAmount = isMaintenanceSub ? amount : (amount - redirectedTotalAmount);
+    zoneAllocs.forEach(function(a) {
+      if (a.payer === 'redirect') {
+        a.amount = priceBase > 0 ? (a.consumption / priceBase * amount) : 0;
+        a.amount = parseFloat(a.amount.toFixed(2));
+        a.pct = 0;
+        redirectedTotalAmount += a.amount;
+      }
+    });
 
-  // Calculate percentages and amounts
-  zoneAllocs.forEach(function(a) {
-    if (a.payer === 'redirect') return; // already calculated
-    if (a.payer === 'correction') {
-      a.pct = 0;
-      a.amount = 0;
-      return;
-    }
-    // For maintenance sub_types: percentage based on main meter (all water incl. redirected+losses)
-    // For regular: percentage based on tenant+owner consumption only
-    var denom = isMaintenanceSub && mainConsumption > 0 ? mainConsumption : totalConsumption;
-    a.pct = denom > 0 ? (a.consumption / denom * 100) : 0;
-    a.amount = allocatableAmount * a.pct / 100;
-  });
+    var allocatableAmount = amount - redirectedTotalAmount;
+
+    zoneAllocs.forEach(function(a) {
+      if (a.payer === 'redirect') return;
+      if (a.payer === 'correction') { a.pct = 0; a.amount = 0; return; }
+      a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
+      a.amount = allocatableAmount * a.pct / 100;
+    });
+  }
 
   // Display meter info
   var unit = meters[0] ? meters[0].unit : 'm³';
