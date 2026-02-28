@@ -1804,30 +1804,18 @@ window.generateInvoice = async function(existingInvoice) {
       });
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
 
-      // Tenant's portion with percentage
-      // heatAmount = direct Vykurovanie allocations to tenant zones
-      // Redirected amounts (water/electricity for kotolňa) are building-level,
-      // so tenant gets proportional share by area
-      var redirectedTotal = 0;
-      ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(key) {
-        heatGroups[key].items.forEach(function(item) {
-          if (item.isRedirected) redirectedTotal += item.amount;
-        });
-      });
-      var tenantRedirShare = totalHeatedArea > 0 ? parseFloat((redirectedTotal * totalArea / totalHeatedArea).toFixed(2)) : 0;
-      var heatAmountWithRedir = heatAmount + tenantRedirShare;
-
+      // Tenant's portion - use heatAmount directly (= same as summary table)
+      // No redirected additions - keeps all numbers consistent
       hRows.push(['', '']); // spacer
       hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m²']);
       var periodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-      if (heatingTotal > 0 && totalHeatedArea > 0) {
-        var buildingRate = heatingTotal / totalHeatedArea;
-        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(buildingRate) + ' EUR']);
-        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(buildingRate / numMonths) + ' EUR']);
+      if (heatAmount > 0 && totalArea > 0) {
+        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(heatAmount / totalArea) + ' EUR']);
+        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(heatAmount / totalArea / numMonths) + ' EUR']);
       }
-      hRows.push([stripDia('Mesačný náklad'), fmtEur(heatAmountWithRedir / numMonths) + ' EUR']);
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmountWithRedir) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([stripDia('Mesačný náklad'), fmtEur(heatAmount / numMonths) + ' EUR']);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
 
@@ -1862,10 +1850,9 @@ window.generateInvoice = async function(existingInvoice) {
       epsRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
       epsRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m²']);
       var epsPeriodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-      if (epsBuildingTotal > 0 && totalProtectedArea > 0) {
-        var epsBuildingRate = epsBuildingTotal / totalProtectedArea;
-        epsRows.push([stripDia('Náklad na m² / ' + epsPeriodLabel), fmtEur(epsBuildingRate) + ' EUR']);
-        epsRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(epsBuildingRate / numMonths) + ' EUR']);
+      if (epsAmount > 0 && totalArea > 0) {
+        epsRows.push([stripDia('Náklad na m² / ' + epsPeriodLabel), fmtEur(epsAmount / totalArea) + ' EUR']);
+        epsRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(epsAmount / totalArea / numMonths) + ' EUR']);
       }
       epsRows.push([stripDia('Mesačný náklad'), fmtEur(epsAmount / numMonths) + ' EUR']);
       epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
