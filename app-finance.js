@@ -3028,8 +3028,11 @@ window.calcMeterAllocation = async function() {
   });
 
   // Tenant/owner allocations use remaining amount after redirects
-  // Deduction has NO financial impact (not included in invoice)
-  var allocatableAmount = amount - redirectedTotalAmount;
+  // EXCEPT for maintenance/cleaning sub_types - those apply to ALL consumption (incl. redirected)
+  var subTypeSel = document.getElementById('exp-sub-type');
+  var currentSubType = subTypeSel && !subTypeSel.classList.contains('hidden') ? (subTypeSel.value || '') : '';
+  var isMaintenanceSub = currentSubType.match(/[Čč]isten|[Úú]držb/);
+  var allocatableAmount = isMaintenanceSub ? amount : (amount - redirectedTotalAmount);
 
   // Calculate percentages and amounts
   zoneAllocs.forEach(function(a) {
@@ -3039,7 +3042,10 @@ window.calcMeterAllocation = async function() {
       a.amount = 0;
       return;
     }
-    a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
+    // For maintenance sub_types: percentage based on main meter (all water incl. redirected+losses)
+    // For regular: percentage based on tenant+owner consumption only
+    var denom = isMaintenanceSub && mainConsumption > 0 ? mainConsumption : totalConsumption;
+    a.pct = denom > 0 ? (a.consumption / denom * 100) : 0;
     a.amount = allocatableAmount * a.pct / 100;
   });
 
