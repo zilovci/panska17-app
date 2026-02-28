@@ -1214,12 +1214,32 @@ window.generateInvoice = async function(existingInvoice) {
   // This must happen BEFORE summary table so both summary and detail show the same number
   var _redirectedHeatShare = 0;
   if (byCatBase['Vykurovanie']) {
-    // Derive heated area from one expense's allocation percentage
-    var _tenantHeatPct = 0;
+    // Get heated area from one heating expense's allocations
+    var _heatOneExpId = null;
+    var _seenHeatExp = {};
     byCatBase['Vykurovanie'].items.forEach(function(a) {
-      if (a.payer !== 'owner' && !_tenantHeatPct) _tenantHeatPct = parseFloat(a.percentage) || 0;
+      if (a.payer === 'owner') return;
+      var eid = a.expenses ? a.expenses.id : null;
+      if (eid && !_seenHeatExp[eid]) { _seenHeatExp[eid] = true; if (!_heatOneExpId) _heatOneExpId = eid; }
     });
-    var _totalHeatedArea = (_tenantHeatPct > 0 && totalArea > 0) ? (totalArea / _tenantHeatPct * 100) : 0;
+    var _totalHeatedArea = 0;
+    if (_heatOneExpId) {
+      var { data: _heatAllocs = [] } = await sb.from('expense_allocations')
+        .select('zone_id, payer, zones(billing_area_m2, area_m2, tempering_pct)')
+        .eq('expense_id', _heatOneExpId);
+      var _seenHZ = {};
+      _heatAllocs.forEach(function(ha) {
+        if (_seenHZ[ha.zone_id]) return;
+        _seenHZ[ha.zone_id] = true;
+        var z = ha.zones || {};
+        var bA = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
+        if (ha.payer === 'owner') {
+          _totalHeatedArea += bA * (parseFloat(z.tempering_pct) || 0) / 100;
+        } else {
+          _totalHeatedArea += bA;
+        }
+      });
+    }
 
     var _seenRedir = {};
     var _redirBuildingTotal = 0;
@@ -1820,20 +1840,29 @@ window.generateInvoice = async function(existingInvoice) {
         heatingTotal += redirAmount;
       });
 
-      // Get total heated area from building zones
-      // Occupied zones = full area, empty/owner zones = area * tempering%
-      // Derive heated area from one expense's allocation percentage
-      var heatItems = byCatBase['Vykurovanie'].items;
-      var tenantHeatPct = 0;
-      var seenHeatPctExp = {};
-      heatItems.forEach(function(a) {
-        if (a.payer === 'owner') return;
-        var eid = a.expenses ? a.expenses.id : null;
-        if (!eid || seenHeatPctExp[eid]) return;
-        if (!tenantHeatPct) tenantHeatPct = parseFloat(a.percentage) || 0;
-        seenHeatPctExp[eid] = true;
-      });
-      var totalHeatedArea = (tenantHeatPct > 0 && totalArea > 0) ? (totalArea / tenantHeatPct * 100) : 0;
+      // Get total heated area by querying ALL allocations for one heating expense
+      var heatOneExpId = null;
+      heatingInputs.forEach(function(h) { if (!heatOneExpId) heatOneExpId = h.expId; });
+      var totalHeatedArea = 0;
+      if (heatOneExpId) {
+        var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
+          .select('zone_id, payer, zones(billing_area_m2, area_m2, tempering_pct)')
+          .eq('expense_id', heatOneExpId);
+        var seenHeatZone = {};
+        heatAllAllocs.forEach(function(ha) {
+          if (seenHeatZone[ha.zone_id]) return;
+          seenHeatZone[ha.zone_id] = true;
+          var z = ha.zones || {};
+          var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
+          if (ha.payer === 'owner') {
+            // Owner zones use tempered area
+            var temp = parseFloat(z.tempering_pct) || 0;
+            totalHeatedArea += bArea * temp / 100;
+          } else {
+            totalHeatedArea += bArea;
+          }
+        });
+      }
 
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), totalHeatedArea.toFixed(2) + ' m²']);
@@ -1872,7 +1901,7 @@ window.generateInvoice = async function(existingInvoice) {
       // Building total = sum of full expense amounts (deduplicated)
       var epsBuildingTotal = 0;
       var seenEpsExp = {};
-      var epsOnePct = 0; // percentage from one representative expense
+      var epsOneExpId = null;
       var epsItems = byCatBase['EPS a PO'].items;
       epsItems.forEach(function(a) {
         if (a.payer === 'owner') return;
@@ -1882,10 +1911,22 @@ window.generateInvoice = async function(existingInvoice) {
         var fullAmt = parseFloat(a.expenses.amount) || 0;
         var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
         epsBuildingTotal += isAmort ? fullAmt / a.expenses.amort_years : fullAmt;
-        if (!epsOnePct) epsOnePct = parseFloat(a.percentage) || 0;
+        if (!epsOneExpId) epsOneExpId = eid;
       });
-      // Pool = tenant area / (tenant percentage of one expense / 100)
-      var totalProtectedArea = (epsOnePct > 0 && totalArea > 0) ? (totalArea / epsOnePct * 100) : 0;
+
+      // Get pool by querying ALL allocations for one EPS expense → sum billing areas
+      var totalProtectedArea = 0;
+      if (epsOneExpId) {
+        var { data: epsAllAllocs = [] } = await sb.from('expense_allocations')
+          .select('zone_id, zones(billing_area_m2, area_m2)')
+          .eq('expense_id', epsOneExpId);
+        var seenEpsZone = {};
+        epsAllAllocs.forEach(function(ea) {
+          if (seenEpsZone[ea.zone_id]) return;
+          seenEpsZone[ea.zone_id] = true;
+          totalProtectedArea += parseFloat(ea.zones && ea.zones.billing_area_m2 || ea.zones && ea.zones.area_m2 || 0);
+        });
+      }
 
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m²']);
