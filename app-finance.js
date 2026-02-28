@@ -4,7 +4,6 @@
 // ============================================
 
 async function loadFinance() {
-  try {
   // Always reload zones from DB to ensure fresh data
   var { data: freshZones } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
   if (freshZones) allZones = freshZones;
@@ -376,16 +375,11 @@ async function loadFinance() {
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
 
   await loadMeters();
-  console.log('loadFinance: meters loaded OK');
   await loadExpenses();
   await window.loadTenants();
   await window.loadPayments();
   await window.loadInvoices();
   await window.loadOverview();
-  } catch(err) {
-    console.error('loadFinance CRASHED:', err);
-    alert('Chyba pri načítaní financií: ' + err.message);
-  }
 }
 
 // ---- MERAČE ----
@@ -394,15 +388,11 @@ var editingMeterId = null;
 var currentReadingMeterId = null;
 
 async function loadMeters() {
-  console.log('loadMeters: starting...');
-  var { data: meters, error: mErr } = await sb.from('meters').select('*, zones(name, tenant_name)').order('sort_order', { ascending: true });
-  if (mErr) console.error('loadMeters: query error', mErr);
+  var { data: meters } = await sb.from('meters').select('*').order('sort_order', { ascending: true });
   meters = meters || [];
   allMeters = meters;
-  console.log('loadMeters: found', meters.length, 'meters');
 
   var list = document.getElementById('fin-meters-list');
-  console.log('loadMeters: fin-meters-list element:', list ? 'FOUND' : 'MISSING');
 
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date', { ascending: false });
 
@@ -468,7 +458,7 @@ async function loadMeters() {
     var mZones = mzByMeter[m.id] || [];
     var zoneName = mZones.length > 0
       ? mZones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ')
-      : (m.zones ? (m.zones.tenant_name || m.zones.name) : 'Celá budova');
+      : 'Celá budova';
     var meterReadings = readings.filter(function(r) { return r.meter_id === m.id; });
     var last = meterReadings.length > 0 ? meterReadings[0] : null;
     var prev = meterReadings.length > 1 ? meterReadings[1] : null;
