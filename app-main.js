@@ -1426,26 +1426,25 @@ window.generateInvoice = async function(existingInvoice) {
   periodAllocs.forEach(function(a) {
     if (!a.expenses || a.expenses.alloc_method !== 'meter') return;
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
+    // Maintenance sub_types (Čistenie, Údržba) duplicate primary meter readings - skip for meter data
+    var isMaintenanceSub = a.expenses.sub_type && a.expenses.sub_type.match(/[Čč]isten|[Úú]držba/);
     if (!meterCategories[cat]) {
       meterCategories[cat] = {
         expenseIds: [], expenses: [],
         mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
-        totalAmount: 0,
-        meterSourceSet: false
+        totalAmount: 0
       };
     }
     var mc = meterCategories[cat];
     if (mc.expenseIds.indexOf(a.expenses.id) < 0) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
-      // Meter readings are the SAME physical meters for all expenses in a category
-      // Only take readings from the first expense that has them (don't sum!)
-      if (!mc.meterSourceSet && (parseFloat(a.expenses.meter_main_consumption) || 0) > 0) {
-        mc.mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
-        mc.subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
-        mc.redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
-        mc.meterSourceSet = true;
+      // Only sum meter readings from primary expenses (not maintenance duplicates)
+      if (!isMaintenanceSub) {
+        mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
+        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
+        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
       }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
@@ -1538,14 +1537,12 @@ window.generateInvoice = async function(existingInvoice) {
 
       var wRows = [];
 
-      // Tenant consumption: take from first allocation with consumption (don't sum duplicates!)
+      // Tenant consumption: sum only from primary expenses (not maintenance duplicates)
       var wCons = 0;
-      var seenConsTenant = false;
       wItems.forEach(function(a) {
-        if (!seenConsTenant && (parseFloat(a.consumption) || 0) > 0) {
-          wCons = parseFloat(a.consumption) || 0;
-          seenConsTenant = true;
-        }
+        var sub = a.expenses ? a.expenses.sub_type : null;
+        var isMaint = sub && sub.match(/[Čč]isten|[Úú]držba/);
+        if (!isMaint) wCons += parseFloat(a.consumption) || 0;
       });
 
       // Building-level cost breakdown (only if multiple groups have amounts)
@@ -1588,11 +1585,7 @@ window.generateInvoice = async function(existingInvoice) {
     if (hasElec) {
       var ec = meterCategories['Elektrina'];
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
-      // Take consumption from first allocation (don't sum duplicates)
-      var eCons = 0;
-      eItems.forEach(function(a) {
-        if (!eCons && (parseFloat(a.consumption) || 0) > 0) eCons = parseFloat(a.consumption) || 0;
-      });
+      var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
       var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
       var eRows = [];
       if (ec.mainCons > 0) {
@@ -1600,13 +1593,7 @@ window.generateInvoice = async function(existingInvoice) {
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Váš merač'), eCons.toFixed(2) + ' kWh']);
-      // Unit price from building data
-      var eAllocatable = ec.mainCons > 0 ? (ec.mainCons - ec.redirCons) : 0;
-      if (eCons > 0 && eAllocatable > 0) {
-        eRows.push([stripDia('Jednotková cena'), (ec.totalAmount / eAllocatable).toFixed(6) + ' EUR/kWh']);
-      } else if (eCons > 0 && eAmount > 0) {
-        eRows.push([stripDia('Jednotková cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
-      }
+      if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotková cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesačný náklad'), fmtEur(eAmount / numMonths) + ' EUR']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
@@ -1787,9 +1774,10 @@ window.generateInvoice = async function(existingInvoice) {
       hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
       hRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m²']);
       var periodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-      if (heatAmountWithRedir > 0 && totalArea > 0) {
-        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(heatAmountWithRedir / totalArea) + ' EUR']);
-        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(heatAmountWithRedir / totalArea / numMonths) + ' EUR']);
+      if (heatingTotal > 0 && totalHeatedArea > 0) {
+        var buildingRate = heatingTotal / totalHeatedArea;
+        hRows.push([stripDia('Náklad na m² / ' + periodLabel), fmtEur(buildingRate) + ' EUR']);
+        hRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(buildingRate / numMonths) + ' EUR']);
       }
       hRows.push([stripDia('Mesačný náklad'), fmtEur(heatAmountWithRedir / numMonths) + ' EUR']);
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatAmountWithRedir) + ' EUR', styles: {fontStyle: 'bold'}}]);
@@ -1805,13 +1793,32 @@ window.generateInvoice = async function(existingInvoice) {
         return s + (parseFloat(z.area_m2) || 0);
       }, 0);
 
+      // Building-level EPS total (from full expense amounts, not tenant allocations)
+      var epsBuildingTotal = 0;
+      var seenEpsExp = {};
+      periodAllocs.forEach(function(a) {
+        if (!a.expenses || !a.expenses.cost_categories) return;
+        if (a.expenses.cost_categories.name !== 'EPS a PO') return;
+        if (seenEpsExp[a.expenses.id]) return;
+        seenEpsExp[a.expenses.id] = true;
+        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+        var amt = parseFloat(a.expenses.amount) || 0;
+        epsBuildingTotal += isAmort ? amt / a.expenses.amort_years : amt;
+      });
+
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m²']);
+      if (epsBuildingTotal > 0) {
+        epsRows.push([{content: stripDia('Náklady na EPS pre budovu:'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      }
+      epsRows.push(['', '']); // spacer
+      epsRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
       epsRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m²']);
       var epsPeriodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-      if (epsAmount > 0 && totalArea > 0) {
-        epsRows.push([stripDia('Náklad na m² / ' + epsPeriodLabel), fmtEur(epsAmount / totalArea) + ' EUR']);
-        epsRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(epsAmount / totalArea / numMonths) + ' EUR']);
+      if (epsBuildingTotal > 0 && totalProtectedArea > 0) {
+        var epsBuildingRate = epsBuildingTotal / totalProtectedArea;
+        epsRows.push([stripDia('Náklad na m² / ' + epsPeriodLabel), fmtEur(epsBuildingRate) + ' EUR']);
+        epsRows.push([stripDia('Náklad na m² / mesiac'), fmtEur(epsBuildingRate / numMonths) + ' EUR']);
       }
       epsRows.push([stripDia('Mesačný náklad'), fmtEur(epsAmount / numMonths) + ' EUR']);
       epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
