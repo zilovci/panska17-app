@@ -979,9 +979,13 @@ window.loadExpenses = async function() {
   // Build zone maps for mismatch detection
   var zoneTemperMap = {};
   var zoneAreaMap = {};
+  var zoneBillingMap = {};
+  var hasBillingAreaDiff = false; // Any zone has billing_area != area
   allZones.forEach(function(z) {
     zoneTemperMap[z.id] = z.tempering_pct || 0;
     zoneAreaMap[z.id] = z.area_m2 || 0;
+    zoneBillingMap[z.id] = z.billing_area_m2 || z.area_m2 || 0;
+    if (z.billing_area_m2 && z.billing_area_m2 !== z.area_m2) hasBillingAreaDiff = true;
   });
 
   var total = 0;
@@ -1041,6 +1045,28 @@ window.loadExpenses = async function() {
       }
       if (areaMismatches.length > 0) {
         warnings.push('<button onclick="event.stopPropagation();window.recalcExpense(\'' + e.id + '\')" class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600 hover:bg-orange-200 cursor-pointer" title="Plocha zmenená: ' + areaMismatches.join(', ') + '">⚠️ m²</button>');
+      }
+      // Pool mismatch: check if stored percentages match billingArea-based pool
+      if (hasBillingAreaDiff && e.alloc_method === 'area' && temperMismatches.length === 0 && areaMismatches.length === 0) {
+        // Compute expected pool from billing areas
+        var expectedPool = 0;
+        for (var pi = 0; pi < eAllocs.length; pi++) {
+          var zid = eAllocs[pi].zone_id;
+          expectedPool += zoneBillingMap[zid] || zoneAreaMap[zid] || 0;
+        }
+        // Check if any allocation's percentage differs from expected
+        var poolMismatch = false;
+        if (expectedPool > 0) {
+          for (var pi2 = 0; pi2 < eAllocs.length; pi2++) {
+            var zid2 = eAllocs[pi2].zone_id;
+            var storedPct = parseFloat(eAllocs[pi2].percentage) || 0;
+            var expectedPct = ((zoneBillingMap[zid2] || zoneAreaMap[zid2] || 0) / expectedPool) * 100;
+            if (Math.abs(storedPct - expectedPct) > 0.5) { poolMismatch = true; break; }
+          }
+        }
+        if (poolMismatch) {
+          warnings.push('<button onclick="event.stopPropagation();window.recalcExpense(\'' + e.id + '\')" class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 hover:bg-purple-200 cursor-pointer" title="Fakturačná plocha odlišná od fyzickej – prealokujte">⚠️ fakt.m²</button>');
+        }
       }
     }
     var warningHtml = warnings.join(' ');
@@ -1128,9 +1154,13 @@ window.runConsistencyCheck = async function() {
   var issues = [];
   var zoneTemperMap = {};
   var zoneAreaMap = {};
+  var zoneBillingMap = {};
+  var hasBillingAreaDiff = false;
   allZones.forEach(function(z) {
     zoneTemperMap[z.id] = z.tempering_pct || 0;
     zoneAreaMap[z.id] = z.area_m2 || 0;
+    zoneBillingMap[z.id] = z.billing_area_m2 || z.area_m2 || 0;
+    if (z.billing_area_m2 && z.billing_area_m2 !== z.area_m2) hasBillingAreaDiff = true;
   });
 
   // 1. Tempering mismatches
@@ -1182,6 +1212,34 @@ window.runConsistencyCheck = async function() {
       return t.ref + ' – ' + t.zones;
     }).join('<br>');
     issues.push({ type: 'danger', icon: '⚠️', title: 'Plocha zmenená (' + areaExpenses.length + ')', detail: details });
+  }
+
+  // 2b. Pool mismatch (billing area ≠ physical area → old pool formula)
+  if (hasBillingAreaDiff) {
+    var poolIssues = [];
+    expenses.forEach(function(e) {
+      if (e.alloc_method !== 'area' || !e.expense_allocations) return;
+      var eAllocs = e.expense_allocations;
+      // Check if already flagged by area/temper checks
+      var alreadyFlagged = areaExpenses.some(function(ae) { return ae.ref.indexOf(e.ref_number || '---') >= 0; });
+      if (alreadyFlagged) return;
+      // Compute expected pool
+      var expectedPool = 0;
+      eAllocs.forEach(function(a) {
+        expectedPool += zoneBillingMap[a.zone_id] || zoneAreaMap[a.zone_id] || 0;
+      });
+      if (expectedPool <= 0) return;
+      // Check if any percentage is off
+      var isOff = eAllocs.some(function(a) {
+        var stored = parseFloat(a.percentage) || 0;
+        var expected = ((zoneBillingMap[a.zone_id] || zoneAreaMap[a.zone_id] || 0) / expectedPool) * 100;
+        return Math.abs(stored - expected) > 0.5;
+      });
+      if (isOff) poolIssues.push(expRef(e));
+    });
+    if (poolIssues.length > 0) {
+      issues.push({ type: 'danger', icon: '⚠️', title: 'Fakturačná plocha – prealokujte (' + poolIssues.length + ')', detail: poolIssues.join(', ') });
+    }
   }
 
   // 3. Missing tracking data (pre-migration) - list ref numbers
@@ -1863,16 +1921,16 @@ window.recalcAllExpenses = async function() {
       });
     }
 
-    // Calculate total area (pool)
+    // Calculate total area (pool) - must use billingArea to match numerator
     var totalArea = 0;
     zoneList.forEach(function(z) {
       if (z.isTimeWeighted) {
-        totalArea += z.tenantEffArea + z.ownerEffArea;
+        totalArea += z.tenantEffBilling + z.ownerEffArea;
       } else if (isHeating && z.payer === 'owner') {
         z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
         totalArea += z.ownerTemperedArea;
       } else {
-        totalArea += z.area;
+        totalArea += z.billingArea;
       }
     });
     totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
@@ -2322,19 +2380,21 @@ window.updateAllocPreview = function() {
     }
   }
 
-  // Calculate total effective area (pool = building area)
+  // Calculate total effective area (pool = sum of billing areas for consistency)
+  // Must use billingArea so that numerator/denominator match and percentages sum to 100%
   var totalArea = 0;
   checkedZones.forEach(function(z) {
     if (z.isTimeWeighted) {
-      totalArea += z.tenantEffArea + z.ownerEffArea;
+      // Time-weighted: use billing for tenant part, area for owner part
+      totalArea += z.tenantEffBilling + z.ownerEffArea;
     } else if (isHeating && z.payer === 'owner') {
-      // For heating: owner zones use tempered area, not full
+      // For heating: owner zones use tempered area
       var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
       var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
       z.ownerTemperedArea = z.area * temper / 100;
       totalArea += z.ownerTemperedArea;
     } else {
-      totalArea += z.area; // pool uses building area
+      totalArea += z.billingArea; // pool uses billing area (= area if no billing override)
     }
   });
   totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
@@ -3397,17 +3457,17 @@ window.saveExpense = async function() {
           }
         }
 
-        // Calculate total effective area (pool = building area)
+        // Calculate total effective area (pool = billing areas for consistency)
         var totalArea = 0;
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
-            totalArea += z.tenantEffArea + z.ownerEffArea;
+            totalArea += z.tenantEffBilling + z.ownerEffArea;
           } else if (isHeating && z.payer === 'owner') {
             // For heating: owner zones use tempered area
             z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
             totalArea += z.ownerTemperedArea;
           } else {
-            totalArea += z.area;
+            totalArea += z.billingArea || z.area;
           }
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);

@@ -1217,7 +1217,7 @@ window.generateInvoice = async function(existingInvoice) {
     var _totalHeatedArea = 0;
     allZones.forEach(function(z) {
       if (!z.is_active) return;
-      var area = parseFloat(z.area_m2) || 0;
+      var area = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
       var temp = parseFloat(z.tempering_pct) || 0;
       if (area === 0) return;
       if (z.tenant_id) _totalHeatedArea += area;
@@ -1828,7 +1828,7 @@ window.generateInvoice = async function(existingInvoice) {
       var totalHeatedArea = 0;
       allZones.forEach(function(z) {
         if (!z.is_active) return;
-        var area = parseFloat(z.area_m2) || 0;
+        var area = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
         var temp = parseFloat(z.tempering_pct) || 0;
         if (area === 0) return;
         if (z.tenant_id) {
@@ -1874,7 +1874,7 @@ window.generateInvoice = async function(existingInvoice) {
       // Get total protected area
       var totalProtectedArea = allZones.reduce(function(s, z) {
         if (!z.is_active) return s;
-        return s + (parseFloat(z.area_m2) || 0);
+        return s + (parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0);
       }, 0);
 
       // Building-level EPS total (from full expense amounts, not tenant allocations)
