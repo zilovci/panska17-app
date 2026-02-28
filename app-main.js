@@ -824,7 +824,7 @@ window.loadPayments = async function() {
         var cellPays = payments.filter(function(p) { return p.tenant_id === t.id && p.month === monthStr && (p.type || 'advance') === tp.type; });
 
         if (cellPays.length > 0) {
-          html += '<td class="text-center py-1"><div class="flex flex-col gap-0.5">';
+          html += '<td class="text-center py-1"><div class="flex flex-row flex-wrap gap-0.5 justify-center">';
           cellPays.forEach(function(pay) {
             var unpaidCls = tp.type === 'rent' ? 'bg-indigo-50 text-indigo-400 hover:bg-indigo-100' :
               tp.type === 'settlement' ? 'bg-orange-50 text-orange-400 hover:bg-orange-100' :
