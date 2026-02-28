@@ -215,6 +215,15 @@ async function loadFinance() {
       var leaseFrom = cb.getAttribute('data-lease-from') || '';
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+
+      // Auto-uncheck zones with 0 overlap (e.g. tenant left before or starts after this period)
+      if (autoMonths === 0 && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo))) {
+        cb.checked = false;
+        var payerSel = document.querySelector('[data-payer-zone="' + zoneId + '"]');
+        if (payerSel) payerSel.classList.add('hidden');
+        monthsWraps[m].classList.add('hidden');
+        continue;
+      }
       
       // Debug log for zones with lease dates
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
