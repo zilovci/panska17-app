@@ -4,6 +4,10 @@
 // ============================================
 
 async function loadFinance() {
+  // Always reload zones from DB to ensure fresh data
+  var { data: freshZones } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
+  if (freshZones) allZones = freshZones;
+
   // Load categories
   var { data: cats = [] } = await sb.from('cost_categories').select('*').order('sort_order', { ascending: true });
   allCategories = cats;
@@ -1917,6 +1921,12 @@ window.saveZoneAreas = async function() {
     var bil = document.querySelector('[data-billing-zone="' + allZones[j].id + '"]');
     if (bil) allZones[j].billing_area_m2 = bil.value ? parseFloat(bil.value) : null;
   }
+  // Rebuild zone checkboxes with fresh data
+  if (window.refreshZoneLeaseDates) await window.refreshZoneLeaseDates();
+  // Refresh expense list (previews may have changed)
+  if (window.loadExpenses) await window.loadExpenses();
+  // Refresh overview table
+  if (window.loadOverview) await window.loadOverview();
   alert('Uložené.');
 };
 
@@ -1929,7 +1939,7 @@ window.addZone = async function() {
   // Reload zones
   var { data: z2 } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
   allZones = z2 || [];
-  await window.loadFinanceSection();
+  await loadFinance();
   alert('Zóna "' + name.trim() + '" pridaná.');
 };
 
