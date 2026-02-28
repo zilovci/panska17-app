@@ -2001,7 +2001,9 @@ window.showAddExpense = async function() {
 
   editingExpenseId = null;
   document.getElementById('expense-modal-title').innerText = 'Nový náklad';
-  document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+  // Prefill dates from selected year
+  var selYear = document.getElementById('fin-year').value || new Date().getFullYear();
+  document.getElementById('exp-date').value = selYear + '-12-31';
   document.getElementById('exp-desc').value = '';
   document.getElementById('exp-supplier').value = '';
   document.getElementById('exp-amount').value = '';
@@ -2012,10 +2014,10 @@ window.showAddExpense = async function() {
   document.getElementById('exp-invoice').value = '';
   document.getElementById('exp-billing-from').value = '';
   document.getElementById('exp-billing-to').value = '';
-  document.getElementById('exp-period-from').value = '';
-  document.getElementById('exp-period-from').setAttribute('data-auto', 'true');
-  document.getElementById('exp-period-to').value = '';
-  document.getElementById('exp-period-to').setAttribute('data-auto', 'true');
+  document.getElementById('exp-period-from').value = selYear + '-01-01';
+  document.getElementById('exp-period-from').setAttribute('data-auto', 'false');
+  document.getElementById('exp-period-to').value = selYear + '-12-31';
+  document.getElementById('exp-period-to').setAttribute('data-auto', 'false');
   document.getElementById('period-hint').textContent = '';
   document.getElementById('exp-note').value = '';
   document.getElementById('exp-ref').value = '';
@@ -3639,17 +3641,29 @@ window.duplicateExpense = async function(id) {
   // Open as NEW expense (no editingExpenseId) with data pre-filled from original
   editingExpenseId = null;
   document.getElementById('expense-modal-title').innerText = 'Duplikát nákladu';
-  document.getElementById('exp-date').value = orig.date || new Date().toISOString().split('T')[0];
+
+  // Calculate year shift: from original year to selected filter year
+  var selYear = parseInt(document.getElementById('fin-year').value) || new Date().getFullYear();
+  var origYear = orig.period_from ? parseInt(orig.period_from.substring(0, 4)) : (orig.date ? parseInt(orig.date.substring(0, 4)) : selYear);
+  var yearDiff = selYear - origYear;
+
+  function shiftDate(dateStr) {
+    if (!dateStr || yearDiff === 0) return dateStr;
+    var y = parseInt(dateStr.substring(0, 4)) + yearDiff;
+    return y + dateStr.substring(4);
+  }
+
+  document.getElementById('exp-date').value = shiftDate(orig.date) || new Date().toISOString().split('T')[0];
   document.getElementById('exp-category').value = orig.category_id;
   document.getElementById('exp-desc').value = orig.description || '';
   document.getElementById('exp-supplier').value = orig.supplier || '';
   document.getElementById('exp-amount').value = orig.amount || '';
   document.getElementById('exp-invoice').value = orig.invoice_number ? orig.invoice_number + '-KÓPIA' : '';
-  document.getElementById('exp-billing-from').value = orig.billing_period_from || '';
-  document.getElementById('exp-billing-to').value = orig.billing_period_to || '';
-  document.getElementById('exp-period-from').value = orig.period_from || '';
+  document.getElementById('exp-billing-from').value = shiftDate(orig.billing_period_from) || '';
+  document.getElementById('exp-billing-to').value = shiftDate(orig.billing_period_to) || '';
+  document.getElementById('exp-period-from').value = shiftDate(orig.period_from) || '';
   document.getElementById('exp-period-from').setAttribute('data-auto', 'false');
-  document.getElementById('exp-period-to').value = orig.period_to || '';
+  document.getElementById('exp-period-to').value = shiftDate(orig.period_to) || '';
   document.getElementById('exp-period-to').setAttribute('data-auto', 'false');
   document.getElementById('period-hint').textContent = '';
   document.getElementById('exp-note').value = orig.note || '';
