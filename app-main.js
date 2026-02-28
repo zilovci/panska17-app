@@ -816,6 +816,43 @@ window.loadPayments = async function() {
 
     types.forEach(function(tp) {
       var rowTotal = 0;
+
+      // Settlement: show all payments side by side in one spanning row
+      if (tp.type === 'settlement') {
+        var settlPays = payments.filter(function(p) { return p.tenant_id === t.id && (p.type || 'advance') === 'settlement'; });
+        if (settlPays.length === 0) return;
+        html += '<tr class="border-b border-slate-50">' +
+          '<td colspan="2" class="py-1 pl-4 text-[8px] font-bold ' + tp.cls + ' uppercase">' + tp.label + '</td>' +
+          '<td colspan="12" class="py-1"><div class="flex flex-row flex-wrap gap-1">';
+        settlPays.forEach(function(pay) {
+          var paidCls = 'bg-green-100 text-green-700 hover:bg-green-200';
+          var unpaidCls = 'bg-orange-50 text-orange-400 hover:bg-orange-100';
+          var cls = pay.paid ? paidCls : unpaidCls;
+          rowTotal += parseFloat(pay.amount) || 0;
+          var periodLabel = '';
+          if (pay.period_from && pay.period_to) {
+            var pf = pay.period_from.substring(5,7).replace(/^0/,'');
+            var pt = pay.period_to.substring(5,7).replace(/^0/,'');
+            periodLabel = pf + '–' + pt + '/';
+          }
+          var tooltip = (pay.paid_date ? 'Uhradené: ' + pay.paid_date : 'Klik = zaplatené') +
+            (pay.period_from && pay.period_to ? ' • Obdobie: ' + pay.period_from.substring(0,7) + ' – ' + pay.period_to.substring(0,7) : '') +
+            (pay.note ? ' • ' + pay.note : '') + ', Dvojklik = upraviť';
+          html += '<div class="' + cls + ' rounded px-2 py-1 text-[8px] font-bold cursor-pointer pay-cell whitespace-nowrap" ' +
+            'data-pay-id="' + pay.id + '" data-pay-paid="' + pay.paid + '" data-pay-amount="' + pay.amount + '" ' +
+            'title="' + tooltip + '">' +
+            periodLabel + parseFloat(pay.amount).toFixed(0) + ' €' +
+            (pay.paid ? ' ✓' : '') +
+          '</div>';
+        });
+        html += '</div></td>';
+        grandAdv += rowTotal;
+        html += '<td class="text-right py-1 px-2 font-black text-slate-700">' + (rowTotal > 0 ? rowTotal.toFixed(0) + ' €' : '–') + '</td>';
+        html += '</tr>';
+        return;
+      }
+
+      // Rent/Advance: standard month grid
       html += '<tr class="border-b border-slate-50">' +
         '<td colspan="2" class="py-1 pl-4 text-[8px] font-bold ' + tp.cls + ' uppercase">' + tp.label + '</td>';
 
