@@ -1331,18 +1331,15 @@ window.generateInvoice = async function(existingInvoice) {
   registerRobotoFont(doc);
   var W = 210, M = 20, y = 20;
 
-  // Header
-  doc.setFontSize(16);
+  // Header - title and period on one line
+  doc.setFontSize(14);
   doc.setFont('Roboto', 'bold');
-  doc.text(stripDia('VYÚČTOVANIE NÁKLADOV'), M, y);
-  y += 7;
+  var titleText = stripDia('VYÚČTOVANIE NÁKLADOV');
+  doc.text(titleText, M, y);
+  var titleW = doc.getTextWidth(titleText + '  ');
   doc.setFontSize(11);
-  doc.text(stripDia('za obdobie ' + periodLabel), M, y);
-  y += 5;
-
-  doc.setDrawColor(0);
-  doc.setLineWidth(0.25);
-  doc.line(M, y, W - M, y);
+  doc.setFont('Roboto', 'normal');
+  doc.text(stripDia('za obdobie ' + periodLabel), M + titleW, y);
   y += 8;
 
   // ===== PAGE 1: MAIN INVOICE =====
