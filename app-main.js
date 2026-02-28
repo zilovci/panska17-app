@@ -1426,6 +1426,8 @@ window.generateInvoice = async function(existingInvoice) {
   periodAllocs.forEach(function(a) {
     if (!a.expenses || a.expenses.alloc_method !== 'meter') return;
     var cat = a.expenses.cost_categories ? a.expenses.cost_categories.name : 'Ostatne';
+    // Skip maintenance sub_types for meter audit data (they duplicate primary expense readings)
+    var isMaintenanceSub = a.expenses.sub_type && a.expenses.sub_type.match(/[Čč]isten|[Úú]držba|[Rr]evíz/);
     if (!meterCategories[cat]) {
       meterCategories[cat] = {
         expenseIds: [], expenses: [],
@@ -1438,9 +1440,12 @@ window.generateInvoice = async function(existingInvoice) {
     if (mc.expenseIds.indexOf(a.expenses.id) < 0) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
-      mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
-      mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
-      mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
+      // Only aggregate meter readings from primary expenses (not maintenance)
+      if (!isMaintenanceSub) {
+        mc.mainCons += parseFloat(a.expenses.meter_main_consumption) || 0;
+        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
+        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
+      }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
   });
@@ -1491,7 +1496,60 @@ window.generateInvoice = async function(existingInvoice) {
       var wItems = byCatBase[waterKey] ? byCatBase[waterKey].items : [];
       var wCons = wItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
       var wAmount = byCatBase[waterKey] ? byCatBase[waterKey].amount : 0;
+
+      // Split into sub_type groups for cost breakdown
+      var waterGroups = {
+        voda: { label: 'Voda (BVS)', amount: 0 },
+        cistenie: { label: 'Cistenie, udrzba', amount: 0 }
+      };
+      // Group expenses by sub_type
+      var seenWaterExp = {};
+      periodAllocs.forEach(function(a) {
+        if (!a.expenses || !a.expenses.cost_categories) return;
+        if (a.expenses.cost_categories.name !== waterKey) return;
+        if (zoneIds.indexOf(a.zone_id) < 0) return;
+        if (seenWaterExp[a.expenses.id]) return;
+        seenWaterExp[a.expenses.id] = true;
+        var sub = a.expenses.sub_type;
+        var group;
+        if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
+          group = 'cistenie';
+        } else {
+          group = 'voda';
+        }
+        // Use yearly amount for amortized
+        var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+        var amt = parseFloat(a.expenses.amount) || 0;
+        if (isAmort) amt = amt / a.expenses.amort_years;
+        waterGroups[group].amount += amt;
+      });
+
+      // Calculate tenant's share of each group from allocations
+      var waterGroupTenant = { voda: 0, cistenie: 0 };
+      byCatBase[waterKey].items.forEach(function(a) {
+        var sub = a.expenses ? a.expenses.sub_type : null;
+        var allocAmt = parseFloat(a.amount) || 0;
+        if (sub && sub.match(/[Čč]isten|[Úú]držba/)) {
+          waterGroupTenant.cistenie += allocAmt;
+        } else {
+          waterGroupTenant.voda += allocAmt;
+        }
+      });
+
       var wRows = [];
+
+      // Building-level cost breakdown (only if multiple groups have amounts)
+      var hasMultipleGroups = waterGroups.voda.amount > 0 && waterGroups.cistenie.amount > 0;
+      if (hasMultipleGroups) {
+        wRows.push([{content: stripDia('Náklady na vodu pre budovu:'), styles: {fontStyle: 'bold'}}, '']);
+        if (waterGroups.voda.amount > 0) wRows.push([stripDia(' ' + waterGroups.voda.label), fmtEur(waterGroups.voda.amount) + ' EUR']);
+        if (waterGroups.cistenie.amount > 0) wRows.push([stripDia(' ' + waterGroups.cistenie.label), fmtEur(waterGroups.cistenie.amount) + ' EUR']);
+        var waterBuildingTotal = waterGroups.voda.amount + waterGroups.cistenie.amount;
+        wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(waterBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        wRows.push(['', '']); // spacer
+      }
+
+      // Meter data
       if (wc.mainCons > 0) {
         wRows.push([stripDia('Hlavný merač (budova)'), wc.mainCons.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), wc.redirCons.toFixed(2) + ' m3']);
@@ -1499,7 +1557,17 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), wLoss.toFixed(2) + ' m3']);
       }
       wRows.push([stripDia('Váš merač'), wCons.toFixed(2) + ' m3']);
-      if (wCons > 0 && wAmount > 0) wRows.push([stripDia('Jednotková cena'), (wAmount / wCons).toFixed(6) + ' EUR/m3']);
+      // Unit price based on water-only amount (not čistenie)
+      var waterOnlyAmount = waterGroupTenant.voda > 0 ? waterGroupTenant.voda : wAmount;
+      if (wCons > 0 && waterOnlyAmount > 0) wRows.push([stripDia('Jednotková cena (voda)'), (waterOnlyAmount / wCons).toFixed(6) + ' EUR/m3']);
+
+      // Tenant totals
+      wRows.push(['', '']); // spacer
+      wRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
+      if (hasMultipleGroups) {
+        if (waterGroupTenant.voda > 0) wRows.push([stripDia(' ' + waterGroups.voda.label), fmtEur(waterGroupTenant.voda) + ' EUR']);
+        if (waterGroupTenant.cistenie > 0) wRows.push([stripDia(' ' + waterGroups.cistenie.label), fmtEur(waterGroupTenant.cistenie) + ' EUR']);
+      }
       wRows.push([stripDia('Mesačný náklad'), fmtEur(wAmount / numMonths) + ' EUR']);
       wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizácia', wRows);
