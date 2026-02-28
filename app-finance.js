@@ -4,6 +4,7 @@
 // ============================================
 
 async function loadFinance() {
+  try {
   // Always reload zones from DB to ensure fresh data
   var { data: freshZones } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
   if (freshZones) allZones = freshZones;
@@ -375,11 +376,16 @@ async function loadFinance() {
   if (expDate && !expDate.value) expDate.value = new Date().toISOString().split('T')[0];
 
   await loadMeters();
+  console.log('loadFinance: meters loaded OK');
   await loadExpenses();
   await window.loadTenants();
   await window.loadPayments();
   await window.loadInvoices();
   await window.loadOverview();
+  } catch(err) {
+    console.error('loadFinance CRASHED:', err);
+    alert('Chyba pri načítaní financií: ' + err.message);
+  }
 }
 
 // ---- MERAČE ----
