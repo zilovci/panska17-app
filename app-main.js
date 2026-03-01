@@ -1317,15 +1317,7 @@ window.generateInvoice = async function(existingInvoice) {
       _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(re.amount) || 0)).toFixed(2));
     });
 
-    // Tenant's heated area (only zones with tempering > 0)
-    var _tenantHeatedArea = 0;
-    tenantZones.forEach(function(tz) {
-      var temp = parseFloat(tz.tempering_pct) || 0;
-      if (temp > 0) {
-        _tenantHeatedArea += parseFloat(tz.billing_area_m2) || parseFloat(tz.area_m2) || 0;
-      }
-    });
-    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * _tenantHeatedArea / _totalHeatedArea).toFixed(2)) : 0;
+    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * totalArea / _totalHeatedArea).toFixed(2)) : 0;
     byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
   }
 
