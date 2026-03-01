@@ -3500,6 +3500,27 @@ window.saveExpense = async function() {
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
+        // DIAGNOSTIC: show pool breakdown for heating
+        if (isHeating) {
+          var diagLines = ['HEATING POOL DIAGNOSTIC:'];
+          diagLines.push('Checked zones (' + zones.length + '):');
+          zones.forEach(function(z) {
+            var contrib;
+            if (z.isTimeWeighted) { contrib = z.tenantEffBilling + z.ownerEffArea; }
+            else if (z.payer === 'owner') { contrib = z.ownerTemperedArea || 0; }
+            else { contrib = z.billingArea || z.area; }
+            diagLines.push('  ' + z.name + ' payer=' + z.payer + ' area=' + z.area + ' billing=' + z.billingArea + ' temper=' + z.temper + ' tw=' + z.isTimeWeighted + ' → pool=' + contrib.toFixed(2));
+          });
+          diagLines.push('Unchecked tempered (' + temperedZones.length + '):');
+          temperedZones.forEach(function(z) {
+            diagLines.push('  id=' + z.id + ' area=' + z.area + ' temper=' + z.temper + ' → pool=' + z.effectiveArea.toFixed(2));
+          });
+          diagLines.push('TOTAL POOL: ' + totalArea.toFixed(2) + ' m²');
+          diagLines.push('saveAmount: ' + saveAmount.toFixed(2));
+          diagLines.push('unitPrice/month: ' + (saveAmount / totalArea / totalMonths).toFixed(6));
+          alert(diagLines.join('\n'));
+        }
+
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
             if (z.payer === 'owner') {
