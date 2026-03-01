@@ -1189,6 +1189,7 @@ window.redownloadInvoice = async function(invId) {
 };
 
 window.generateInvoice = async function(existingInvoice) {
+  try {
   var tenantId = document.getElementById('fin-inv-tenant').value;
   var dateFrom = document.getElementById('fin-inv-from').value;
   var dateTo = document.getElementById('fin-inv-to').value;
@@ -2106,6 +2107,10 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Refresh list
   await window.loadInvoices();
+  } catch(invoiceErr) {
+    alert('CHYBA pri generovaní faktúry:\n\n' + invoiceErr.message + '\n\nRiadok: ' + (invoiceErr.stack ? invoiceErr.stack.split('\n')[1] : 'neznámy'));
+    console.error('Invoice generation error:', invoiceErr);
+  }
 };
 
 // ============ EVIDENCIA VYÚČTOVANÍ ============

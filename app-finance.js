@@ -1925,7 +1925,7 @@ window.recalcAllExpenses = async function() {
       if (z.isTimeWeighted) {
         totalArea += z.tenantEffBilling + z.ownerEffArea;
       } else if (isHeating && z.payer === 'owner') {
-        z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
+        z.ownerTemperedArea = z.temper > 0 ? (z.area * (z.temper || 0) / 100) : z.area;
         totalArea += z.ownerTemperedArea;
       } else {
         totalArea += z.billingArea;
@@ -1939,28 +1939,43 @@ window.recalcAllExpenses = async function() {
     var newAllocs = [];
     zoneList.forEach(function(z) {
       if (z.isTimeWeighted) {
-        var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
-        var tenantPct = tenantBilling / totalArea * 100;
-        var ownerPct = z.ownerEffArea / totalArea * 100;
-        newAllocs.push({
-          expense_id: e.id, zone_id: z.id,
-          percentage: parseFloat(tenantPct.toFixed(2)),
-          amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
-          payer: z.payer,
-          months_occupied: z.monthsOcc, months_total: totalMonths,
-          tempering_used: isHeating ? z.temper : null,
-          area_used: z.area
-        });
-        if (z.payer === 'tenant' && ownerPct > 0) {
+        if (z.payer === 'owner') {
+          // Owner + time-weighted: combine both portions into single owner allocation
+          var combinedEff = (z.tenantEffBilling || z.tenantEffArea) + z.ownerEffArea;
+          var combinedPct = totalArea > 0 ? (combinedEff / totalArea * 100) : 0;
           newAllocs.push({
             expense_id: e.id, zone_id: z.id,
-            percentage: parseFloat(ownerPct.toFixed(2)),
-            amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+            percentage: parseFloat(combinedPct.toFixed(2)),
+            amount: parseFloat((saveAmount * combinedPct / 100).toFixed(2)),
             payer: 'owner',
-            months_occupied: 0, months_total: totalMonths,
+            months_occupied: z.monthsOcc, months_total: totalMonths,
             tempering_used: isHeating ? z.temper : null,
             area_used: z.area
           });
+        } else {
+          var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
+          var tenantPct = tenantBilling / totalArea * 100;
+          var ownerPct = z.ownerEffArea / totalArea * 100;
+          newAllocs.push({
+            expense_id: e.id, zone_id: z.id,
+            percentage: parseFloat(tenantPct.toFixed(2)),
+            amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
+            payer: z.payer,
+            months_occupied: z.monthsOcc, months_total: totalMonths,
+            tempering_used: isHeating ? z.temper : null,
+            area_used: z.area
+          });
+          if (ownerPct > 0) {
+            newAllocs.push({
+              expense_id: e.id, zone_id: z.id,
+              percentage: parseFloat(ownerPct.toFixed(2)),
+              amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+              payer: 'owner',
+              months_occupied: 0, months_total: totalMonths,
+              tempering_used: isHeating ? z.temper : null,
+              area_used: z.area
+            });
+          }
         }
       } else {
         var chargeArea;
@@ -3485,44 +3500,53 @@ window.saveExpense = async function() {
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
-        // DIAGNOSTIC: trace allocation values for debugging
-        var _diagLines = ['method=' + currentAllocMethod + ' isHeating=' + isHeating + ' totalArea=' + totalArea.toFixed(2) + ' saveAmount=' + saveAmount];
-        zones.filter(function(z) { return z.payer === 'owner'; }).forEach(function(z) {
-          var zn = allZones.find(function(az) { return az.id === z.id; });
-          _diagLines.push((zn ? zn.name : z.id) + ': area=' + z.area + ' temper=' + z.temper + ' temperedArea=' + (z.ownerTemperedArea || 'undef') + ' tw=' + z.isTimeWeighted + ' payer=' + z.payer);
-        });
-        alert('DIAG save:\n' + _diagLines.join('\n'));
-
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
-            // Split into tenant and owner allocations
-            // Tenant: uses billing area for amount, pool area for percentage
-            var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
-            var tenantPct = totalArea > 0 ? (tenantBilling / totalArea * 100) : 0;
-            var ownerPct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
-            allocs.push({
-              expense_id: expenseId,
-              zone_id: z.id,
-              percentage: parseFloat(tenantPct.toFixed(2)),
-              amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
-              payer: z.payer,
-              months_occupied: z.monthsOcc,
-              months_total: totalMonths,
-              tempering_used: isHeating ? (z.temper || 0) : null,
-              area_used: z.area
-            });
-            if (z.payer === 'tenant' && ownerPct > 0) {
+            if (z.payer === 'owner') {
+              // Owner + time-weighted: combine occupied + empty into single owner allocation
+              // (preview does this: effArea = tenantEffArea + ownerEffArea)
+              var combinedEff = (z.tenantEffBilling || z.tenantEffArea) + z.ownerEffArea;
+              var combinedPct = totalArea > 0 ? (combinedEff / totalArea * 100) : 0;
               allocs.push({
                 expense_id: expenseId,
                 zone_id: z.id,
-                percentage: parseFloat(ownerPct.toFixed(2)),
-                amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+                percentage: parseFloat(combinedPct.toFixed(2)),
+                amount: parseFloat((saveAmount * combinedPct / 100).toFixed(2)),
                 payer: 'owner',
-                months_occupied: 0,
+                months_occupied: z.monthsOcc,
                 months_total: totalMonths,
                 tempering_used: isHeating ? (z.temper || 0) : null,
                 area_used: z.area
               });
+            } else {
+              // Tenant + time-weighted: split into tenant and owner allocations
+              var tenantBilling = z.tenantEffBilling || z.tenantEffArea;
+              var tenantPct = totalArea > 0 ? (tenantBilling / totalArea * 100) : 0;
+              var ownerPct = totalArea > 0 ? (z.ownerEffArea / totalArea * 100) : 0;
+              allocs.push({
+                expense_id: expenseId,
+                zone_id: z.id,
+                percentage: parseFloat(tenantPct.toFixed(2)),
+                amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
+                payer: z.payer,
+                months_occupied: z.monthsOcc,
+                months_total: totalMonths,
+                tempering_used: isHeating ? (z.temper || 0) : null,
+                area_used: z.area
+              });
+              if (ownerPct > 0) {
+                allocs.push({
+                  expense_id: expenseId,
+                  zone_id: z.id,
+                  percentage: parseFloat(ownerPct.toFixed(2)),
+                  amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+                  payer: 'owner',
+                  months_occupied: 0,
+                  months_total: totalMonths,
+                  tempering_used: isHeating ? (z.temper || 0) : null,
+                  area_used: z.area
+                });
+              }
             }
           } else {
             // Use billing area for tenant charge, pool area for denominator
@@ -3556,13 +3580,6 @@ window.saveExpense = async function() {
             area_used: z.area
           });
         });
-
-        // DIAGNOSTIC: show what allocs will be saved
-        var _diagAllocs = allocs.map(function(a) {
-          var zn = allZones.find(function(az) { return az.id === a.zone_id; });
-          return (zn ? zn.name : '?') + ': ' + a.amount + '€ ' + a.payer + ' pct=' + a.percentage;
-        });
-        alert('DIAG allocs (' + allocs.length + '):\n' + _diagAllocs.join('\n'));
 
         // Save preset
         var presetZones = zones.map(function(z) {
