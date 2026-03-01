@@ -377,6 +377,7 @@
                         <div class="flex items-center gap-3" onclick="event.stopPropagation()">
                             <select id="fin-pay-year" onchange="window.loadPayments()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                             <button onclick="window.generatePayments()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">Generovať</button>
+                            <button onclick="window.cleanDuplicatePayments()" class="bg-red-100 text-red-600 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-200" title="Zmazať nezaplatené duplicitné platby">🧹 Duplicity</button>
                             <button onclick="window.showAddPayment()" class="bg-green-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Platba</button>
                         </div>
                     </div>
@@ -956,8 +957,8 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260228aj"></script>
-    <script src="app-finance.js?v=20260228aj"></script>
-    <script src="app-main.js?v=20260228aj"></script>
+    <script src="app-core.js?v=20260228ak"></script>
+    <script src="app-finance.js?v=20260228ak"></script>
+    <script src="app-main.js?v=20260228ak"></script>
 </body>
 </html>

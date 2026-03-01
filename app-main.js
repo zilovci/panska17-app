@@ -1001,6 +1001,51 @@ window.generatePayments = async function() {
   await window.loadPayments();
 };
 
+window.cleanDuplicatePayments = async function() {
+  var yearSel = document.getElementById('fin-pay-year');
+  var year = yearSel ? yearSel.value : new Date().getFullYear();
+
+  var { data: payments = [] } = await sb.from('tenant_payments').select('id, tenant_id, month, type, paid, amount')
+    .gte('month', year + '-01-01').lte('month', year + '-12-01')
+    .order('paid', { ascending: false }); // paid first so we keep those
+
+  // Group by tenant+month+type
+  var groups = {};
+  payments.forEach(function(p) {
+    var normMonth = (p.month || '').substring(0, 10);
+    var key = p.tenant_id + '|' + normMonth + '|' + (p.type || 'advance');
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(p);
+  });
+
+  var toDelete = [];
+  Object.keys(groups).forEach(function(key) {
+    var g = groups[key];
+    if (g.length <= 1) return;
+    // Keep first paid, or first if none paid
+    var kept = g.find(function(p) { return p.paid; }) || g[0];
+    g.forEach(function(p) {
+      if (p.id !== kept.id && !p.paid) {
+        toDelete.push(p.id);
+      }
+    });
+  });
+
+  if (toDelete.length === 0) {
+    alert('Žiadne nezaplatené duplicity v roku ' + year + '.');
+    return;
+  }
+
+  if (!confirm('Nájdených ' + toDelete.length + ' nezaplatených duplicitných platobných záznamov v roku ' + year + '.\n\nZaplatené záznamy sú chránené a nebudú zmazané.\n\nVymazať duplicity?')) return;
+
+  for (var i = 0; i < toDelete.length; i++) {
+    await sb.from('tenant_payments').delete().eq('id', toDelete[i]);
+  }
+
+  alert('Vymazaných ' + toDelete.length + ' duplicít.');
+  await window.loadPayments();
+};
+
 window.editPayment = async function(payId) {
   var { data: pay } = await sb.from('tenant_payments').select('*').eq('id', payId).single();
   if (!pay) return;
