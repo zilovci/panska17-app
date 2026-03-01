@@ -1376,16 +1376,15 @@ window.generateInvoice = async function(existingInvoice) {
   registerRobotoFont(doc);
   var W = 210, M = 20, y = 20;
 
-  // Header - title and period on one line
-  doc.setFontSize(14);
+  // Header
+  doc.setFontSize(16);
   doc.setFont('Roboto', 'bold');
-  var titleText = stripDia('VYÚČTOVANIE NÁKLADOV');
-  doc.text(titleText, M, y);
-  var titleW = doc.getTextWidth(titleText + '  ');
+  doc.text(stripDia('VYÚČTOVANIE NÁKLADOV'), M, y);
+  y += 7;
   doc.setFontSize(11);
   doc.setFont('Roboto', 'normal');
-  doc.text(stripDia('za obdobie ' + periodLabel), M + titleW, y);
-  y += 8;
+  doc.text(stripDia('za obdobie ' + periodLabel), M, y);
+  y += 12;
 
   // ===== PAGE 1: MAIN INVOICE =====
 
@@ -1586,10 +1585,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFontSize(13);
     doc.setFont('Roboto', 'bold');
     doc.text(stripDia('DETAILNÝ ROZPIS'), M, dy);
-    dy += 9;
-    doc.setDrawColor(0); doc.setLineWidth(0.25);
-    doc.line(M, dy, W - M, dy);
-    dy += 8;
+    dy += 12;
 
     // Helper: detail section with consistent format
     function detailSection(title, rows) {
