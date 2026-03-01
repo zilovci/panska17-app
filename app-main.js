@@ -2011,44 +2011,46 @@ window.generateInvoice = async function(existingInvoice) {
         var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
           .select('zone_id, payer, percentage, amount, months_occupied, months_total, zones(billing_area_m2, area_m2, tempering_pct)')
           .eq('expense_id', heatOneExpId);
-        // Get expense amount for pool derivation
-        var heatExpObj = heatingInputs.find(function(h) { return h.expId === heatOneExpId; });
-        var heatExpAmount = heatExpObj ? heatExpObj.amount : 0;
 
-        // Derive totalPool from a NON-time-weighted tenant allocation
-        // pool = billingArea * expenseAmount / allocationAmount (more precise than percentage)
-        var _derivedPool = 0;
-        var seenHeatZone = {};
+        // Reconstruct pool exactly like save path does:
+        // Group by zone_id to detect time-weighted (2 rows: tenant+owner)
+        var hzGroup = {};
         heatAllAllocs.forEach(function(ha) {
-          if (seenHeatZone[ha.zone_id]) return;
-          seenHeatZone[ha.zone_id] = true;
-          var z = ha.zones || {};
+          if (!hzGroup[ha.zone_id]) hzGroup[ha.zone_id] = [];
+          hzGroup[ha.zone_id].push(ha);
+        });
+
+        Object.keys(hzGroup).forEach(function(zid) {
+          var rows = hzGroup[zid];
+          var z = rows[0].zones || {};
           var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-          var mOcc = ha.months_occupied != null ? ha.months_occupied : null;
-          var mTot = ha.months_total != null ? ha.months_total : null;
-          var isTimeWeighted = (mOcc != null && mTot != null && mOcc < mTot);
-          var allocAmt = parseFloat(ha.amount) || 0;
-          if (ha.payer !== 'owner' && !isTimeWeighted && bArea > 0 && allocAmt > 0 && heatExpAmount > 0 && _derivedPool === 0) {
-            _derivedPool = bArea * heatExpAmount / allocAmt;
+          var area = parseFloat(z.area_m2) || bArea;
+          var temper = parseFloat(z.tempering_pct) || 0;
+
+          // Check if time-weighted: has both tenant and owner rows, or months_occupied < months_total
+          var tenantRow = rows.find(function(r) { return r.payer !== 'owner'; });
+          var ownerRow = rows.find(function(r) { return r.payer === 'owner'; });
+          var isTimeWeighted = false;
+          if (tenantRow && tenantRow.months_occupied != null && tenantRow.months_total != null && tenantRow.months_occupied < tenantRow.months_total) {
+            isTimeWeighted = true;
+          }
+
+          if (isTimeWeighted && tenantRow) {
+            var mOcc = tenantRow.months_occupied;
+            var mTot = tenantRow.months_total;
+            // tenant part: billingArea * monthsOcc / monthsTotal
+            var tenantEff = bArea * mOcc / mTot;
+            // owner part: area * temper/100 * monthsEmpty / monthsTotal
+            var ownerEff = area * temper / 100 * (mTot - mOcc) / mTot;
+            totalHeatedArea += tenantEff + ownerEff;
+          } else if (rows.length === 1 && rows[0].payer === 'owner') {
+            // Pure owner zone (unchecked tempered or checked as owner)
+            totalHeatedArea += area * temper / 100;
+          } else {
+            // Full tenant zone
+            totalHeatedArea += bArea;
           }
         });
-        totalHeatedArea = _derivedPool > 0 ? _derivedPool : 0;
-        // Fallback: static areas
-        if (totalHeatedArea === 0) {
-          seenHeatZone = {};
-          heatAllAllocs.forEach(function(ha) {
-            if (seenHeatZone[ha.zone_id]) return;
-            seenHeatZone[ha.zone_id] = true;
-            var z = ha.zones || {};
-            var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-            if (ha.payer === 'owner') {
-              var temp = parseFloat(z.tempering_pct) || 0;
-              totalHeatedArea += bArea * temp / 100;
-            } else {
-              totalHeatedArea += bArea;
-            }
-          });
-        }
       }
 
       var hRows = [];
