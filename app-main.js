@@ -2070,10 +2070,8 @@ window.generateInvoice = async function(existingInvoice) {
         }
         var indent = hMultiZone ? '    ' : '  ';
         if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), '', hz.area.toFixed(2) + ' m2']);
-        if (hz.amount > 0) {
-          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(hz.amount / numMonths) + ' EUR']);
-        }
         if (hMultiZone && hz.amount > 0) {
+          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(hz.amount / numMonths) + ' EUR']);
           hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
@@ -2152,10 +2150,8 @@ window.generateInvoice = async function(existingInvoice) {
         }
         var indent = epsMultiZone ? '    ' : '  ';
         if (ez.area > 0) epsRows.push([stripDia(indent + 'Plocha'), '', ez.area.toFixed(2) + ' m2']);
-        if (ez.amount > 0) {
-          epsRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(ez.amount / numMonths) + ' EUR']);
-        }
         if (epsMultiZone && ez.amount > 0) {
+          epsRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(ez.amount / numMonths) + ' EUR']);
           epsRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
