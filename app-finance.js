@@ -3160,11 +3160,11 @@ window.calcMeterAllocation = async function() {
   }
 
   // Warning if sub-meters exceed main (only show if no correction line)
-  if (mainMc3 && subMeterTotal + redirectedFullTotal > mainCons3 + 0.01 && correctionAllocs.length === 0) {
-    var excess = subMeterTotal + redirectedFullTotal - mainCons3;
+  if (mainMc && subMeterTotal + redirectedFullTotal > mainConsumption + 0.01 && correctionAllocs.length === 0) {
+    var excess = subMeterTotal + redirectedFullTotal - mainConsumption;
     html += '<div class="bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-2">' +
       '<p class="text-[8px] text-amber-700"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' +
-      'Podmerače (' + (subMeterTotal + redirectedFullTotal).toFixed(0) + ' ' + unit + ') prevyšujú hlavný (' + mainCons3.toFixed(0) + ' ' + unit + ') o ' + excess.toFixed(1) + ' ' + unit + ' – bežná nepresnosť meračov</p>' +
+      'Podmerače (' + (subMeterTotal + redirectedFullTotal).toFixed(0) + ' ' + unit + ') prevyšujú hlavný (' + mainConsumption.toFixed(0) + ' ' + unit + ') o ' + excess.toFixed(1) + ' ' + unit + ' – bežná nepresnosť meračov</p>' +
     '</div>';
   }
 
