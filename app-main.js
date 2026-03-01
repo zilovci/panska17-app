@@ -1376,6 +1376,14 @@ window.generateInvoice = async function(existingInvoice) {
   registerRobotoFont(doc);
   var W = 210, M = 20, y = 20;
 
+  // Logo on page 1 (top left)
+  if (typeof LOGO_BASE64 !== 'undefined') {
+    // Logo aspect ratio 528:145 = 3.64:1
+    var logoW = 45, logoH = logoW / 3.64;
+    doc.addImage(LOGO_BASE64, 'PNG', M, y - 6, logoW, logoH);
+    y += logoH + 4;
+  }
+
   // Header
   doc.setFontSize(16);
   doc.setFont('Roboto', 'bold');
@@ -2002,7 +2010,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     await window.loadInvoices();
   }
-  // Add page numbers and invoice number to all pages
+  // Add page numbers to all pages
   var totalPages = doc.internal.getNumberOfPages();
   for (var pi = 1; pi <= totalPages; pi++) {
     doc.setPage(pi);
@@ -2010,9 +2018,6 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('Roboto', 'normal');
     doc.setTextColor(150);
     doc.text(pi + ' / ' + totalPages, W / 2, 290, { align: 'center' });
-    // Invoice number on all pages
-    doc.setFontSize(8);
-    doc.text(stripDia('Číslo: ' + invNumber), W - M, 290, { align: 'right' });
     // Priestor on all pages (top right)
     if (pi > 1) {
       doc.setFontSize(9);
