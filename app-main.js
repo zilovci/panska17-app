@@ -1922,10 +1922,10 @@ window.generateInvoice = async function(existingInvoice) {
       detailSection('Vykurovanie', hRows);
     }
 
-    // --- EPS a PO --- (always on new page, aligned with Vykurovanie)
+    // --- EPS a PO --- (always on new page)
     if (hasEps) {
       doc.addPage();
-      dy = heatSectionStartY;
+      dy = 20;
       var epsAmount = byCatBase['EPS a PO'].amount;
 
       // Building total = sum of full expense amounts (deduplicated)
