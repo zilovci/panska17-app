@@ -1540,7 +1540,7 @@ window.generateInvoice = async function(existingInvoice) {
       console.log('QR: generated, dataUrl length', qrDataUrl.length);
       var qrSize = 30;
       var qrX = W - M - qrSize;
-      var qrY = 253;
+      var qrY = 247;
       doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
       doc.setFontSize(6);
       doc.setTextColor(150);
