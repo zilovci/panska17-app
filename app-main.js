@@ -1349,7 +1349,6 @@ window.generateInvoice = async function(existingInvoice) {
     if (elecBuildingCons > 0 && elecTenantCons > 0) {
       var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
       var elecNewTotal = elecUnitPrice * elecTenantCons;
-      console.log('ELEC RECALC:', { buildingAmt: elecBuildingAmount, buildingCons: elecBuildingCons, unitPrice: elecUnitPrice, tenantCons: elecTenantCons, oldTotal: byCatBase['Elektrina'].amount, newTotal: elecNewTotal });
       byCatBase['Elektrina'].amount = elecNewTotal;
       byCatBase['Elektrina']._unitPrice = elecUnitPrice;
       byCatBase['Elektrina']._tenantCons = elecTenantCons;
@@ -1559,7 +1558,6 @@ window.generateInvoice = async function(existingInvoice) {
 
     // QR payment code (EPC format - European standard)
     try {
-      console.log('QR: typeof QRCode =', typeof QRCode, 'methods:', QRCode ? Object.keys(QRCode) : 'N/A');
       var ibanClean = ownerIban.replace(/\s/g, '');
       var ownerName = owner ? (owner.company_name || owner.name || 'Panska 17') : 'Panska 17';
       var epcData = [
@@ -1571,9 +1569,7 @@ window.generateInvoice = async function(existingInvoice) {
         stripDia('Vyuctovanie ' + invNumber), ''
       ].join('\n');
 
-      console.log('QR: generating with data length', epcData.length);
       var qrDataUrl = await QRCode.toDataURL(epcData, { width: 256, margin: 1, errorCorrectionLevel: 'M' });
-      console.log('QR: generated, dataUrl length', qrDataUrl.length);
       var qrSize = 30;
       var qrX = W - M - qrSize;
       var qrY = 247;
@@ -2070,7 +2066,6 @@ window.generateInvoice = async function(existingInvoice) {
       console.error('Invoice insert failed:', invInsert.error);
       alert('⚠ Faktúra sa nepodarila uložiť do databázy!\n\n' + invInsert.error.message);
     } else {
-      console.log('Invoice saved:', invInsert.data);
     }
 
     await window.loadInvoices();
@@ -2481,7 +2476,6 @@ window.migrateThumbs = async () => {
   if (error) { console.error(error); alert("DB error"); return; }
   if (!rows || rows.length === 0) { alert("Nič na migráciu"); return; }
 
-  console.log("Na migráciu:", rows.length);
 
   for (const r of rows) {
     try {
@@ -2495,7 +2489,6 @@ window.migrateThumbs = async () => {
         .eq("id", r.id);
 
       if (upErr) throw upErr;
-      console.log("OK", r.id);
     } catch (e) {
       console.warn("FAIL", r.id, e);
     }
@@ -2515,7 +2508,6 @@ window.migrateThumbsIssuePhotos = async () => {
   if (error) { console.error(error); alert("DB error"); return; }
   if (!rows || rows.length === 0) { alert("Nič na migráciu v issue_photos"); return; }
 
-  console.log("issue_photos na migráciu:", rows.length);
 
   for (const r of rows) {
     try {
@@ -2529,7 +2521,6 @@ window.migrateThumbsIssuePhotos = async () => {
         .eq("id", r.id);
 
       if (upErr) throw upErr;
-      console.log("OK issue_photos", r.id);
     } catch (e) {
       console.warn("FAIL issue_photos", r.id, e);
     }

@@ -296,10 +296,8 @@ async function loadDash() {
     var resolvedDate = lastResolved[iss.id];
     if (isDone && resolvedDate && resolvedDate.startsWith(String(thisYear))) {
       resolvedThisYear++;
-      console.log('Vybavené ' + thisYear + ':', resolvedDate, iss.id, iss.title, iss.archived ? 'ARCHIV' : 'aktívne');
     }
   });
-  console.log('CELKOM vybavené ' + thisYear + ':', resolvedThisYear);
   document.getElementById('s-done-year').innerText = resolvedThisYear;
 
   // V riešení (nie archivované, nie vybavené/opravené)
@@ -375,7 +373,6 @@ async function recalcAllStatuses() {
   for (var i = 0; i < issues.length; i++) {
     await syncIssueStatusFromLastEvent(issues[i].id);
   }
-  console.log('Prepočítané statusy pre ' + issues.length + ' záznamov');
   alert('Statusy prepočítané pre ' + issues.length + ' záznamov. Obnov stránku.');
 }
 
