@@ -1925,7 +1925,7 @@ window.recalcAllExpenses = async function() {
       if (z.isTimeWeighted) {
         totalArea += z.tenantEffBilling + z.ownerEffArea;
       } else if (isHeating && z.payer === 'owner') {
-        z.ownerTemperedArea = z.temper > 0 ? (z.area * (z.temper || 0) / 100) : z.area;
+        z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
         totalArea += z.ownerTemperedArea;
       } else {
         totalArea += z.billingArea;
@@ -2404,7 +2404,7 @@ window.updateAllocPreview = function() {
       // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
       var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
       var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
-      z.ownerTemperedArea = temper > 0 ? (z.area * temper / 100) : z.area;
+      z.ownerTemperedArea = z.area * temper / 100;
       totalArea += z.ownerTemperedArea;
     } else {
       totalArea += z.billingArea; // pool uses billing area (= area if no billing override)
@@ -3492,7 +3492,7 @@ window.saveExpense = async function() {
             totalArea += z.tenantEffBilling + z.ownerEffArea;
           } else if (isHeating && z.payer === 'owner') {
             // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
-            z.ownerTemperedArea = z.temper > 0 ? (z.area * (z.temper || 0) / 100) : z.area;
+            z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
             totalArea += z.ownerTemperedArea;
           } else {
             totalArea += z.billingArea || z.area;
