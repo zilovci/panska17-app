@@ -1925,7 +1925,7 @@ window.generateInvoice = async function(existingInvoice) {
     // --- EPS a PO --- (always on new page)
     if (hasEps) {
       doc.addPage();
-      dy = 20;
+      dy = 36;
       var epsAmount = byCatBase['EPS a PO'].amount;
 
       // Building total = sum of full expense amounts (deduplicated)
