@@ -1595,6 +1595,10 @@ window.generateInvoice = async function(existingInvoice) {
         mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
         mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
         if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
+      } else if (mainCons === 0) {
+        // No main meter (e.g. electricity) - still aggregate sub/redir consumption
+        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
+        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
       }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
