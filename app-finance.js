@@ -3485,6 +3485,14 @@ window.saveExpense = async function() {
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
+        // DIAGNOSTIC: trace allocation values for debugging
+        var _diagLines = ['method=' + currentAllocMethod + ' isHeating=' + isHeating + ' totalArea=' + totalArea.toFixed(2) + ' saveAmount=' + saveAmount];
+        zones.filter(function(z) { return z.payer === 'owner'; }).forEach(function(z) {
+          var zn = allZones.find(function(az) { return az.id === z.id; });
+          _diagLines.push((zn ? zn.name : z.id) + ': area=' + z.area + ' temper=' + z.temper + ' temperedArea=' + (z.ownerTemperedArea || 'undef') + ' tw=' + z.isTimeWeighted + ' payer=' + z.payer);
+        });
+        alert('DIAG save:\n' + _diagLines.join('\n'));
+
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
             // Split into tenant and owner allocations
@@ -3548,6 +3556,13 @@ window.saveExpense = async function() {
             area_used: z.area
           });
         });
+
+        // DIAGNOSTIC: show what allocs will be saved
+        var _diagAllocs = allocs.map(function(a) {
+          var zn = allZones.find(function(az) { return az.id === a.zone_id; });
+          return (zn ? zn.name : '?') + ': ' + a.amount + '€ ' + a.payer + ' pct=' + a.percentage;
+        });
+        alert('DIAG allocs (' + allocs.length + '):\n' + _diagAllocs.join('\n'));
 
         // Save preset
         var presetZones = zones.map(function(z) {
