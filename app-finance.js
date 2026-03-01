@@ -3036,28 +3036,29 @@ window.calcMeterAllocation = async function() {
     var redirectedTotalAmount = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; }).reduce(function(s, a) { return s + a.amount; }, 0);
     console.log('MAINTENANCE RESULT:', { total: amount, tenants: maintTotal - redirectedTotalAmount, redirect: redirectedTotalAmount, roundingFix: maintDiff });
   } else {
-    // === REGULAR: redirect gets subtracted, remainder split among tenants ===
-    var redirectedTotalAmount = 0;
-    var mainMc3 = meterConsumption.find(function(mc) { return mc.meter.is_main; });
-    var priceBase = subMeterTotal + redirectedTotal;
+    // === REGULAR: single unit price for all (redirect + tenants) ===
+    var allConsumption = subMeterTotal + redirectedTotal;
+    // If main meter exists and is larger, use it (includes losses)
+    if (mainConsumption > 0 && mainConsumption >= allConsumption) {
+      allConsumption = mainConsumption;
+    }
+    var unitPrice = allConsumption > 0 ? (amount / allConsumption) : 0;
+    console.log('REGULAR ALLOC:', { amount: amount, allCons: allConsumption, subMeter: subMeterTotal, redirect: redirectedTotal, mainCons: mainConsumption, unitPrice: unitPrice });
 
+    var regTotal = 0;
     zoneAllocs.forEach(function(a) {
-      if (a.payer === 'redirect') {
-        a.amount = priceBase > 0 ? (a.consumption / priceBase * amount) : 0;
-        a.amount = parseFloat(a.amount.toFixed(2));
-        a.pct = 0;
-        redirectedTotalAmount += a.amount;
-      }
-    });
-
-    var allocatableAmount = amount - redirectedTotalAmount;
-
-    zoneAllocs.forEach(function(a) {
-      if (a.payer === 'redirect') return;
       if (a.payer === 'correction') { a.pct = 0; a.amount = 0; return; }
-      a.pct = totalConsumption > 0 ? (a.consumption / totalConsumption * 100) : 0;
-      a.amount = allocatableAmount * a.pct / 100;
+      a.amount = parseFloat((unitPrice * a.consumption).toFixed(2));
+      a.pct = allConsumption > 0 ? (a.consumption / allConsumption * 100) : 0;
+      regTotal += a.amount;
     });
+    // Fix rounding: adjust largest entry so total = amount exactly
+    var regDiff = amount - regTotal;
+    if (Math.abs(regDiff) > 0.001 && zoneAllocs.length > 0) {
+      var largest = zoneAllocs.reduce(function(max, a) { return a.amount > max.amount ? a : max; }, zoneAllocs[0]);
+      largest.amount = parseFloat((largest.amount + regDiff).toFixed(2));
+    }
+    var redirectedTotalAmount = zoneAllocs.filter(function(a) { return a.payer === 'redirect'; }).reduce(function(s, a) { return s + a.amount; }, 0);
   }
 
   // Display meter info
