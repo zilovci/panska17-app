@@ -1670,7 +1670,7 @@ window.generateInvoice = async function(existingInvoice) {
         body: rows,
         theme: 'plain',
         styles: { fontSize: 8, cellPadding: 1.2, font: 'Roboto' },
-        columnStyles: { 0: { cellWidth: 75 }, 1: { cellWidth: 55, halign: 'right' } }
+        columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 35, halign: 'right' }, 2: { cellWidth: 40, halign: 'right' } }
       });
       dy = doc.lastAutoTable.finalY + 10;
     }
@@ -1731,25 +1731,30 @@ window.generateInvoice = async function(existingInvoice) {
       // Building-level cost breakdown (only if multiple groups have amounts)
       var hasMultipleGroups = waterGroups.voda.amount > 0 && waterGroups.cistenie.amount > 0;
       if (hasMultipleGroups) {
-        wRows.push([{content: stripDia('Náklady na vodu pre budovu:'), styles: {fontStyle: 'bold'}}, '']);
-        if (waterGroups.voda.amount > 0) wRows.push([stripDia('  ' + waterGroups.voda.label), fmtEur(waterGroups.voda.amount) + ' EUR']);
-        if (waterGroups.cistenie.amount > 0) wRows.push([stripDia('  ' + waterGroups.cistenie.label), fmtEur(waterGroups.cistenie.amount) + ' EUR']);
+        wRows.push([{content: stripDia('Náklady na vodu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
+        if (waterGroups.voda.amount > 0) wRows.push([stripDia('  ' + waterGroups.voda.label), '', fmtEur(waterGroups.voda.amount) + ' EUR']);
+        if (waterGroups.cistenie.amount > 0) wRows.push([stripDia('  ' + waterGroups.cistenie.label), '', fmtEur(waterGroups.cistenie.amount) + ' EUR']);
         var waterBuildingTotal = waterGroups.voda.amount + waterGroups.cistenie.amount;
-        wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(waterBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
-        wRows.push(['', '']); // spacer
+        wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(waterBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        wRows.push(['', '', '']);
       }
 
       // Meter data (building level)
       if (wc.mainCons > 0) {
-        wRows.push([stripDia('Hlavný merač (budova)'), wc.mainCons.toFixed(2) + ' m3']);
-        if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), wc.redirCons.toFixed(2) + ' m3']);
+        wRows.push([stripDia('Hlavný merač (budova)'), wc.mainCons.toFixed(2) + ' m3', '']);
+        if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), wc.redirCons.toFixed(2) + ' m3', '']);
         var wLoss = wc.mainCons - wc.subCons - wc.redirCons;
-        if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), wLoss.toFixed(2) + ' m3']);
+        if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), wLoss.toFixed(2) + ' m3', '']);
       }
       // Unit price = BVS total / main meter
       var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
       if (wUnitPrice > 0) {
-        wRows.push([stripDia('Jednotková cena (voda)'), wUnitPrice.toFixed(6) + ' EUR/m3']);
+        wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
+      }
+      // Cistenie unit price
+      var wCistenieUnitPrice = (wc.mainCons > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wc.mainCons) : 0;
+      if (wCistenieUnitPrice > 0) {
+        wRows.push([stripDia('Jednotková cena (cistenie)'), '', wCistenieUnitPrice.toFixed(6) + ' EUR/m3']);
       }
 
       // Group allocations by zone
@@ -1762,13 +1767,11 @@ window.generateInvoice = async function(existingInvoice) {
         }
         var bz = wByZone[zid];
         bz.amount += parseFloat(a.amount) || 0;
-        // Split by sub_type
         var sub = a.expenses ? a.expenses.sub_type : null;
         var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
         var isCistenie = (sub && sub.match(/[Čč]isten|[Úú]držba/)) || descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/);
         if (isCistenie) { bz.cistenieAmt += parseFloat(a.amount) || 0; }
         else { bz.vodaAmt += parseFloat(a.amount) || 0; }
-        // Consumption with period dedup per zone
         var cons = parseFloat(a.consumption) || 0;
         if (cons > 0) {
           var e = a.expenses || {};
@@ -1789,27 +1792,32 @@ window.generateInvoice = async function(existingInvoice) {
       // Per-zone detail
       var wZoneIds = Object.keys(wByZone);
       var multiZone = wZoneIds.length > 1;
-      wRows.push(['', '']); // spacer
-      wRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
+      wRows.push(['', '', '']);
+      wRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
 
       wZoneIds.forEach(function(zid) {
         var bz = wByZone[zid];
         if (multiZone) {
-          wRows.push([{content: stripDia('  ' + bz.name + ':'), styles: {fontStyle: 'bold'}}, '']);
+          wRows.push([{content: stripDia('  ' + bz.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = multiZone ? '    ' : '  ';
-        if (bz.cons > 0) wRows.push([stripDia(indent + 'Spotreba'), bz.cons.toFixed(2) + ' m3']);
-        if (hasMultipleGroups) {
-          if (bz.vodaAmt > 0) wRows.push([stripDia(indent + waterGroups.voda.label), fmtEur(bz.vodaAmt) + ' EUR']);
-          if (bz.cistenieAmt > 0) wRows.push([stripDia(indent + waterGroups.cistenie.label), fmtEur(bz.cistenieAmt) + ' EUR']);
+        if (bz.vodaAmt > 0 && bz.cons > 0) {
+          wRows.push([stripDia(indent + waterGroups.voda.label), bz.cons.toFixed(2) + ' m3', fmtEur(bz.vodaAmt) + ' EUR']);
+        } else if (bz.vodaAmt > 0) {
+          wRows.push([stripDia(indent + waterGroups.voda.label), '', fmtEur(bz.vodaAmt) + ' EUR']);
+        } else if (bz.cons > 0) {
+          wRows.push([stripDia(indent + 'Spotreba'), bz.cons.toFixed(2) + ' m3', fmtEur(bz.amount) + ' EUR']);
+        }
+        if (bz.cistenieAmt > 0) {
+          wRows.push([stripDia(indent + waterGroups.cistenie.label), bz.cons > 0 ? bz.cons.toFixed(2) + ' m3' : '', fmtEur(bz.cistenieAmt) + ' EUR']);
         }
         if (multiZone) {
-          wRows.push([stripDia(indent + 'Spolu'), {content: fmtEur(bz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          wRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(bz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
-      wRows.push([stripDia('Mesačný náklad'), fmtEur(wAmount / numMonths) + ' EUR']);
-      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      wRows.push([stripDia('Mesačný náklad'), '', fmtEur(wAmount / numMonths) + ' EUR']);
+      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizácia', wRows);
     }
 
@@ -1824,10 +1832,10 @@ window.generateInvoice = async function(existingInvoice) {
 
       var eRows = [];
       if (ec.mainCons > 0) {
-        eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
-        if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
+        eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh', '']);
+        if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh', '']);
       }
-      if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), eUnitPrice.toFixed(6) + ' EUR/kWh']);
+      if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), '', eUnitPrice.toFixed(6) + ' EUR/kWh']);
 
       // Group by zone
       var eByZone = {};
@@ -1844,22 +1852,22 @@ window.generateInvoice = async function(existingInvoice) {
       var eZoneIds = Object.keys(eByZone);
       var eMultiZone = eZoneIds.length > 1;
 
-      eRows.push(['', '']); // spacer
-      eRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
+      eRows.push(['', '', '']);
+      eRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
       eZoneIds.forEach(function(zid) {
         var ez = eByZone[zid];
         if (eMultiZone) {
-          eRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '']);
+          eRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = eMultiZone ? '    ' : '  ';
-        if (ez.cons > 0) eRows.push([stripDia(indent + 'Spotreba'), ez.cons.toFixed(2) + ' kWh']);
+        eRows.push([stripDia(indent + 'Spotreba'), ez.cons.toFixed(2) + ' kWh', fmtEur(ez.amount) + ' EUR']);
         if (eMultiZone) {
-          eRows.push([stripDia(indent + 'Spolu'), {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          eRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
-      eRows.push([stripDia('Mesačný náklad'), fmtEur(eMonthly) + ' EUR']);
-      eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eTenantTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      eRows.push([stripDia('Mesačný náklad'), '', fmtEur(eMonthly) + ' EUR']);
+      eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(eTenantTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
     }
 
@@ -2019,17 +2027,20 @@ window.generateInvoice = async function(existingInvoice) {
       }
 
       var hRows = [];
-      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), totalHeatedArea.toFixed(2) + ' m²']);
+      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), totalHeatedArea.toFixed(2) + ' m2', '']);
 
       // Show 4 groups
-      hRows.push([{content: stripDia('Náklady na vykurovanie budovy:'), styles: {fontStyle: 'bold'}}, '']);
+      hRows.push([{content: stripDia('Náklady na vykurovanie budovy:'), styles: {fontStyle: 'bold'}}, '', '']);
       ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(key) {
         var g = heatGroups[key];
         if (g.amount > 0) {
-          hRows.push([stripDia('  ' + g.label), fmtEur(g.amount) + ' EUR']);
+          hRows.push([stripDia('  ' + g.label), '', fmtEur(g.amount) + ' EUR']);
         }
       });
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      if (totalHeatedArea > 0) {
+        hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / numMonths).toFixed(6) + ' EUR']);
+      }
 
       // Tenant's total (already includes redirected share from pre-calculation)
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
@@ -2048,32 +2059,32 @@ window.generateInvoice = async function(existingInvoice) {
       var hZoneIds = Object.keys(hByZone);
       var hMultiZone = hZoneIds.length > 1;
 
-      hRows.push(['', '']); // spacer
-      hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
+      hRows.push(['', '', '']);
+      hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
 
       hZoneIds.forEach(function(zid) {
         var hz = hByZone[zid];
         if (hMultiZone) {
-          hRows.push([{content: stripDia('  ' + hz.name + ':'), styles: {fontStyle: 'bold'}}, '']);
+          hRows.push([{content: stripDia('  ' + hz.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = hMultiZone ? '    ' : '  ';
-        if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), hz.area.toFixed(2) + ' m2']);
+        if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), hz.area.toFixed(2) + ' m2', '']);
         if (hz.amount > 0 && hz.area > 0) {
-          hRows.push([stripDia(indent + 'Náklad na m2 / mesiac'), fmtEur(hz.amount / hz.area / numMonths) + ' EUR']);
+          hRows.push([stripDia(indent + 'Náklad na m2 / mesiac'), '', (hz.amount / hz.area / numMonths).toFixed(6) + ' EUR']);
         }
         if (hMultiZone) {
-          hRows.push([stripDia(indent + 'Spolu'), {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
       if (!hMultiZone && totalArea > 0 && tenantHeatTotal > 0) {
-        hRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m2']);
+        hRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m2', '']);
         var periodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-        hRows.push([stripDia('Náklad na m2 / ' + periodLabel), fmtEur(tenantHeatTotal / totalArea) + ' EUR']);
-        hRows.push([stripDia('Náklad na m2 / mesiac'), fmtEur(tenantHeatTotal / totalArea / numMonths) + ' EUR']);
+        hRows.push([stripDia('Náklad na m2 / ' + periodLabel), '', (tenantHeatTotal / totalArea).toFixed(6) + ' EUR']);
+        hRows.push([stripDia('Náklad na m2 / mesiac'), '', (tenantHeatTotal / totalArea / numMonths).toFixed(6) + ' EUR']);
       }
-      hRows.push([stripDia('Mesačný náklad'), fmtEur(tenantHeatTotal / numMonths) + ' EUR']);
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(tenantHeatTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([stripDia('Mesačný náklad'), '', fmtEur(tenantHeatTotal / numMonths) + ' EUR']);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(tenantHeatTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
 
@@ -2114,12 +2125,15 @@ window.generateInvoice = async function(existingInvoice) {
       }
 
       var epsRows = [];
-      if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m²']);
+      if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), totalProtectedArea.toFixed(2) + ' m2', '']);
       if (epsBuildingTotal > 0) {
-        epsRows.push([{content: stripDia('Náklady na EPS pre budovu:'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        epsRows.push([{content: stripDia('Náklady na EPS pre budovu:'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(epsBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       }
-      epsRows.push(['', '']); // spacer
-      epsRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '']);
+      if (totalProtectedArea > 0 && epsBuildingTotal > 0) {
+        epsRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (epsBuildingTotal / totalProtectedArea / numMonths).toFixed(6) + ' EUR']);
+      }
+      epsRows.push(['', '', '']);
+      epsRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
 
       // Group EPS allocations by zone
       var epsByZone = {};
@@ -2139,26 +2153,26 @@ window.generateInvoice = async function(existingInvoice) {
       epsZoneIds.forEach(function(zid) {
         var ez = epsByZone[zid];
         if (epsMultiZone) {
-          epsRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '']);
+          epsRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = epsMultiZone ? '    ' : '  ';
-        if (ez.area > 0) epsRows.push([stripDia(indent + 'Plocha'), ez.area.toFixed(2) + ' m2']);
+        if (ez.area > 0) epsRows.push([stripDia(indent + 'Plocha'), ez.area.toFixed(2) + ' m2', '']);
         if (ez.amount > 0 && ez.area > 0) {
-          epsRows.push([stripDia(indent + 'Náklad na m2 / mesiac'), fmtEur(ez.amount / ez.area / numMonths) + ' EUR']);
+          epsRows.push([stripDia(indent + 'Náklad na m2 / mesiac'), '', (ez.amount / ez.area / numMonths).toFixed(6) + ' EUR']);
         }
         if (epsMultiZone) {
-          epsRows.push([stripDia(indent + 'Spolu'), {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          epsRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
       if (!epsMultiZone && totalArea > 0 && epsAmount > 0) {
-        epsRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m2']);
+        epsRows.push([stripDia('Vaša plocha'), totalArea.toFixed(2) + ' m2', '']);
         var epsPeriodLabel = numMonths >= 12 ? 'rok' : numMonths + ' mes.';
-        epsRows.push([stripDia('Náklad na m2 / ' + epsPeriodLabel), fmtEur(epsAmount / totalArea) + ' EUR']);
-        epsRows.push([stripDia('Náklad na m2 / mesiac'), fmtEur(epsAmount / totalArea / numMonths) + ' EUR']);
+        epsRows.push([stripDia('Náklad na m2 / ' + epsPeriodLabel), '', (epsAmount / totalArea).toFixed(6) + ' EUR']);
+        epsRows.push([stripDia('Náklad na m2 / mesiac'), '', (epsAmount / totalArea / numMonths).toFixed(6) + ' EUR']);
       }
-      epsRows.push([stripDia('Mesačný náklad'), fmtEur(epsAmount / numMonths) + ' EUR']);
-      epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      epsRows.push([stripDia('Mesačný náklad'), '', fmtEur(epsAmount / numMonths) + ' EUR']);
+      epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('EPS a PO', epsRows);
     }
   }
