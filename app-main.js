@@ -1320,6 +1320,42 @@ window.generateInvoice = async function(existingInvoice) {
     byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
   }
 
+  // Recalculate electricity using building-level unit price (consistent for all tenants)
+  if (byCatBase['Elektrina']) {
+    var elecExpenses = {};
+    var elecTenantCons = 0;
+    periodAllocs.forEach(function(a) {
+      if (!a.expenses || !a.expenses.cost_categories) return;
+      if (a.expenses.cost_categories.name !== 'Elektrina') return;
+      if (a.expenses.alloc_method !== 'meter') return;
+      var eid = a.expenses.id;
+      if (!elecExpenses[eid]) {
+        elecExpenses[eid] = {
+          amount: parseFloat(a.expenses.amount) || 0,
+          subCons: parseFloat(a.expenses.meter_sub_consumption) || 0,
+          redirCons: parseFloat(a.expenses.meter_redirected_consumption) || 0
+        };
+      }
+      if (zoneIds.indexOf(a.zone_id) >= 0 && a.payer !== 'owner') {
+        elecTenantCons += parseFloat(a.consumption) || 0;
+      }
+    });
+    var elecBuildingAmount = 0, elecBuildingCons = 0;
+    Object.keys(elecExpenses).forEach(function(eid) {
+      var ee = elecExpenses[eid];
+      elecBuildingAmount += ee.amount;
+      elecBuildingCons += ee.subCons + ee.redirCons;
+    });
+    if (elecBuildingCons > 0 && elecTenantCons > 0) {
+      var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
+      var elecNewTotal = elecUnitPrice * elecTenantCons;
+      console.log('ELEC RECALC:', { buildingAmt: elecBuildingAmount, buildingCons: elecBuildingCons, unitPrice: elecUnitPrice, tenantCons: elecTenantCons, oldTotal: byCatBase['Elektrina'].amount, newTotal: elecNewTotal });
+      byCatBase['Elektrina'].amount = elecNewTotal;
+      byCatBase['Elektrina']._unitPrice = elecUnitPrice;
+      byCatBase['Elektrina']._tenantCons = elecTenantCons;
+    }
+  }
+
   var catNames = Object.keys(byCatBase).sort();
   var totalCosts = catNames.reduce(function(s, c) { return s + byCatBase[c].amount; }, 0);
 
@@ -1756,21 +1792,22 @@ window.generateInvoice = async function(existingInvoice) {
     if (hasElec) {
       dy += 4; // extra spacing before elektrina
       var ec = meterCategories['Elektrina'];
-      var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
-      var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
-      var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
-      console.log('INVOICE ELEC:', { items: eItems.length, eCons: eCons, eAmount: eAmount, totalAmt: ec.totalAmount, subCons: ec.subCons, redirCons: ec.redirCons });
+      var elecBase = byCatBase['Elektrina'];
+      // Use pre-calculated values (consistent with page 1)
+      var eCons = elecBase._tenantCons || 0;
+      var eUnitPrice = elecBase._unitPrice || 0;
+      var eTenantTotal = elecBase.amount;
+      var eMonthly = eTenantTotal / numMonths;
+
       var eRows = [];
-      // Building-level unit price (same for all tenants across all sub-periods)
-      var eBuildingCons = ec.subCons + ec.redirCons;
-      var eUnitPrice = eBuildingCons > 0 ? (ec.totalAmount / eBuildingCons) : 0;
       if (ec.mainCons > 0) {
         eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Váš merač'), eCons.toFixed(2) + ' kWh']);
       if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), eUnitPrice.toFixed(6) + ' EUR/kWh']);
-      eRows.push([stripDia('Mesačný náklad'), fmtEur(eAmount / numMonths) + ' EUR']);
+      eRows.push([stripDia('Mesačný náklad'), fmtEur(eMonthly) + ' EUR']);
+      eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eTenantTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
     }
