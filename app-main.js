@@ -1523,6 +1523,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     // QR payment code (EPC format - European standard)
     try {
+      console.log('QR: typeof QRCode =', typeof QRCode, 'methods:', QRCode ? Object.keys(QRCode) : 'N/A');
       var ibanClean = ownerIban.replace(/\s/g, '');
       var ownerName = owner ? (owner.company_name || owner.name || 'Panska 17') : 'Panska 17';
       var epcData = [
@@ -1534,7 +1535,9 @@ window.generateInvoice = async function(existingInvoice) {
         stripDia('Vyuctovanie ' + invNumber), ''
       ].join('\n');
 
+      console.log('QR: generating with data length', epcData.length);
       var qrDataUrl = await QRCode.toDataURL(epcData, { width: 256, margin: 1, errorCorrectionLevel: 'M' });
+      console.log('QR: generated, dataUrl length', qrDataUrl.length);
       var qrSize = 30;
       var qrX = W - M - qrSize;
       var qrY = 253;
@@ -1544,7 +1547,7 @@ window.generateInvoice = async function(existingInvoice) {
       doc.text('QR platba', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' });
       doc.setTextColor(0);
     } catch(qrErr) {
-      console.warn('QR code generation failed:', qrErr);
+      console.error('QR code generation failed:', qrErr);
     }
   } else if (balance < -0.01) {
     doc.setFontSize(8);
@@ -1757,7 +1760,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     // --- ELEKTRINA ---
     if (hasElec) {
-      dy += 2; // extra spacing before elektrina
+      dy += 4; // extra spacing before elektrina
       var ec = meterCategories['Elektrina'];
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
       var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
@@ -2045,7 +2048,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFontSize(7);
     doc.setFont('Roboto', 'normal');
     doc.setTextColor(150);
-    doc.text(pi + ' / ' + totalPages, W / 2, 286, { align: 'center' });
+    doc.text(pi + ' / ' + totalPages, W / 2, 282, { align: 'center' });
     // Priestor on all pages (top right)
     if (pi > 1) {
       doc.setFontSize(9);
