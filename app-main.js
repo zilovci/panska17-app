@@ -1808,7 +1808,6 @@ window.generateInvoice = async function(existingInvoice) {
       if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), eUnitPrice.toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesačný náklad'), fmtEur(eMonthly) + ' EUR']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eTenantTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
-      eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
     }
 
