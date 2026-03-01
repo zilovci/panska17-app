@@ -3506,22 +3506,6 @@ window.saveExpense = async function() {
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
 
-        // TEMP DIAGNOSTIC: show pool at save time for heating
-        if (isHeating) {
-          var _dLines = ['SAVE POOL (heating):'];
-          zones.forEach(function(z) {
-            var c;
-            if (z.isTimeWeighted) c = z.tenantEffBilling + z.ownerEffArea;
-            else if (z.payer === 'owner') c = z.ownerTemperedArea || 0;
-            else c = z.billingArea || z.area;
-            _dLines.push('  ' + z.name + ' p=' + z.payer + ' bill=' + (z.billingArea||0) + ' area=' + z.area + ' temper=' + z.temper + ' → ' + c.toFixed(2));
-          });
-          temperedZones.forEach(function(z) { _dLines.push('  unchecked temper: area=' + z.area + ' t=' + z.temper + ' → ' + z.effectiveArea.toFixed(2)); });
-          _dLines.push('TOTAL POOL: ' + totalArea.toFixed(2));
-          _dLines.push('saveAmount: ' + saveAmount.toFixed(2));
-          alert(_dLines.join('\n'));
-        }
-
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
             if (z.payer === 'owner') {

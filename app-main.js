@@ -2009,22 +2009,46 @@ window.generateInvoice = async function(existingInvoice) {
       var totalHeatedArea = 0;
       if (heatOneExpId) {
         var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
-          .select('zone_id, payer, zones(billing_area_m2, area_m2, tempering_pct)')
+          .select('zone_id, payer, percentage, amount, months_occupied, months_total, zones(billing_area_m2, area_m2, tempering_pct)')
           .eq('expense_id', heatOneExpId);
+        // Get expense amount for pool derivation
+        var heatExpObj = heatingInputs.find(function(h) { return h.expId === heatOneExpId; });
+        var heatExpAmount = heatExpObj ? heatExpObj.amount : 0;
+
+        // Derive totalPool from a NON-time-weighted tenant allocation
+        // pool = billingArea * expenseAmount / allocationAmount (more precise than percentage)
+        var _derivedPool = 0;
         var seenHeatZone = {};
         heatAllAllocs.forEach(function(ha) {
           if (seenHeatZone[ha.zone_id]) return;
           seenHeatZone[ha.zone_id] = true;
           var z = ha.zones || {};
           var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-          if (ha.payer === 'owner') {
-            // Owner zones use tempered area
-            var temp = parseFloat(z.tempering_pct) || 0;
-            totalHeatedArea += bArea * temp / 100;
-          } else {
-            totalHeatedArea += bArea;
+          var mOcc = ha.months_occupied != null ? ha.months_occupied : null;
+          var mTot = ha.months_total != null ? ha.months_total : null;
+          var isTimeWeighted = (mOcc != null && mTot != null && mOcc < mTot);
+          var allocAmt = parseFloat(ha.amount) || 0;
+          if (ha.payer !== 'owner' && !isTimeWeighted && bArea > 0 && allocAmt > 0 && heatExpAmount > 0 && _derivedPool === 0) {
+            _derivedPool = bArea * heatExpAmount / allocAmt;
           }
         });
+        totalHeatedArea = _derivedPool > 0 ? _derivedPool : 0;
+        // Fallback: static areas
+        if (totalHeatedArea === 0) {
+          seenHeatZone = {};
+          heatAllAllocs.forEach(function(ha) {
+            if (seenHeatZone[ha.zone_id]) return;
+            seenHeatZone[ha.zone_id] = true;
+            var z = ha.zones || {};
+            var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
+            if (ha.payer === 'owner') {
+              var temp = parseFloat(z.tempering_pct) || 0;
+              totalHeatedArea += bArea * temp / 100;
+            } else {
+              totalHeatedArea += bArea;
+            }
+          });
+        }
       }
 
       var hRows = [];
