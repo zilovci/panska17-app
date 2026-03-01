@@ -2709,6 +2709,7 @@ window.calcMeterAllocation = async function() {
       if (newConsumption < 0) newConsumption = 0;
 
       consumption = oldConsumption + newConsumption;
+      console.log('METER REPLACEMENT:', m.name, { oldStart: startR ? {val: startR.value, date: startR.date} : null, final: {val: hasFinal.value, date: hasFinal.date}, initial: {val: hasInitial.value, date: hasInitial.date}, newEnd: endR ? {val: endR.value, date: endR.date} : null, oldCons: oldConsumption, newCons: newConsumption, total: consumption });
       startValue = parseFloat(startR.value);
       endValue = endR ? parseFloat(endR.value) : parseFloat(hasInitial.value);
       startDate = startR.date;
@@ -2728,6 +2729,7 @@ window.calcMeterAllocation = async function() {
       // Find reading closest to periodTo (before or at, with 14-day tolerance after)
       var endReadings = normalReadings.filter(function(r) { return r.date <= periodTo; });
       var endR = endReadings.length > 0 ? endReadings[endReadings.length - 1] : null;
+      console.log('METER READINGS:', m.name, { total: normalReadings.length, startR: startR ? {val: startR.value, date: startR.date} : null, endR: endR ? {val: endR.value, date: endR.date} : null, periodFrom: periodFrom, periodTo: periodTo });
 
       // If no end reading found in period, check for readings just after period end (up to 14 days)
       if (!endR || (endR.id === startR.id)) {
@@ -2796,6 +2798,7 @@ window.calcMeterAllocation = async function() {
       redirectedCatName: m._redirected && m.cost_categories ? m.cost_categories.name : null,
       isZeroConsumption: consumption === 0
     });
+    console.log('METER CALC:', m.name, { consumption: consumption, startVal: startValue, endVal: endValue, startDate: startDate, endDate: endDate, readings: mReadings.length, hadRepl: !!(hasFinal && hasInitial) });
   });
 
   // Build zone allocation
