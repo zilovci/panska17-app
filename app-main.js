@@ -1556,13 +1556,6 @@ window.generateInvoice = async function(existingInvoice) {
     y += 5;
   }
 
-  // Footer
-  y += 5;
-  doc.setFontSize(7);
-  doc.setTextColor(150);
-  doc.text(stripDia('Vyúčtovanie vygenerované ' + new Date().toLocaleDateString('sk-SK')), M, y);
-  doc.setTextColor(0);
-
   // ===== PAGE 2: DETAIL SPOTREBY =====
   // All categories on one page with consistent formatting
 
@@ -2049,6 +2042,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('Roboto', 'normal');
     doc.setTextColor(150);
     doc.text(pi + ' / ' + totalPages, W / 2, 282, { align: 'center' });
+    doc.text(stripDia('Vyúčtovanie vygenerované ' + new Date().toLocaleDateString('sk-SK')), M, 282);
     // Priestor on all pages (top right)
     if (pi > 1) {
       doc.setFontSize(9);
