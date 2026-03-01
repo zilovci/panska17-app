@@ -1755,14 +1755,17 @@ window.generateInvoice = async function(existingInvoice) {
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
       var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
       var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
-      console.log('INVOICE ELEC:', { items: eItems.length, eCons: eCons, eAmount: eAmount, sampleItem: eItems[0] ? { consumption: eItems[0].consumption, amount: eItems[0].amount, payer: eItems[0].payer, zone_id: eItems[0].zone_id } : null });
+      console.log('INVOICE ELEC:', { items: eItems.length, eCons: eCons, eAmount: eAmount, totalAmt: ec.totalAmount, subCons: ec.subCons, redirCons: ec.redirCons });
       var eRows = [];
+      // Building-level unit price (same for all tenants across all sub-periods)
+      var eBuildingCons = ec.subCons + ec.redirCons;
+      var eUnitPrice = eBuildingCons > 0 ? (ec.totalAmount / eBuildingCons) : 0;
       if (ec.mainCons > 0) {
         eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), ec.redirCons.toFixed(2) + ' kWh']);
       }
       eRows.push([stripDia('Váš merač'), eCons.toFixed(2) + ' kWh']);
-      if (eCons > 0 && eAmount > 0) eRows.push([stripDia('Jednotková cena'), (eAmount / eCons).toFixed(6) + ' EUR/kWh']);
+      if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), eUnitPrice.toFixed(6) + ' EUR/kWh']);
       eRows.push([stripDia('Mesačný náklad'), fmtEur(eAmount / numMonths) + ' EUR']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, {content: fmtEur(eAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
