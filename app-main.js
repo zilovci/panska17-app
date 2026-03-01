@@ -1344,7 +1344,7 @@ window.generateInvoice = async function(existingInvoice) {
     Object.keys(elecExpenses).forEach(function(eid) {
       var ee = elecExpenses[eid];
       elecBuildingAmount += ee.amount;
-      elecBuildingCons += ee.subCons + ee.redirCons;
+      elecBuildingCons += ee.subCons; // only tenant sub-meters, NOT redirect
     });
     if (elecBuildingCons > 0 && elecTenantCons > 0) {
       var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
