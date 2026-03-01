@@ -1927,6 +1927,9 @@ window.recalcAllExpenses = async function() {
       } else if (isHeating && z.payer === 'owner') {
         z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
         totalArea += z.ownerTemperedArea;
+      } else if (isHeating && z.temper === 0) {
+        // Heating: unheated tenant zones (temper=0) don't participate
+        totalArea += 0;
       } else {
         totalArea += z.billingArea;
       }
@@ -1981,6 +1984,8 @@ window.recalcAllExpenses = async function() {
         var chargeArea;
         if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
           chargeArea = z.ownerTemperedArea;
+        } else if (isHeating && z.temper === 0) {
+          chargeArea = 0;
         } else {
           chargeArea = (z.payer === 'tenant') ? z.billingArea : z.area;
         }
@@ -2401,11 +2406,20 @@ window.updateAllocPreview = function() {
       // Time-weighted: use billing for tenant part, area for owner part
       totalArea += z.tenantEffBilling + z.ownerEffArea;
     } else if (isHeating && z.payer === 'owner') {
-      // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
+      // For heating: owner zones use tempered area
       var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
       var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
       z.ownerTemperedArea = z.area * temper / 100;
       totalArea += z.ownerTemperedArea;
+    } else if (isHeating) {
+      // For heating: tenant zones use tempered area too (temper=0 → excluded)
+      var cb2 = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+      var temper2 = cb2 ? (parseFloat(cb2.getAttribute('data-temper')) || 0) : 0;
+      if (temper2 === 0) {
+        totalArea += 0;
+      } else {
+        totalArea += z.billingArea;
+      }
     } else {
       totalArea += z.billingArea; // pool uses billing area (= area if no billing override)
     }
@@ -2426,7 +2440,20 @@ window.updateAllocPreview = function() {
       var zone = allZones.find(function(az) { return az.id === z.id; });
       var label = zone ? (zone.tenant_name || zone.name) : z.id;
       // Billing area for numerator (what tenant gets charged for)
-      var effArea = z.isTimeWeighted ? (z.tenantEffBilling || z.tenantEffArea) : z.billingArea;
+      var effArea;
+      if (z.isTimeWeighted) {
+        effArea = z.tenantEffBilling || z.tenantEffArea;
+      } else if (isHeating) {
+        var cbT = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
+        var temperT = cbT ? (parseFloat(cbT.getAttribute('data-temper')) || 0) : 0;
+        if (temperT === 0 && z.payer !== 'owner') {
+          effArea = 0; // Unheated tenant zone
+        } else {
+          effArea = z.billingArea;
+        }
+      } else {
+        effArea = z.billingArea;
+      }
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
       tenantTotal += amt;
@@ -3494,32 +3521,14 @@ window.saveExpense = async function() {
             // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
             z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
             totalArea += z.ownerTemperedArea;
+          } else if (isHeating && z.temper === 0) {
+            // Heating: unheated tenant zones (temper=0) don't participate in pool
+            totalArea += 0;
           } else {
             totalArea += z.billingArea || z.area;
           }
         });
         totalArea += temperedZones.reduce(function(s, z) { return s + z.effectiveArea; }, 0);
-
-        // DIAGNOSTIC: show pool breakdown for heating
-        if (isHeating) {
-          var diagLines = ['HEATING POOL DIAGNOSTIC:'];
-          diagLines.push('Checked zones (' + zones.length + '):');
-          zones.forEach(function(z) {
-            var contrib;
-            if (z.isTimeWeighted) { contrib = z.tenantEffBilling + z.ownerEffArea; }
-            else if (z.payer === 'owner') { contrib = z.ownerTemperedArea || 0; }
-            else { contrib = z.billingArea || z.area; }
-            diagLines.push('  ' + z.name + ' payer=' + z.payer + ' area=' + z.area + ' billing=' + z.billingArea + ' temper=' + z.temper + ' tw=' + z.isTimeWeighted + ' → pool=' + contrib.toFixed(2));
-          });
-          diagLines.push('Unchecked tempered (' + temperedZones.length + '):');
-          temperedZones.forEach(function(z) {
-            diagLines.push('  id=' + z.id + ' area=' + z.area + ' temper=' + z.temper + ' → pool=' + z.effectiveArea.toFixed(2));
-          });
-          diagLines.push('TOTAL POOL: ' + totalArea.toFixed(2) + ' m²');
-          diagLines.push('saveAmount: ' + saveAmount.toFixed(2));
-          diagLines.push('unitPrice/month: ' + (saveAmount / totalArea / totalMonths).toFixed(6));
-          alert(diagLines.join('\n'));
-        }
 
         zones.forEach(function(z) {
           if (z.isTimeWeighted) {
@@ -3574,6 +3583,8 @@ window.saveExpense = async function() {
             var chargeArea;
             if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
               chargeArea = z.ownerTemperedArea;
+            } else if (isHeating && z.temper === 0) {
+              chargeArea = 0; // Unheated tenant zone
             } else {
               chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
             }

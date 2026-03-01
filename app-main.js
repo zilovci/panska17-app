@@ -1317,7 +1317,15 @@ window.generateInvoice = async function(existingInvoice) {
       _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(re.amount) || 0)).toFixed(2));
     });
 
-    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * totalArea / _totalHeatedArea).toFixed(2)) : 0;
+    // Tenant's heated area (only zones with tempering > 0)
+    var _tenantHeatedArea = 0;
+    tenantZones.forEach(function(tz) {
+      var temp = parseFloat(tz.tempering_pct) || 0;
+      if (temp > 0) {
+        _tenantHeatedArea += parseFloat(tz.billing_area_m2) || parseFloat(tz.area_m2) || 0;
+      }
+    });
+    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * _tenantHeatedArea / _totalHeatedArea).toFixed(2)) : 0;
     byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
   }
 
@@ -2045,30 +2053,6 @@ window.generateInvoice = async function(existingInvoice) {
 
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
-
-      // DIAGNOSTIC - per-zone breakdown
-      var diagPerZone = {};
-      byCatBase['Vykurovanie'].items.forEach(function(a) {
-        var zid = a.zone_id;
-        if (!diagPerZone[zid]) {
-          var zone = tenantZones.find(function(z) { return z.id === zid; });
-          diagPerZone[zid] = { name: zone ? zone.name : zid, amount: 0, count: 0 };
-        }
-        diagPerZone[zid].amount += parseFloat(a.amount) || 0;
-        diagPerZone[zid].count++;
-      });
-      var diagLines = 'HEAT DIAG3:\n';
-      Object.keys(diagPerZone).forEach(function(zid) {
-        var d = diagPerZone[zid];
-        diagLines += d.name + ': ' + d.amount.toFixed(2) + ' EUR (' + d.count + ' allocs)\n';
-      });
-      diagLines += 'Direct sum=' + Object.keys(diagPerZone).reduce(function(s,z){return s+diagPerZone[z].amount},0).toFixed(2);
-      diagLines += '\nRedir share=' + _redirectedHeatShare.toFixed(2);
-      diagLines += '\nTotal=' + tenantHeatTotal.toFixed(2);
-      diagLines += '\ntotalArea(tenant)=' + totalArea.toFixed(2);
-      diagLines += '\nheatingTotal(budova)=' + heatingTotal.toFixed(2);
-      diagLines += '\ntotalHeatedArea=' + totalHeatedArea.toFixed(2);
-      alert(diagLines);
 
       // Group heating allocations by zone
       var hByZone = {};
