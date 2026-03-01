@@ -2057,7 +2057,8 @@ window.generateInvoice = async function(existingInvoice) {
         hByZone[zid].amount += parseFloat(a.amount) || 0;
       });
 
-      var hZoneIds = Object.keys(hByZone);
+      // Filter out zones with no heating amount (e.g. Bar with temper=0)
+      var hZoneIds = Object.keys(hByZone).filter(function(zid) { return hByZone[zid].amount > 0.01; });
       var hMultiZone = hZoneIds.length > 1;
 
       hRows.push(['', '', '']);
