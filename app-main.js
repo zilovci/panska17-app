@@ -1387,6 +1387,7 @@ window.generateInvoice = async function(existingInvoice) {
   // Header
   doc.setFontSize(16);
   doc.setFont('Roboto', 'bold');
+  y += 2;
   doc.text(stripDia('VYÚČTOVANIE NÁKLADOV'), M, y);
   y += 7;
   doc.setFontSize(11);
@@ -1519,6 +1520,57 @@ window.generateInvoice = async function(existingInvoice) {
     var ownerIban = owner ? (owner.iban || 'SK00 0000 0000 0000 0000 0000') : 'SK00 0000 0000 0000 0000 0000';
     doc.text(stripDia('Splatnosť: ' + fmtD(dueDateStr) + '   |   IBAN: ' + ownerIban + '   |   VS: ' + yearLabel + '001'), M, y);
     y += 5;
+
+    // QR payment code (EPC format - European standard)
+    try {
+      var ibanClean = ownerIban.replace(/\s/g, '');
+      var ownerName = owner ? (owner.company_name || owner.name || 'Panska 17') : 'Panska 17';
+      // EPC QR code format
+      var epcData = [
+        'BCD',           // Service Tag
+        '002',           // Version
+        '1',             // Encoding (UTF-8)
+        'SCT',           // SEPA Credit Transfer
+        '',              // BIC (optional)
+        ownerName.substring(0, 70),  // Beneficiary (max 70)
+        ibanClean,       // IBAN
+        'EUR' + balance.toFixed(2),  // Amount
+        '',              // Purpose
+        yearLabel + '001',  // Reference (VS)
+        stripDia('Vyúčtovanie ' + invNumber),  // Remittance text
+        ''               // Info
+      ].join('\n');
+
+      // Generate QR to hidden div
+      var qrDiv = document.createElement('div');
+      qrDiv.style.position = 'absolute';
+      qrDiv.style.left = '-9999px';
+      document.body.appendChild(qrDiv);
+      var qr = new QRCode(qrDiv, {
+        text: epcData,
+        width: 256,
+        height: 256,
+        correctLevel: QRCode.CorrectLevel.M
+      });
+
+      // Wait for QR to render then add to PDF
+      await new Promise(function(resolve) { setTimeout(resolve, 100); });
+      var qrCanvas = qrDiv.querySelector('canvas');
+      if (qrCanvas) {
+        var qrDataUrl = qrCanvas.toDataURL('image/png');
+        var qrSize = 30;
+        var qrX = W - M - qrSize;
+        var qrY = 255;
+        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+        doc.setFontSize(6);
+        doc.setTextColor(150);
+        doc.text('QR platba', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' });
+        doc.setTextColor(0);
+      }
+      document.body.removeChild(qrDiv);
+    } catch(qrErr) {
+      console.warn('QR code generation failed:', qrErr);
+    }
   } else if (balance < -0.01) {
     doc.setFontSize(8);
     doc.setFont('Roboto', 'normal');
