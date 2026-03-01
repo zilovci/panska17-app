@@ -1525,49 +1525,24 @@ window.generateInvoice = async function(existingInvoice) {
     try {
       var ibanClean = ownerIban.replace(/\s/g, '');
       var ownerName = owner ? (owner.company_name || owner.name || 'Panska 17') : 'Panska 17';
-      // EPC QR code format
       var epcData = [
-        'BCD',           // Service Tag
-        '002',           // Version
-        '1',             // Encoding (UTF-8)
-        'SCT',           // SEPA Credit Transfer
-        '',              // BIC (optional)
-        ownerName.substring(0, 70),  // Beneficiary (max 70)
-        ibanClean,       // IBAN
-        'EUR' + balance.toFixed(2),  // Amount
-        '',              // Purpose
-        yearLabel + '001',  // Reference (VS)
-        stripDia('Vyúčtovanie ' + invNumber),  // Remittance text
-        ''               // Info
+        'BCD', '002', '1', 'SCT', '',
+        ownerName.substring(0, 70),
+        ibanClean,
+        'EUR' + balance.toFixed(2),
+        '', yearLabel + '001',
+        stripDia('Vyuctovanie ' + invNumber), ''
       ].join('\n');
 
-      // Generate QR to hidden div
-      var qrDiv = document.createElement('div');
-      qrDiv.style.position = 'absolute';
-      qrDiv.style.left = '-9999px';
-      document.body.appendChild(qrDiv);
-      var qr = new QRCode(qrDiv, {
-        text: epcData,
-        width: 256,
-        height: 256,
-        correctLevel: QRCode.CorrectLevel.M
-      });
-
-      // Wait for QR to render then add to PDF
-      await new Promise(function(resolve) { setTimeout(resolve, 100); });
-      var qrCanvas = qrDiv.querySelector('canvas');
-      if (qrCanvas) {
-        var qrDataUrl = qrCanvas.toDataURL('image/png');
-        var qrSize = 30;
-        var qrX = W - M - qrSize;
-        var qrY = 255;
-        doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-        doc.setFontSize(6);
-        doc.setTextColor(150);
-        doc.text('QR platba', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' });
-        doc.setTextColor(0);
-      }
-      document.body.removeChild(qrDiv);
+      var qrDataUrl = await QRCode.toDataURL(epcData, { width: 256, margin: 1, errorCorrectionLevel: 'M' });
+      var qrSize = 30;
+      var qrX = W - M - qrSize;
+      var qrY = 253;
+      doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+      doc.setFontSize(6);
+      doc.setTextColor(150);
+      doc.text('QR platba', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' });
+      doc.setTextColor(0);
     } catch(qrErr) {
       console.warn('QR code generation failed:', qrErr);
     }
@@ -1782,6 +1757,7 @@ window.generateInvoice = async function(existingInvoice) {
 
     // --- ELEKTRINA ---
     if (hasElec) {
+      dy += 2; // extra spacing before elektrina
       var ec = meterCategories['Elektrina'];
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
       var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
@@ -2069,7 +2045,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFontSize(7);
     doc.setFont('Roboto', 'normal');
     doc.setTextColor(150);
-    doc.text(pi + ' / ' + totalPages, W / 2, 290, { align: 'center' });
+    doc.text(pi + ' / ' + totalPages, W / 2, 286, { align: 'center' });
     // Priestor on all pages (top right)
     if (pi > 1) {
       doc.setFontSize(9);
