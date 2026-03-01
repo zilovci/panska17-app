@@ -3743,16 +3743,19 @@ window.editExpense = async function(id) {
         window.onPayerChange(payerSel);
       }
     }
-    // Always recalculate months from lease dates when editing
-    // DB values were often wrong due to earlier bugs - fresh calc is always correct
+    // Restore months from saved allocation (if available)
+    // Only auto-calc from lease dates if no saved value exists
     var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
     if (monthsInput) {
-      monthsInput.value = '';
-      monthsInput.setAttribute('data-auto', 'true');
-      // Debug: log what we're doing for zones that had saved months
       var allocData = allocMap[cbs[i].value];
-      if (allocData && allocData.months_occupied != null) {
-        var zLabel = cbs[i].nextElementSibling ? cbs[i].nextElementSibling.textContent : cbs[i].value;
+      if (allocData && allocData.months_occupied != null && allocData.months_total != null) {
+        // Use saved value from DB
+        monthsInput.value = allocData.months_occupied;
+        monthsInput.setAttribute('data-auto', 'false');
+      } else {
+        // No saved value - let auto-calc from lease dates
+        monthsInput.value = '';
+        monthsInput.setAttribute('data-auto', 'true');
       }
     }
   }
