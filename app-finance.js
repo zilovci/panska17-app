@@ -2386,10 +2386,10 @@ window.updateAllocPreview = function() {
       // Time-weighted: use billing for tenant part, area for owner part
       totalArea += z.tenantEffBilling + z.ownerEffArea;
     } else if (isHeating && z.payer === 'owner') {
-      // For heating: owner zones use tempered area
+      // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
       var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
       var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
-      z.ownerTemperedArea = z.area * temper / 100;
+      z.ownerTemperedArea = temper > 0 ? (z.area * temper / 100) : z.area;
       totalArea += z.ownerTemperedArea;
     } else {
       totalArea += z.billingArea; // pool uses billing area (= area if no billing override)
@@ -2461,11 +2461,11 @@ window.updateAllocPreview = function() {
       if (z.isTimeWeighted) {
         effArea = z.tenantEffArea + z.ownerEffArea;
       } else if (isHeating && z.ownerTemperedArea !== undefined) {
-        // Heating: owner pays only tempered portion
+        // Heating: owner pays tempered portion (or full area if temper=0)
         effArea = z.ownerTemperedArea;
         var cb = document.querySelector('.alloc-zone-cb[value="' + z.id + '"]');
         var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
-        temperNote = ' <span class="text-orange-400">(kúr. ' + temper + '%)</span>';
+        if (temper > 0) temperNote = ' <span class="text-orange-400">(kúr. ' + temper + '%)</span>';
       } else {
         effArea = z.area;
       }
@@ -3476,8 +3476,8 @@ window.saveExpense = async function() {
           if (z.isTimeWeighted) {
             totalArea += z.tenantEffBilling + z.ownerEffArea;
           } else if (isHeating && z.payer === 'owner') {
-            // For heating: owner zones use tempered area
-            z.ownerTemperedArea = z.area * (z.temper || 0) / 100;
+            // For heating: owner zones use tempered area (if temper > 0), or full area (if temper = 0 but zone is checked)
+            z.ownerTemperedArea = z.temper > 0 ? (z.area * (z.temper || 0) / 100) : z.area;
             totalArea += z.ownerTemperedArea;
           } else {
             totalArea += z.billingArea || z.area;
@@ -3585,7 +3585,7 @@ window.saveExpense = async function() {
     // Post-save validation: check saved allocations sum matches expense amount
     try {
       var { data: savedAllocs = [] } = await sb.from('expense_allocations')
-        .select('amount, payer')
+        .select('amount, payer, zone_id, zones(name, tenant_name)')
         .eq('expense_id', expenseId);
       var savedTotal = savedAllocs.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
       var expAmount = parseFloat(data.amount) || 0;
@@ -3597,13 +3597,17 @@ window.saveExpense = async function() {
       if (diff > 1 && savedAllocs.length > 0) {
         var ownerTotal = savedAllocs.filter(function(a) { return a.payer === 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
         var tenantTotal = savedAllocs.filter(function(a) { return a.payer !== 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+        // Show which zones have zero or missing allocations
+        var zeroZones = savedAllocs.filter(function(a) { return (parseFloat(a.amount) || 0) < 0.01; })
+          .map(function(a) { return (a.zones ? (a.zones.tenant_name || a.zones.name) : a.zone_id) + ' (' + a.payer + ')'; });
+        var zeroNote = zeroZones.length > 0 ? '\n\nZóny s 0€: ' + zeroZones.join(', ') : '';
         alert('⚠ Kontrola po uložení:\n\n' +
           'Suma faktúry: ' + expAmount.toFixed(2) + ' €\n' +
-          'Uložené alokácie: ' + savedTotal.toFixed(2) + ' €\n' +
+          'Uložené alokácie: ' + savedTotal.toFixed(2) + ' € (' + savedAllocs.length + ' záznamov)\n' +
           'Rozdiel: ' + diff.toFixed(2) + ' €\n\n' +
           'Nájomcovia: ' + tenantTotal.toFixed(2) + ' €\n' +
           'Vlastník: ' + ownerTotal.toFixed(2) + ' €\n\n' +
-          'Skontrolujte rozpočítanie – možno chýbajú straty alebo niektoré zóny.');
+          'Skontrolujte rozpočítanie – možno chýbajú straty alebo niektoré zóny.' + zeroNote);
       }
     } catch(valErr) {
       console.warn('Post-save validation error:', valErr);

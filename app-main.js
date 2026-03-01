@@ -1235,8 +1235,8 @@ window.generateInvoice = async function(existingInvoice) {
     redirectedExpenses = rResult.data || [];
   } catch(e) { /* column may not exist */ }
 
-  // Only tenant-paid allocations
-  var tenantAllocs = periodAllocs.filter(function(a) { return a.payer !== 'owner'; });
+  // Only tenant-paid allocations with non-zero amounts
+  var tenantAllocs = periodAllocs.filter(function(a) { return a.payer !== 'owner' && (parseFloat(a.amount) || 0) > 0.001; });
 
   // Group by category + sub_type for cost table rows
   var byCat = {};
