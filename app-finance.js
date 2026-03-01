@@ -10,6 +10,12 @@ async function loadFinance() {
 
   // Load categories
   var { data: cats = [] } = await sb.from('cost_categories').select('*').order('sort_order', { ascending: true });
+  // One-time rename: "Vymožené pohľadávky" → "Pohľadávky"
+  var renCat = cats.find(function(c) { return c.name && c.name.match(/[Vv]ymož/); });
+  if (renCat) {
+    await sb.from('cost_categories').update({ name: 'Pohľadávky' }).eq('id', renCat.id);
+    renCat.name = 'Pohľadávky';
+  }
   allCategories = cats;
 
   // Load tenant lease dates for time-weighted allocation
