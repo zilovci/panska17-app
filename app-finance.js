@@ -3374,6 +3374,7 @@ window.saveExpense = async function() {
 
       if (currentAllocMethod === 'meter' && window._meterAllocations && window._meterAllocations.length > 0) {
         // Meter-based allocations
+        console.log('SAVE METER ALLOCS:', window._meterAllocations.length, 'entries, sample:', window._meterAllocations[0]);
         window._meterAllocations.forEach(function(a) {
           if (!a.zoneId) return;
           var mZone = allZones.find(function(z) { return z.id === a.zoneId; });
@@ -3425,6 +3426,7 @@ window.saveExpense = async function() {
         }
       } else {
         // Area-based allocations
+        console.log('SAVE AREA-BASED (not meter):', { allocMethod: currentAllocMethod, hasMeterAllocs: !!(window._meterAllocations && window._meterAllocations.length > 0) });
         var zones = window.getSelectedAllocZones();
 
         var catSel = document.getElementById('exp-category');

@@ -1755,6 +1755,7 @@ window.generateInvoice = async function(existingInvoice) {
       var eItems = byCatBase['Elektrina'] ? byCatBase['Elektrina'].items : [];
       var eCons = eItems.reduce(function(s, a) { return s + (parseFloat(a.consumption) || 0); }, 0);
       var eAmount = byCatBase['Elektrina'] ? byCatBase['Elektrina'].amount : 0;
+      console.log('INVOICE ELEC:', { items: eItems.length, eCons: eCons, eAmount: eAmount, sampleItem: eItems[0] ? { consumption: eItems[0].consumption, amount: eItems[0].amount, payer: eItems[0].payer, zone_id: eItems[0].zone_id } : null });
       var eRows = [];
       if (ec.mainCons > 0) {
         eRows.push([stripDia('Hlavný merač (budova)'), ec.mainCons.toFixed(2) + ' kWh']);
