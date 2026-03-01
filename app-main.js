@@ -1384,7 +1384,7 @@ window.generateInvoice = async function(existingInvoice) {
   doc.setFontSize(11);
   doc.setFont('Roboto', 'normal');
   doc.text(stripDia('za obdobie ' + periodLabel), M, y);
-  y += 12;
+  y += 16;
 
   // ===== PAGE 1: MAIN INVOICE =====
 
@@ -1423,7 +1423,7 @@ window.generateInvoice = async function(existingInvoice) {
   if (tenant.phone) { doc.text(stripDia('Tel: ' + tenant.phone), colR, ty); ty += 4; }
   if (tenant.email) { doc.text(stripDia('Email: ' + tenant.email), colR, ty); ty += 4; }
 
-  y = Math.max(oy, ty) + 8;
+  y = Math.max(oy, ty) + 14;
 
   // COSTS TABLE: Položka | Mesačne | Suma
   doc.setFontSize(11);
@@ -1585,7 +1585,9 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFontSize(13);
     doc.setFont('Roboto', 'bold');
     doc.text(stripDia('DETAILNÝ ROZPIS'), M, dy);
-    dy += 12;
+    dy += 16;
+
+    var heatSectionStartY = dy; // default, updated when heating renders
 
     // Helper: detail section with consistent format
     function detailSection(title, rows) {
@@ -1738,6 +1740,8 @@ window.generateInvoice = async function(existingInvoice) {
 
     // --- VYKUROVANIE ---
     if (hasHeat) {
+      dy += 4; // extra spacing before vykurovanie
+      heatSectionStartY = dy; // save for EPS page alignment
       var heatAmount = byCatBase['Vykurovanie'].amount;
 
       // Collect heating composition (building-level expenses for this category)
@@ -1893,7 +1897,6 @@ window.generateInvoice = async function(existingInvoice) {
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), totalHeatedArea.toFixed(2) + ' m²']);
 
       // Show 4 groups
-      hRows.push(['', '']); // spacer
       hRows.push([{content: stripDia('Náklady na vykurovanie budovy:'), styles: {fontStyle: 'bold'}}, '']);
       ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(key) {
         var g = heatGroups[key];
@@ -1919,8 +1922,10 @@ window.generateInvoice = async function(existingInvoice) {
       detailSection('Vykurovanie', hRows);
     }
 
-    // --- EPS a PO ---
+    // --- EPS a PO --- (always on new page, aligned with Vykurovanie)
     if (hasEps) {
+      doc.addPage();
+      dy = heatSectionStartY;
       var epsAmount = byCatBase['EPS a PO'].amount;
 
       // Building total = sum of full expense amounts (deduplicated)
