@@ -2039,15 +2039,18 @@ window.generateInvoice = async function(existingInvoice) {
         }
       });
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
-      // Unit price: only from direct heating expenses (redirected amounts are allocated via water/electricity)
-      var directHeatingTotal = heatingInputs.reduce(function(s, h) { return s + h.amount; }, 0);
       if (totalHeatedArea > 0) {
-        var hUnitPrice = directHeatingTotal / totalHeatedArea / numMonths;
-        hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', hUnitPrice.toFixed(6) + ' EUR']);
+        hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / numMonths).toFixed(6) + ' EUR']);
       }
 
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
+
+      // DIAGNOSTIC - understand heating discrepancy
+      var diagDirect = 0, diagRedirShare = _redirectedHeatShare;
+      byCatBase['Vykurovanie'].items.forEach(function(a) { diagDirect += parseFloat(a.amount) || 0; });
+      var diagExpected = heatingTotal / totalHeatedArea * 15;
+      alert('HEAT DIAG2:\nDirect allocs from DB=' + diagDirect.toFixed(2) + '\nRedirected share added=' + diagRedirShare.toFixed(2) + '\nTotal (direct+redir)=' + tenantHeatTotal.toFixed(2) + '\ntotalArea (tenant all zones)=' + totalArea.toFixed(2) + '\nExpected (unitPrice*15*12)=' + diagExpected.toFixed(2) + '\n_totalHeatedArea=' + _totalHeatedArea.toFixed(2) + '\n_redirBuildingTotal=' + _redirBuildingTotal.toFixed(2));
 
       // Group heating allocations by zone
       var hByZone = {};
