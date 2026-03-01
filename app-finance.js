@@ -3593,7 +3593,13 @@ window.saveExpense = async function() {
       if (data.cost_type === 'amortized' && data.amort_years > 0) {
         expAmount = expAmount / data.amort_years;
       }
-      var diff = Math.abs(savedTotal - expAmount);
+      // For meter-based: subtract redirected amount (not saved as allocation, goes via meter_redirected_consumption)
+      var redirectedAmount = 0;
+      if (currentAllocMethod === 'meter' && window._redirectedAllocations && window._redirectedAllocations.length > 0) {
+        redirectedAmount = window._redirectedAllocations.reduce(function(s, a) { return s + (a.calculatedAmount || 0); }, 0);
+      }
+      var expectedSaved = expAmount - redirectedAmount;
+      var diff = Math.abs(savedTotal - expectedSaved);
       if (diff > 1 && savedAllocs.length > 0) {
         var ownerTotal = savedAllocs.filter(function(a) { return a.payer === 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
         var tenantTotal = savedAllocs.filter(function(a) { return a.payer !== 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
@@ -3601,8 +3607,9 @@ window.saveExpense = async function() {
         var zeroZones = savedAllocs.filter(function(a) { return (parseFloat(a.amount) || 0) < 0.01; })
           .map(function(a) { return (a.zones ? (a.zones.tenant_name || a.zones.name) : a.zone_id) + ' (' + a.payer + ')'; });
         var zeroNote = zeroZones.length > 0 ? '\n\nZóny s 0€: ' + zeroZones.join(', ') : '';
+        var redirectNote = redirectedAmount > 0 ? '\nPresmerované (kotolňa): ' + redirectedAmount.toFixed(2) + ' €' : '';
         alert('⚠ Kontrola po uložení:\n\n' +
-          'Suma faktúry: ' + expAmount.toFixed(2) + ' €\n' +
+          'Suma faktúry: ' + expAmount.toFixed(2) + ' €' + redirectNote + '\n' +
           'Uložené alokácie: ' + savedTotal.toFixed(2) + ' € (' + savedAllocs.length + ' záznamov)\n' +
           'Rozdiel: ' + diff.toFixed(2) + ' €\n\n' +
           'Nájomcovia: ' + tenantTotal.toFixed(2) + ' €\n' +
