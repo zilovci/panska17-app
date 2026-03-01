@@ -2071,6 +2071,9 @@ window.generateInvoice = async function(existingInvoice) {
         }
         var indent = hMultiZone ? '    ' : '  ';
         if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), '', hz.area.toFixed(2) + ' m2']);
+        if (hz.area > 0 && hz.amount > 0) {
+          hRows.push([stripDia(indent + 'Cena na m2 / mesiac'), '', (hz.amount / hz.area / numMonths).toFixed(6) + ' EUR']);
+        }
         if (hMultiZone && hz.amount > 0) {
           hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(hz.amount / numMonths) + ' EUR']);
           hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
