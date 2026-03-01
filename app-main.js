@@ -1639,7 +1639,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Check if we have any detail content
   var hasWater = meterCategories['Voda a kanalizácia'] || meterCategories['Voda a kanalizácia'];
-  var hasElec = meterCategories['Elektrina'];
+  var hasElec = meterCategories['Elektrina'] && byCatBase['Elektrina'];
   var hasHeat = byCatBase['Vykurovanie'];
   var hasEps = byCatBase['EPS a PO'];
 
