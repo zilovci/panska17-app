@@ -1542,9 +1542,6 @@ window.generateInvoice = async function(existingInvoice) {
       var qrX = W - M - qrSize;
       var qrY = 247;
       doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-      doc.setFontSize(6);
-      doc.setTextColor(150);
-      doc.text('QR platba', qrX + qrSize / 2, qrY + qrSize + 3, { align: 'center' });
       doc.setTextColor(0);
     } catch(qrErr) {
       console.error('QR code generation failed:', qrErr);
