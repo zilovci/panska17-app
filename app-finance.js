@@ -4197,8 +4197,6 @@ window.generateMeterReport = async function() {
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date');
   var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id, zones(name, tenant_name)');
 
-  alert('REPORT DATA: meters=' + meters.length + ' readings=' + readings.length + ' zones=' + mzAll.length);
-
   var mzByMeter = {};
   mzAll.forEach(function(mz) {
     if (!mzByMeter[mz.meter_id]) mzByMeter[mz.meter_id] = [];
@@ -4210,56 +4208,68 @@ window.generateMeterReport = async function() {
   function getYearConsumption(meterId, year) {
     var mReadings = readings.filter(function(r) { return r.meter_id === meterId; });
     mReadings.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+    if (mReadings.length < 2) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
 
     var yearStart = year + '-01-01';
     var yearEnd = year + '-12-31';
 
-    // Find reading at or just before year start
-    var beforeStart = null;
-    var afterEnd = null;
-    var inYear = [];
-
-    mReadings.forEach(function(r) {
-      if (r.date <= yearStart) beforeStart = r;
-      if (r.date >= yearStart && r.date <= yearEnd) inYear.push(r);
-      if (r.date >= yearEnd && !afterEnd) afterEnd = r;
-    });
-
-    var startReading = inYear.length > 0 ? inYear[0] : null;
-    var endReading = inYear.length > 0 ? inYear[inYear.length - 1] : null;
-
-    // If no readings in year, use surrounding readings
-    if (!startReading && beforeStart) startReading = beforeStart;
-    if (!endReading && afterEnd) endReading = afterEnd;
-
-    // Use first reading of year (or last before) and last reading of year (or first after)
-    var firstVal = null, lastVal = null;
-    if (inYear.length >= 2) {
-      firstVal = parseFloat(inYear[0].value);
-      lastVal = parseFloat(inYear[inYear.length - 1].value);
-    } else if (inYear.length === 1 && beforeStart) {
-      firstVal = parseFloat(beforeStart.value);
-      lastVal = parseFloat(inYear[0].value);
-    } else if (beforeStart && afterEnd) {
-      // Interpolate? No, just skip
-      return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+    // Start value: last reading AT or BEFORE year start
+    var startReading = null;
+    for (var i = 0; i < mReadings.length; i++) {
+      if (mReadings[i].date <= yearStart) startReading = mReadings[i];
     }
 
-    if (firstVal === null || lastVal === null) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+    // End value: last reading AT or BEFORE year end (but after start)
+    var endReading = null;
+    for (var j = mReadings.length - 1; j >= 0; j--) {
+      if (mReadings[j].date <= yearEnd && mReadings[j].date >= yearStart) {
+        endReading = mReadings[j];
+        break;
+      }
+    }
 
-    // Handle deductions (meter replacement)
+    // If no start reading, use first reading in year as start
+    if (!startReading && endReading) {
+      for (var k = 0; k < mReadings.length; k++) {
+        if (mReadings[k].date >= yearStart && mReadings[k].date <= yearEnd) {
+          startReading = mReadings[k];
+          break;
+        }
+      }
+      // Need at least 2 readings in year
+      if (startReading === endReading) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+    }
+
+    if (!startReading || !endReading) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+
+    var startVal = parseFloat(startReading.value);
+    var endVal = parseFloat(endReading.value);
+
+    // Handle deductions (meter replacement) between start and end
     var deductions = 0;
     mReadings.forEach(function(r) {
-      if (r.date >= yearStart && r.date <= yearEnd && r.deduction) {
+      if (r.date > startReading.date && r.date <= endReading.date && r.deduction) {
         deductions += parseFloat(r.deduction) || 0;
       }
     });
 
-    var cons = lastVal - firstVal + deductions;
-    var fd = inYear.length >= 2 ? inYear[0].date : (beforeStart ? beforeStart.date : null);
-    var ld = inYear.length >= 1 ? inYear[inYear.length - 1].date : (afterEnd ? afterEnd.date : null);
+    var cons = endVal - startVal + deductions;
 
-    return { cons: cons, first: firstVal, last: lastVal, firstDate: fd, lastDate: ld, deductions: deductions };
+    // Collect individual readings for detail
+    var periodReadings = [];
+    mReadings.forEach(function(r) {
+      if (r.date >= yearStart && r.date <= yearEnd) periodReadings.push(r);
+    });
+
+    return {
+      cons: cons,
+      first: startVal,
+      last: endVal,
+      firstDate: startReading.date,
+      lastDate: endReading.date,
+      deductions: deductions,
+      numReadings: periodReadings.length
+    };
   }
 
   // Determine year range
@@ -4315,27 +4325,22 @@ window.generateMeterReport = async function() {
     dy += 6;
 
     // === TABLE 1: Main vs Submeters per year ===
-    var summaryHead = [['']];
+    var summaryHead = [['Merač']];
     years.forEach(function(y) { summaryHead[0].push(y); });
-    summaryHead[0].push('Trend');
 
     var summaryBody = [];
 
     // Main meter rows
     group.main.forEach(function(m) {
       var row = [m.name + (m.meter_number ? ' (' + m.meter_number + ')' : '')];
-      var prevCons = null;
       years.forEach(function(y) {
         var yc = getYearConsumption(m.id, y);
         if (yc.cons !== null) {
-          row.push(yc.cons.toFixed(1));
-          prevCons = yc.cons;
+          row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
         } else {
           row.push('-');
         }
       });
-      // Trend
-      row.push('');
       summaryBody.push(row);
     });
 
@@ -4349,35 +4354,21 @@ window.generateMeterReport = async function() {
       var label = '  ' + m.name + (zoneName ? ' – ' + zoneName : '');
 
       var row = [label];
-      var vals = [];
       years.forEach(function(y) {
         var yc = getYearConsumption(m.id, y);
         if (yc.cons !== null && yc.cons >= 0) {
-          row.push(yc.cons.toFixed(1));
+          row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
           subTotals[y] += yc.cons;
-          vals.push(yc.cons);
         } else {
           row.push('-');
-          vals.push(null);
         }
       });
-      // Trend: compare last 2 years with data
-      var validVals = vals.filter(function(v) { return v !== null; });
-      if (validVals.length >= 2) {
-        var last = validVals[validVals.length - 1];
-        var prev = validVals[validVals.length - 2];
-        var pct = prev > 0 ? ((last - prev) / prev * 100) : 0;
-        row.push((pct >= 0 ? '+' : '') + pct.toFixed(0) + '%');
-      } else {
-        row.push('');
-      }
       summaryBody.push(row);
     });
 
     // Sum submeters row
     var sumRow = [{content: 'Σ Podmerače', styles: {fontStyle: 'bold'}}];
     years.forEach(function(y) { sumRow.push({content: subTotals[y] > 0 ? subTotals[y].toFixed(1) : '-', styles: {fontStyle: 'bold'}}); });
-    sumRow.push('');
     summaryBody.push(sumRow);
 
     // Discrepancy row (main - submeters)
@@ -4400,7 +4391,6 @@ window.generateMeterReport = async function() {
           discRow.push('-');
         }
       });
-      discRow.push('');
       summaryBody.push(discRow);
     }
 
