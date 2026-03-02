@@ -4207,68 +4207,63 @@ window.generateMeterReport = async function() {
   // For each meter, find readings and calculate consumption between year boundaries
   function getYearConsumption(meterId, year) {
     var mReadings = readings.filter(function(r) { return r.meter_id === meterId; });
-    mReadings.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+    // Sort chronologically; same date: final before initial (old meter end, new meter start)
+    mReadings.sort(function(a, b) {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      var rank = function(r) {
+        if (r.is_replacement && r.replacement_type === 'final') return 0;
+        if (r.is_replacement && r.replacement_type === 'initial') return 1;
+        return 0.5;
+      };
+      return rank(a) - rank(b);
+    });
     if (mReadings.length < 2) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
 
     var yearStart = year + '-01-01';
     var yearEnd = year + '-12-31';
 
-    // Start value: last reading AT or BEFORE year start
-    var startReading = null;
+    // Find the starting value: last reading AT or BEFORE yearStart
+    var startIdx = -1;
     for (var i = 0; i < mReadings.length; i++) {
-      if (mReadings[i].date <= yearStart) startReading = mReadings[i];
+      if (mReadings[i].date <= yearStart) startIdx = i;
     }
 
-    // End value: last reading AT or BEFORE year end (but after start)
-    var endReading = null;
+    // Find the ending value: last reading AT or BEFORE yearEnd that is after start
+    var endIdx = -1;
     for (var j = mReadings.length - 1; j >= 0; j--) {
-      if (mReadings[j].date <= yearEnd && mReadings[j].date >= yearStart) {
-        endReading = mReadings[j];
+      if (mReadings[j].date <= yearEnd && j > startIdx) {
+        endIdx = j;
         break;
       }
     }
 
-    // If no start reading, use first reading in year as start
-    if (!startReading && endReading) {
-      for (var k = 0; k < mReadings.length; k++) {
-        if (mReadings[k].date >= yearStart && mReadings[k].date <= yearEnd) {
-          startReading = mReadings[k];
-          break;
-        }
+    if (startIdx < 0 || endIdx < 0) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+
+    // Sum consumption between consecutive readings from startIdx to endIdx
+    // Skip replacement boundaries (final → initial)
+    var totalCons = 0;
+    for (var k = startIdx; k < endIdx; k++) {
+      var curr = mReadings[k];
+      var next = mReadings[k + 1];
+
+      // Skip boundary: current is final of old meter, next is initial of new meter
+      if (curr.is_replacement && curr.replacement_type === 'final' &&
+          next.is_replacement && next.replacement_type === 'initial') {
+        continue;
       }
-      // Need at least 2 readings in year
-      if (startReading === endReading) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+
+      var diff = parseFloat(next.value) - parseFloat(curr.value);
+      totalCons += diff;
     }
 
-    if (!startReading || !endReading) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
-
-    var startVal = parseFloat(startReading.value);
-    var endVal = parseFloat(endReading.value);
-
-    // Handle deductions (meter replacement) between start and end
-    var deductions = 0;
-    mReadings.forEach(function(r) {
-      if (r.date > startReading.date && r.date <= endReading.date && r.deduction) {
-        deductions += parseFloat(r.deduction) || 0;
-      }
-    });
-
-    var cons = endVal - startVal + deductions;
-
-    // Collect individual readings for detail
-    var periodReadings = [];
-    mReadings.forEach(function(r) {
-      if (r.date >= yearStart && r.date <= yearEnd) periodReadings.push(r);
-    });
-
     return {
-      cons: cons,
-      first: startVal,
-      last: endVal,
-      firstDate: startReading.date,
-      lastDate: endReading.date,
-      deductions: deductions,
-      numReadings: periodReadings.length
+      cons: totalCons,
+      first: parseFloat(mReadings[startIdx].value),
+      last: parseFloat(mReadings[endIdx].value),
+      firstDate: mReadings[startIdx].date,
+      lastDate: mReadings[endIdx].date,
+      deductions: 0,
+      numReadings: mReadings.filter(function(r) { return r.date >= yearStart && r.date <= yearEnd; }).length
     };
   }
 
@@ -4336,7 +4331,15 @@ window.generateMeterReport = async function() {
       years.forEach(function(y) {
         var yc = getYearConsumption(m.id, y);
         if (yc.cons !== null) {
-          row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+          // Check if there was a replacement in this year
+          var hasReplacement = readings.some(function(r) {
+            return r.meter_id === m.id && r.date >= y + '-01-01' && r.date <= y + '-12-31' && r.is_replacement;
+          });
+          if (hasReplacement) {
+            row.push(yc.cons.toFixed(1) + '\n(výmena merača)');
+          } else {
+            row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+          }
         } else {
           row.push('-');
         }
@@ -4357,7 +4360,14 @@ window.generateMeterReport = async function() {
       years.forEach(function(y) {
         var yc = getYearConsumption(m.id, y);
         if (yc.cons !== null && yc.cons >= 0) {
-          row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+          var hasReplacement = readings.some(function(r) {
+            return r.meter_id === m.id && r.date >= y + '-01-01' && r.date <= y + '-12-31' && r.is_replacement;
+          });
+          if (hasReplacement) {
+            row.push(yc.cons.toFixed(1) + '\n(výmena)');
+          } else {
+            row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+          }
           subTotals[y] += yc.cons;
         } else {
           row.push('-');
@@ -4421,7 +4431,15 @@ window.generateMeterReport = async function() {
     var allTypeMeters = group.main.concat(group.sub);
     allTypeMeters.forEach(function(m) {
       var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
-      mReadings.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+      mReadings.sort(function(a, b) {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        var rank = function(r) {
+          if (r.is_replacement && r.replacement_type === 'final') return 0;
+          if (r.is_replacement && r.replacement_type === 'initial') return 1;
+          return 0.5;
+        };
+        return rank(a) - rank(b);
+      });
 
       if (mReadings.length === 0) return;
 
@@ -4438,19 +4456,25 @@ window.generateMeterReport = async function() {
         var val = parseFloat(r.value);
         var cons = '-';
         if (ri > 0) {
-          var prevVal = parseFloat(mReadings[ri - 1].value);
-          var c = val - prevVal;
-          if (r.deduction) c += parseFloat(r.deduction) || 0;
-          cons = c.toFixed(1);
+          var prevR = mReadings[ri - 1];
+          // Skip replacement boundary: previous=final, current=initial
+          if (prevR.is_replacement && prevR.replacement_type === 'final' &&
+              r.is_replacement && r.replacement_type === 'initial') {
+            cons = '—'; // new meter, no consumption
+          } else {
+            var prevVal = parseFloat(prevR.value);
+            cons = (val - prevVal).toFixed(1);
+          }
         }
         var note = r.note || '';
-        if (r.is_replacement) note = '[' + (r.replacement_type || 'výmena') + '] ' + note;
+        if (r.is_replacement && r.replacement_type === 'final') note = '⛔ starý merač ' + note;
+        if (r.is_replacement && r.replacement_type === 'initial') note = '🆕 nový merač ' + note;
         detailBody.push([
           '',
           r.date,
           val.toFixed(1),
           cons,
-          note.substring(0, 40)
+          note.substring(0, 50)
         ]);
       }
     });
