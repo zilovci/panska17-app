@@ -2018,7 +2018,7 @@ window.generateInvoice = async function(existingInvoice) {
           hzGroup[ha.zone_id].rows.push(ha);
         });
 
-        // Time-weighted pool (matches save path calculation)
+        // Static pool: full billing areas (no time-weighting)
         Object.keys(hzGroup).forEach(function(zid) {
           var g = hzGroup[zid];
           var z = g.zones || {};
@@ -2026,16 +2026,8 @@ window.generateInvoice = async function(existingInvoice) {
           var area = parseFloat(z.area_m2) || bArea;
           var temper = parseFloat(z.tempering_pct) || 0;
           var hasTenant = g.rows.some(function(r) { return r.payer !== 'owner'; });
-          var tenantRow = g.rows.find(function(r) { return r.payer !== 'owner'; });
           if (hasTenant) {
-            var mOcc = tenantRow && tenantRow.months_occupied != null ? tenantRow.months_occupied : 12;
-            var mTot = tenantRow && tenantRow.months_total != null ? tenantRow.months_total : 12;
-            if (mTot > 0 && mOcc < mTot) {
-              // Time-weighted: tenant portion + owner tempered portion
-              totalHeatedArea += bArea * mOcc / mTot + area * temper / 100 * (mTot - mOcc) / mTot;
-            } else {
-              totalHeatedArea += bArea;
-            }
+            totalHeatedArea += bArea;
           } else {
             totalHeatedArea += area * temper / 100;
           }
