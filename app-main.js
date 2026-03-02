@@ -1786,7 +1786,15 @@ window.generateInvoice = async function(existingInvoice) {
       // TEMP diagnostic
       _waterDiag.push('---');
       _waterDiag.push('voda.amount=' + waterGroups.voda.amount.toFixed(2) + ' cistenie.amount=' + waterGroups.cistenie.amount.toFixed(2));
-      _waterDiag.push('mainCons=' + wc.mainCons.toFixed(2));
+      _waterDiag.push('mainCons=' + wc.mainCons.toFixed(2) + ' subCons=' + wc.subCons.toFixed(2) + ' redirCons=' + wc.redirCons.toFixed(2));
+      _waterDiag.push('straty=' + (wc.mainCons - wc.subCons - wc.redirCons).toFixed(2));
+      // Show per-expense meter data
+      wItems.forEach(function(a) {
+        if (!a.expenses) return;
+        var e = a.expenses;
+        var cons = parseFloat(a.consumption) || 0;
+        if (cons > 0) _waterDiag.push('  sub: ' + (e.description || '?').substring(0,25) + ' zone cons=' + cons.toFixed(2) + ' period=' + (e.period_from||'?') + '→' + (e.period_to||'?'));
+      });
       alert('WATER DIAG:\n' + _waterDiag.join('\n'));
       var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
       if (wUnitPrice > 0) {
