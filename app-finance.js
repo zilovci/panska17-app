@@ -2747,8 +2747,8 @@ window.calcMeterAllocation = async function() {
       return;
     }
 
-    // Check for replacement readings in range
-    var replacements = mReadings.filter(function(r) { return r.is_replacement; });
+    // Check for replacement readings IN the expense period only
+    var replacements = mReadings.filter(function(r) { return r.is_replacement && r.date >= periodFrom && r.date <= periodTo; });
     var hasFinal = replacements.find(function(r) { return r.replacement_type === 'final'; });
     var hasInitial = replacements.find(function(r) { return r.replacement_type === 'initial'; });
 
@@ -2786,10 +2786,26 @@ window.calcMeterAllocation = async function() {
       startDate = startR.date;
       endDate = endR ? endR.date : hasInitial.date;
     } else {
-      // No replacement – normal calculation (skip replacement readings)
-      var normalReadings = mReadings.filter(function(r) { return !r.is_replacement; });
+      // No replacement during period – normal calculation
+      // But if replacement happened BEFORE period, only use readings from new meter
+      var priorInitial = mReadings.filter(function(r) {
+        return r.is_replacement && r.replacement_type === 'initial' && r.date < periodFrom;
+      });
+      var latestInitial = priorInitial.length > 0 ? priorInitial[priorInitial.length - 1] : null;
+
+      var normalReadings;
+      if (latestInitial) {
+        // Only use readings from new meter (at or after initial) that are not replacement type
+        // Include the initial reading itself as valid start point
+        normalReadings = mReadings.filter(function(r) {
+          if (r.date < latestInitial.date) return false;
+          if (r.is_replacement && r.replacement_type === 'final') return false;
+          return true;
+        });
+      } else {
+        normalReadings = mReadings.filter(function(r) { return !r.is_replacement; });
+      }
       if (normalReadings.length < 2) {
-        // Maybe all readings are replacement + 1 normal
         normalReadings = mReadings;
       }
 
