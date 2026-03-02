@@ -4197,6 +4197,8 @@ window.generateMeterReport = async function() {
   var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date');
   var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id, zones(name, tenant_name)');
 
+  alert('REPORT DATA: meters=' + meters.length + ' readings=' + readings.length + ' zones=' + mzAll.length);
+
   var mzByMeter = {};
   mzAll.forEach(function(mz) {
     if (!mzByMeter[mz.meter_id]) mzByMeter[mz.meter_id] = [];
@@ -4274,9 +4276,9 @@ window.generateMeterReport = async function() {
   var typeOrder = ['water', 'electricity', 'gas'];
   var byType = {};
   meters.forEach(function(m) {
-    if (!byType[m.meter_type]) byType[m.meter_type] = { main: [], sub: [] };
-    if (m.is_main) byType[m.meter_type].main.push(m);
-    else byType[m.meter_type].sub.push(m);
+    if (!byType[m.type]) byType[m.type] = { main: [], sub: [] };
+    if (m.is_main) byType[m.type].main.push(m);
+    else byType[m.type].sub.push(m);
   });
 
   // Generate PDF

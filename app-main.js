@@ -1697,7 +1697,7 @@ window.generateInvoice = async function(existingInvoice) {
       // If section won't fit, start new page
       if (estimatedHeight > spaceLeft && dy > 30) {
         doc.addPage();
-        dy = 20;
+        dy = 32;
       }
 
       doc.setFontSize(10);
@@ -1843,19 +1843,17 @@ window.generateInvoice = async function(existingInvoice) {
           wRows.push([{content: stripDia('  ' + bz.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = multiZone ? '    ' : '  ';
-        // Voda: consumption × unit price
-        var vodaCalc = bz.cons > 0 && wUnitPrice > 0 ? (bz.cons * wUnitPrice) : bz.vodaAmt;
-        if (vodaCalc > 0) {
-          wRows.push([stripDia(indent + waterGroups.voda.label), bz.cons > 0 ? bz.cons.toFixed(2) + ' m3' : '', fmtEur(vodaCalc) + ' EUR']);
+        // Voda: from DB
+        if (bz.vodaAmt > 0) {
+          wRows.push([stripDia(indent + waterGroups.voda.label), bz.cons > 0 ? bz.cons.toFixed(2) + ' m3' : '', fmtEur(bz.vodaAmt) + ' EUR']);
         }
-        // Cistenie: consumption × cistenie unit price
-        var cistenieCalc = bz.cons > 0 && wCistenieUnitPrice > 0 ? (bz.cons * wCistenieUnitPrice) : bz.cistenieAmt;
-        if (cistenieCalc > 0) {
-          wRows.push([stripDia(indent + waterGroups.cistenie.label), bz.cons > 0 ? bz.cons.toFixed(2) + ' m3' : '', fmtEur(cistenieCalc) + ' EUR']);
+        // Cistenie: from DB
+        if (bz.cistenieAmt > 0) {
+          wRows.push([stripDia(indent + waterGroups.cistenie.label), bz.cons > 0 ? bz.cons.toFixed(2) + ' m3' : '', fmtEur(bz.cistenieAmt) + ' EUR']);
         }
-        // Spolu = sum of voda + cistenie
-        var zoneTotal = vodaCalc + cistenieCalc;
-        if (multiZone || (vodaCalc > 0 && cistenieCalc > 0)) {
+        // Spolu = sum from DB
+        var zoneTotal = bz.vodaAmt + bz.cistenieAmt;
+        if (multiZone || (bz.vodaAmt > 0 && bz.cistenieAmt > 0)) {
           wRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(zoneTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
