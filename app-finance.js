@@ -4219,13 +4219,14 @@ window.generateMeterReport = async function() {
     });
     if (mReadings.length < 2) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
 
-    // Year boundaries with ±7 day tolerance
-    var TOLERANCE = 7;
-    var yearStartEarly = (parseInt(year) - 1) + '-12-' + (31 - TOLERANCE + 1); // Dec 25
-    var yearStartLate = year + '-01-0' + (TOLERANCE + 1); // Jan 08
-    var yearEndEarly = year + '-12-' + (31 - TOLERANCE + 1); // Dec 25
+    // Year boundaries with ±14 day tolerance
+    var TOLERANCE = 14;
+    var padDay = function(d) { return d < 10 ? '0' + d : '' + d; };
+    var yearStartEarly = (parseInt(year) - 1) + '-12-' + padDay(31 - TOLERANCE + 1);
+    var yearStartLate = year + '-01-' + padDay(TOLERANCE + 1);
+    var yearEndEarly = year + '-12-' + padDay(31 - TOLERANCE + 1);
     var nextYear = (parseInt(year) + 1);
-    var yearEndLate = nextYear + '-01-0' + (TOLERANCE + 1); // Jan 08
+    var yearEndLate = nextYear + '-01-' + padDay(TOLERANCE + 1);
 
     // Find the starting value: last reading AT or BEFORE yearStartLate
     // (this catches Dec 25-31 of prev year AND Jan 1-7 of this year)
@@ -4253,9 +4254,9 @@ window.generateMeterReport = async function() {
 
     // Calculate days between start and end
     var daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86400000);
-    if (daysDiff > 380) {
+    if (daysDiff > 395) {
       warning = '⚠️ ' + daysDiff + ' dní';
-    } else if (daysDiff < 350 && daysDiff > 0) {
+    } else if (daysDiff < 335 && daysDiff > 0) {
       warning = '⚠️ ' + daysDiff + ' dní';
     }
 
