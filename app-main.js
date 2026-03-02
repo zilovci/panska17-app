@@ -1961,15 +1961,12 @@ window.generateInvoice = async function(existingInvoice) {
       heatingInputs.forEach(function(h) {
         var descLow = (h.desc + ' ' + h.supplier).toLowerCase();
         var group;
-        // Use sub_type if available (deterministic)
-        if (h.subType === 'Plyn') {
+        // Amortized = always maintenance/repair, never media delivery
+        if (h.isAmort) {
+          group = 'kuric';
+        } else if (h.subType === 'Plyn') {
           group = 'plyn';
         } else if (h.subType === 'Údržba, revízie') {
-          group = 'kuric';
-        } else if (h.isAmort) {
-          // Amortized = always maintenance/repair, never media delivery
-          group = 'kuric';
-        } else if (h.isAuto && descLow.match(/vodomer|voda/)) {
           group = 'voda';
         } else if (h.isAuto && descLow.match(/elektromer|elektri/)) {
           group = 'elektrina';
