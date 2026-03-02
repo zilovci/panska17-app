@@ -2018,8 +2018,7 @@ window.generateInvoice = async function(existingInvoice) {
           hzGroup[ha.zone_id].rows.push(ha);
         });
 
-        var totalWeighted = 0;
-        var _diagZones = [];
+        // Time-weighted pool (matches save path calculation)
         Object.keys(hzGroup).forEach(function(zid) {
           var g = hzGroup[zid];
           var z = g.zones || {};
@@ -2028,27 +2027,19 @@ window.generateInvoice = async function(existingInvoice) {
           var temper = parseFloat(z.tempering_pct) || 0;
           var hasTenant = g.rows.some(function(r) { return r.payer !== 'owner'; });
           var tenantRow = g.rows.find(function(r) { return r.payer !== 'owner'; });
-          var staticVal, weightedVal;
           if (hasTenant) {
-            staticVal = bArea;
             var mOcc = tenantRow && tenantRow.months_occupied != null ? tenantRow.months_occupied : 12;
             var mTot = tenantRow && tenantRow.months_total != null ? tenantRow.months_total : 12;
-            var tenantEff = bArea * mOcc / mTot;
-            var ownerEff = area * temper / 100 * (mTot - mOcc) / mTot;
-            weightedVal = tenantEff + ownerEff;
+            if (mTot > 0 && mOcc < mTot) {
+              // Time-weighted: tenant portion + owner tempered portion
+              totalHeatedArea += bArea * mOcc / mTot + area * temper / 100 * (mTot - mOcc) / mTot;
+            } else {
+              totalHeatedArea += bArea;
+            }
           } else {
-            staticVal = area * temper / 100;
-            weightedVal = staticVal;
+            totalHeatedArea += area * temper / 100;
           }
-          totalHeatedArea += staticVal;
-          totalWeighted += weightedVal;
-          _diagZones.push({ name: (z.name || zid), static: staticVal, weighted: weightedVal, mOcc: tenantRow ? tenantRow.months_occupied : '-', mTot: tenantRow ? tenantRow.months_total : '-' });
         });
-
-        var dLines = ['Zone | Static | Weighted | Months'];
-        _diagZones.forEach(function(d) { dLines.push(d.name + ' | ' + d.static.toFixed(2) + ' | ' + d.weighted.toFixed(2) + ' | ' + d.mOcc + '/' + d.mTot); });
-        dLines.push('TOTAL | ' + totalHeatedArea.toFixed(2) + ' | ' + totalWeighted.toFixed(2));
-        alert(dLines.join('\n'));
       }
 
       var hRows = [];
