@@ -265,11 +265,11 @@ async function loadFinance() {
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
 
-      // If zone has 0 overlap, just set months to 0 - don't uncheck
-      // User can manually check it and set to owner if needed
-      
-      // Debug log for zones with lease dates
+      // TEMP: debug B4S
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
+      if (zoneName.indexOf('B4S') >= 0 || zoneName.indexOf('b4s') >= 0) {
+        console.log('B4S DEBUG: leaseFrom=' + leaseFrom + ' leaseTo=' + leaseTo + ' periodFrom=' + periodFrom + ' periodTo=' + periodTo + ' autoMonths=' + autoMonths);
+      }
       
       // Update total label - ALWAYS from current period
       var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
@@ -1996,6 +1996,8 @@ window.recalcAllExpenses = async function() {
           percentage: parseFloat(pct.toFixed(2)),
           amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
           payer: z.payer,
+          months_occupied: totalMonths,
+          months_total: totalMonths,
           tempering_used: isHeating ? z.temper : null,
           area_used: z.area
         });
@@ -3563,12 +3565,17 @@ window.saveExpense = async function() {
               chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
             }
             var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
+            var _savedMonths = null;
+            var _mInp = document.querySelector('[data-months-input="' + z.id + '"]');
+            if (_mInp && _mInp.value) _savedMonths = parseInt(_mInp.value);
             allocs.push({
               expense_id: expenseId,
               zone_id: z.id,
               percentage: parseFloat(pct.toFixed(2)),
               amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
               payer: z.payer,
+              months_occupied: _savedMonths != null && !isNaN(_savedMonths) ? _savedMonths : totalMonths,
+              months_total: totalMonths,
               tempering_used: isHeating ? (z.temper || 0) : null,
               area_used: z.area
             });
