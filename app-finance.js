@@ -501,6 +501,7 @@ async function loadMeters() {
       }
     }
     var badges = (m.is_main ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600">HLAVNÝ</span> ' : '') +
+      (m.exclude_from_pool ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">MIMO POOL</span> ' : '') +
       (m.parent_meter_id ? '<span class="text-[7px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">SUB</span> ' : '');
     if (m.cost_category_id) {
       var cat = allCategories.find(function(c) { return c.id === m.cost_category_id; });
@@ -602,6 +603,7 @@ window.showAddMeter = function() {
   document.getElementById('mtr-type').value = 'water';
   document.querySelectorAll('.mtr-zone-cb').forEach(function(cb) { cb.checked = false; });
   document.getElementById('mtr-is-main').checked = false;
+  document.getElementById('mtr-exclude-pool').checked = false;
   document.getElementById('mtr-parent').value = '';
   document.getElementById('mtr-number').value = '';
   document.getElementById('mtr-category').value = '';
@@ -627,6 +629,7 @@ window.editMeter = async function(id) {
   document.getElementById('mtr-name').value = m.name;
   document.getElementById('mtr-type').value = m.type;
   document.getElementById('mtr-is-main').checked = m.is_main || false;
+  document.getElementById('mtr-exclude-pool').checked = m.exclude_from_pool || false;
   document.getElementById('mtr-parent').value = m.parent_meter_id || '';
   document.getElementById('mtr-number').value = m.meter_number || '';
   document.getElementById('mtr-category').value = m.cost_category_id || '';
@@ -654,6 +657,7 @@ window.saveMeter = async function() {
     type: type,
     unit: unitMap[type] || 'm³',
     is_main: document.getElementById('mtr-is-main').checked,
+    exclude_from_pool: document.getElementById('mtr-exclude-pool').checked,
     parent_meter_id: document.getElementById('mtr-parent').value || null,
     meter_number: document.getElementById('mtr-number').value.trim() || null,
     cost_category_id: document.getElementById('mtr-category').value || null,
@@ -2715,6 +2719,8 @@ window.calcMeterAllocation = async function() {
   var allCalcMeters = meters.concat(redirectedMeters.map(function(m) { m._redirected = true; return m; }));
 
   allCalcMeters.forEach(function(m) {
+    // Skip meters excluded from pool
+    if (m.exclude_from_pool) return;
     var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
     if (mReadings.length < 2) {
       // Special case: single reading with value 0 = clearly zero consumption
@@ -4370,11 +4376,14 @@ window.generateMeterReport = async function() {
       summaryBody.push(row);
     });
 
-    // Submeter rows
+    // Submeter rows - split into pool and excluded
     var subTotals = {};
     years.forEach(function(y) { subTotals[y] = 0; });
 
-    group.sub.forEach(function(m) {
+    var poolSubs = group.sub.filter(function(m) { return !m.exclude_from_pool; });
+    var excludedSubs = group.sub.filter(function(m) { return m.exclude_from_pool; });
+
+    poolSubs.forEach(function(m) {
       var zones = mzByMeter[m.id] || [];
       var zoneName = zones.length > 0 ? zones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ') : '';
       var label = '  ' + m.name + (zoneName ? ' – ' + zoneName : '');
@@ -4406,6 +4415,25 @@ window.generateMeterReport = async function() {
     var sumRow = [{content: 'Σ Podmerače', styles: {fontStyle: 'bold'}}];
     years.forEach(function(y) { sumRow.push({content: subTotals[y] > 0 ? subTotals[y].toFixed(1) : '-', styles: {fontStyle: 'bold'}}); });
     summaryBody.push(sumRow);
+
+    // Excluded meters (shown separately, not in pool)
+    if (excludedSubs.length > 0) {
+      summaryBody.push([{content: 'Mimo pool:', colSpan: years.length + 1, styles: {fontStyle: 'bold', textColor: [180, 40, 40]}}]);
+      excludedSubs.forEach(function(m) {
+        var zones = mzByMeter[m.id] || [];
+        var zoneName = zones.length > 0 ? zones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ') : '';
+        var row = ['  ✕ ' + m.name + (zoneName ? ' – ' + zoneName : '')];
+        years.forEach(function(y) {
+          var yc = getYearConsumption(m.id, y);
+          if (yc.cons !== null && yc.cons >= 0) {
+            row.push(yc.cons.toFixed(1));
+          } else {
+            row.push('-');
+          }
+        });
+        summaryBody.push(row);
+      });
+    }
 
     // Discrepancy row (main - submeters)
     if (group.main.length > 0) {
