@@ -1289,8 +1289,16 @@ window.generateInvoice = async function(existingInvoice) {
     byCatBase['Vykurovanie'].items.forEach(function(a) {
       if (a.payer === 'owner') return;
       var eid = a.expenses ? a.expenses.id : null;
-      if (eid && !_seenHeatExp[eid]) { _seenHeatExp[eid] = true; if (!_heatOneExpId) _heatOneExpId = eid; }
+      var isAmort = a.expenses && a.expenses.cost_type === 'amortized';
+      if (eid && !_seenHeatExp[eid]) { _seenHeatExp[eid] = true; if (!_heatOneExpId && !isAmort) _heatOneExpId = eid; }
     });
+    // Fallback to any
+    if (!_heatOneExpId) {
+      byCatBase['Vykurovanie'].items.forEach(function(a) {
+        var eid = a.expenses ? a.expenses.id : null;
+        if (eid && !_heatOneExpId) _heatOneExpId = eid;
+      });
+    }
     var _totalHeatedArea = 0;
     if (_heatOneExpId) {
       var { data: _heatAllocs = [] } = await sb.from('expense_allocations')
@@ -2037,7 +2045,12 @@ window.generateInvoice = async function(existingInvoice) {
 
       // Get total heated area by querying ALL allocations for one heating expense
       var heatOneExpId = null;
-      heatingInputs.forEach(function(h) { if (!heatOneExpId) heatOneExpId = h.expId; });
+      // Prefer non-amortized expense from current period for pool derivation
+      heatingInputs.forEach(function(h) {
+        if (!heatOneExpId && !h.isAmort) heatOneExpId = h.expId;
+      });
+      // Fallback to any heating expense
+      if (!heatOneExpId) heatingInputs.forEach(function(h) { if (!heatOneExpId) heatOneExpId = h.expId; });
       var totalHeatedArea = 0;
       if (heatOneExpId) {
         var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
