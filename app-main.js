@@ -1380,8 +1380,7 @@ window.generateInvoice = async function(existingInvoice) {
     });
     if (elecBuildingCons > 0 && elecTenantCons > 0) {
       var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
-      var elecNewTotal = elecUnitPrice * elecTenantCons;
-      byCatBase['Elektrina'].amount = elecNewTotal;
+      // Don't overwrite amount - DB is source of truth
       byCatBase['Elektrina']._unitPrice = elecUnitPrice;
       byCatBase['Elektrina']._tenantCons = elecTenantCons;
       byCatBase['Elektrina']._buildingAmount = elecBuildingAmount;
@@ -1851,18 +1850,8 @@ window.generateInvoice = async function(existingInvoice) {
         }
       });
 
-      // Calculate forward total from per-zone Spolu (matches displayed numbers)
-      var wForwardTotal = 0;
-      wZoneIds.forEach(function(zid) {
-        var bz = wByZone[zid];
-        var vodaCalc = bz.cons > 0 && wUnitPrice > 0 ? (bz.cons * wUnitPrice) : bz.vodaAmt;
-        var cistenieCalc = bz.cons > 0 && wCistenieUnitPrice > 0 ? (bz.cons * wCistenieUnitPrice) : bz.cistenieAmt;
-        wForwardTotal += vodaCalc + cistenieCalc;
-      });
-      // Use forward total so Mesačný × 12 = Celkom = sum of Spolu
-      var wDisplayTotal = wForwardTotal > 0 ? wForwardTotal : wAmount;
-      wRows.push([stripDia('Mesačný náklad'), '', fmtEur4(wDisplayTotal / numMonths) + ' EUR']);
-      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wDisplayTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      wRows.push([stripDia('Mesačný náklad'), '', fmtEur4(wAmount / numMonths) + ' EUR']);
+      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizácia', wRows);
     }
 
@@ -1915,11 +1904,10 @@ window.generateInvoice = async function(existingInvoice) {
           eRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = eMultiZone ? '    ' : '  ';
-        // Forward calc: consumption × unit price (consistent with Celkom)
-        var ezAmount = ez.cons > 0 && eUnitPrice > 0 ? (ez.cons * eUnitPrice) : ez.amount;
-        eRows.push([stripDia(indent + 'Elektrina'), ez.cons.toFixed(2) + ' kWh', fmtEur(ezAmount) + ' EUR']);
+        // Amount from DB (source of truth)
+        eRows.push([stripDia(indent + 'Elektrina'), ez.cons.toFixed(2) + ' kWh', fmtEur(ez.amount) + ' EUR']);
         if (eMultiZone) {
-          eRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ezAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          eRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 

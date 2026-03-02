@@ -4187,6 +4187,311 @@ window.aiExtractReceipt = async function() {
   }
 };
 
+// ============ METER REPORT ============
+
+window.generateMeterReport = async function() {
+  var sb = window.sbClient;
+  if (!sb) { alert('Nie je pripojenie k databáze.'); return; }
+
+  // Load all data
+  var { data: meters = [] } = await sb.from('meters').select('*').order('sort_order');
+  var { data: readings = [] } = await sb.from('meter_readings').select('*').order('date');
+  var { data: mzAll = [] } = await sb.from('meter_zones').select('meter_id, zone_id, zones(name, tenant_name)');
+
+  var mzByMeter = {};
+  mzAll.forEach(function(mz) {
+    if (!mzByMeter[mz.meter_id]) mzByMeter[mz.meter_id] = [];
+    mzByMeter[mz.meter_id].push(mz);
+  });
+
+  // Calculate consumption per meter per year
+  // For each meter, find readings and calculate consumption between year boundaries
+  function getYearConsumption(meterId, year) {
+    var mReadings = readings.filter(function(r) { return r.meter_id === meterId; });
+    mReadings.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+
+    var yearStart = year + '-01-01';
+    var yearEnd = year + '-12-31';
+
+    // Find reading at or just before year start
+    var beforeStart = null;
+    var afterEnd = null;
+    var inYear = [];
+
+    mReadings.forEach(function(r) {
+      if (r.date <= yearStart) beforeStart = r;
+      if (r.date >= yearStart && r.date <= yearEnd) inYear.push(r);
+      if (r.date >= yearEnd && !afterEnd) afterEnd = r;
+    });
+
+    var startReading = inYear.length > 0 ? inYear[0] : null;
+    var endReading = inYear.length > 0 ? inYear[inYear.length - 1] : null;
+
+    // If no readings in year, use surrounding readings
+    if (!startReading && beforeStart) startReading = beforeStart;
+    if (!endReading && afterEnd) endReading = afterEnd;
+
+    // Use first reading of year (or last before) and last reading of year (or first after)
+    var firstVal = null, lastVal = null;
+    if (inYear.length >= 2) {
+      firstVal = parseFloat(inYear[0].value);
+      lastVal = parseFloat(inYear[inYear.length - 1].value);
+    } else if (inYear.length === 1 && beforeStart) {
+      firstVal = parseFloat(beforeStart.value);
+      lastVal = parseFloat(inYear[0].value);
+    } else if (beforeStart && afterEnd) {
+      // Interpolate? No, just skip
+      return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+    }
+
+    if (firstVal === null || lastVal === null) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+
+    // Handle deductions (meter replacement)
+    var deductions = 0;
+    mReadings.forEach(function(r) {
+      if (r.date >= yearStart && r.date <= yearEnd && r.deduction) {
+        deductions += parseFloat(r.deduction) || 0;
+      }
+    });
+
+    var cons = lastVal - firstVal + deductions;
+    var fd = inYear.length >= 2 ? inYear[0].date : (beforeStart ? beforeStart.date : null);
+    var ld = inYear.length >= 1 ? inYear[inYear.length - 1].date : (afterEnd ? afterEnd.date : null);
+
+    return { cons: cons, first: firstVal, last: lastVal, firstDate: fd, lastDate: ld, deductions: deductions };
+  }
+
+  // Determine year range
+  var allYears = {};
+  readings.forEach(function(r) {
+    var y = r.date ? r.date.substring(0, 4) : null;
+    if (y) allYears[y] = true;
+  });
+  var years = Object.keys(allYears).sort();
+  if (years.length === 0) { alert('Žiadne odčítania meračov.'); return; }
+
+  // Group meters by type
+  var typeLabels = { water: 'Voda (m³)', electricity: 'Elektrina (kWh)', gas: 'Plyn (m³)' };
+  var typeOrder = ['water', 'electricity', 'gas'];
+  var byType = {};
+  meters.forEach(function(m) {
+    if (!byType[m.meter_type]) byType[m.meter_type] = { main: [], sub: [] };
+    if (m.is_main) byType[m.meter_type].main.push(m);
+    else byType[m.meter_type].sub.push(m);
+  });
+
+  // Generate PDF
+  var { jsPDF } = window.jspdf;
+  var doc = new jsPDF('landscape', 'mm', 'a4');
+  doc.addFont('/roboto-font.js', 'Roboto', 'normal');
+  doc.addFont('/roboto-font.js', 'Roboto', 'bold');
+  doc.setFont('Roboto');
+
+  var pageW = doc.internal.pageSize.getWidth();
+  var M = 15;
+  var dy = M;
+
+  doc.setFontSize(14);
+  doc.setFont('Roboto', 'bold');
+  doc.text('Prehľad meračov – Panská 17', M, dy);
+  dy += 6;
+  doc.setFontSize(8);
+  doc.setFont('Roboto', 'normal');
+  doc.text('Generované: ' + new Date().toLocaleDateString('sk-SK'), M, dy);
+  dy += 10;
+
+  typeOrder.forEach(function(type) {
+    if (!byType[type]) return;
+    var group = byType[type];
+    if (group.main.length === 0 && group.sub.length === 0) return;
+
+    // Check page space
+    if (dy > 160) { doc.addPage(); dy = M; }
+
+    // Type header
+    doc.setFontSize(11);
+    doc.setFont('Roboto', 'bold');
+    doc.text(typeLabels[type] || type, M, dy);
+    dy += 6;
+
+    // === TABLE 1: Main vs Submeters per year ===
+    var summaryHead = [['']];
+    years.forEach(function(y) { summaryHead[0].push(y); });
+    summaryHead[0].push('Trend');
+
+    var summaryBody = [];
+
+    // Main meter rows
+    group.main.forEach(function(m) {
+      var row = [m.name + (m.meter_number ? ' (' + m.meter_number + ')' : '')];
+      var prevCons = null;
+      years.forEach(function(y) {
+        var yc = getYearConsumption(m.id, y);
+        if (yc.cons !== null) {
+          row.push(yc.cons.toFixed(1));
+          prevCons = yc.cons;
+        } else {
+          row.push('-');
+        }
+      });
+      // Trend
+      row.push('');
+      summaryBody.push(row);
+    });
+
+    // Submeter rows
+    var subTotals = {};
+    years.forEach(function(y) { subTotals[y] = 0; });
+
+    group.sub.forEach(function(m) {
+      var zones = mzByMeter[m.id] || [];
+      var zoneName = zones.length > 0 ? zones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ') : '';
+      var label = '  ' + m.name + (zoneName ? ' – ' + zoneName : '');
+
+      var row = [label];
+      var vals = [];
+      years.forEach(function(y) {
+        var yc = getYearConsumption(m.id, y);
+        if (yc.cons !== null && yc.cons >= 0) {
+          row.push(yc.cons.toFixed(1));
+          subTotals[y] += yc.cons;
+          vals.push(yc.cons);
+        } else {
+          row.push('-');
+          vals.push(null);
+        }
+      });
+      // Trend: compare last 2 years with data
+      var validVals = vals.filter(function(v) { return v !== null; });
+      if (validVals.length >= 2) {
+        var last = validVals[validVals.length - 1];
+        var prev = validVals[validVals.length - 2];
+        var pct = prev > 0 ? ((last - prev) / prev * 100) : 0;
+        row.push((pct >= 0 ? '+' : '') + pct.toFixed(0) + '%');
+      } else {
+        row.push('');
+      }
+      summaryBody.push(row);
+    });
+
+    // Sum submeters row
+    var sumRow = [{content: 'Σ Podmerače', styles: {fontStyle: 'bold'}}];
+    years.forEach(function(y) { sumRow.push({content: subTotals[y] > 0 ? subTotals[y].toFixed(1) : '-', styles: {fontStyle: 'bold'}}); });
+    sumRow.push('');
+    summaryBody.push(sumRow);
+
+    // Discrepancy row (main - submeters)
+    if (group.main.length > 0) {
+      var discRow = [{content: 'Rozdiel (hlavný – podmerače)', styles: {fontStyle: 'bold'}}];
+      years.forEach(function(y) {
+        var mainCons = 0;
+        group.main.forEach(function(m) {
+          var yc = getYearConsumption(m.id, y);
+          if (yc.cons !== null) mainCons += yc.cons;
+        });
+        var diff = mainCons - subTotals[y];
+        var pct = mainCons > 0 ? (diff / mainCons * 100) : 0;
+        if (mainCons > 0 || subTotals[y] > 0) {
+          discRow.push({
+            content: diff.toFixed(1) + ' (' + pct.toFixed(1) + '%)',
+            styles: { fontStyle: 'bold', textColor: diff < -0.5 ? [220, 40, 40] : (pct > 10 ? [200, 120, 0] : [40, 140, 40]) }
+          });
+        } else {
+          discRow.push('-');
+        }
+      });
+      discRow.push('');
+      summaryBody.push(discRow);
+    }
+
+    // Render table
+    doc.autoTable({
+      startY: dy,
+      head: summaryHead,
+      body: summaryBody,
+      margin: { left: M, right: M },
+      theme: 'grid',
+      styles: { fontSize: 7, cellPadding: 1.5, font: 'Roboto' },
+      headStyles: { fillColor: [60, 60, 60], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 65 } }
+    });
+    dy = doc.lastAutoTable.finalY + 10;
+
+    // === TABLE 2: Readings detail per meter ===
+    if (dy > 160) { doc.addPage(); dy = M; }
+
+    doc.setFontSize(9);
+    doc.setFont('Roboto', 'bold');
+    doc.text('Odčítania – ' + (typeLabels[type] || type), M, dy);
+    dy += 5;
+
+    var detailHead = [['Merač', 'Dátum', 'Stav', 'Spotreba', 'Poznámka']];
+    var detailBody = [];
+
+    var allTypeMeters = group.main.concat(group.sub);
+    allTypeMeters.forEach(function(m) {
+      var mReadings = readings.filter(function(r) { return r.meter_id === m.id; });
+      mReadings.sort(function(a, b) { return a.date < b.date ? -1 : 1; });
+
+      if (mReadings.length === 0) return;
+
+      // Meter header
+      var zones = mzByMeter[m.id] || [];
+      var zoneName = zones.length > 0 ? zones.map(function(mz) { return mz.zones ? (mz.zones.tenant_name || mz.zones.name) : ''; }).join(', ') : '';
+      detailBody.push([{
+        content: m.name + (m.is_main ? ' [HLAVNÝ]' : '') + (zoneName ? ' – ' + zoneName : '') + (m.meter_number ? ' (' + m.meter_number + ')' : ''),
+        colSpan: 5, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] }
+      }]);
+
+      for (var ri = 0; ri < mReadings.length; ri++) {
+        var r = mReadings[ri];
+        var val = parseFloat(r.value);
+        var cons = '-';
+        if (ri > 0) {
+          var prevVal = parseFloat(mReadings[ri - 1].value);
+          var c = val - prevVal;
+          if (r.deduction) c += parseFloat(r.deduction) || 0;
+          cons = c.toFixed(1);
+        }
+        var note = r.note || '';
+        if (r.is_replacement) note = '[' + (r.replacement_type || 'výmena') + '] ' + note;
+        detailBody.push([
+          '',
+          r.date,
+          val.toFixed(1),
+          cons,
+          note.substring(0, 40)
+        ]);
+      }
+    });
+
+    if (detailBody.length > 0) {
+      doc.autoTable({
+        startY: dy,
+        head: detailHead,
+        body: detailBody,
+        margin: { left: M, right: M },
+        theme: 'grid',
+        styles: { fontSize: 6.5, cellPadding: 1.2, font: 'Roboto' },
+        headStyles: { fillColor: [80, 80, 80], textColor: [255, 255, 255] },
+        columnStyles: { 0: { cellWidth: 15 }, 1: { cellWidth: 22 }, 2: { cellWidth: 20, halign: 'right' }, 3: { cellWidth: 20, halign: 'right' }, 4: { cellWidth: 50 } }
+      });
+      dy = doc.lastAutoTable.finalY + 12;
+    }
+  });
+
+  // Page numbers
+  var pageCount = doc.internal.getNumberOfPages();
+  for (var i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setFont('Roboto', 'normal');
+    doc.text('Strana ' + i + ' / ' + pageCount, pageW - M, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+  }
+
+  doc.save('merace-report.pdf');
+};
+
 // ============ END FINANCE MODULE ============
 
 

@@ -220,7 +220,10 @@
                 <div class="bg-white rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center p-4 md:p-5 cursor-pointer" onclick="var b=document.getElementById('meters-body');var i=document.getElementById('meters-chevron');b.classList.toggle('hidden');i.classList.toggle('fa-chevron-down');i.classList.toggle('fa-chevron-up');">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest"><i id="meters-chevron" class="fa-solid fa-chevron-down text-[10px] mr-2"></i>Merače</h3>
-                        <button onclick="event.stopPropagation();window.showAddMeter()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Merač</button>
+                        <div class="flex gap-2">
+                            <button onclick="event.stopPropagation();window.generateMeterReport()" class="bg-blue-600 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">📊 Report</button>
+                            <button onclick="event.stopPropagation();window.showAddMeter()" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest">+ Merač</button>
+                        </div>
                     </div>
                     <div id="meters-body" class="hidden px-6 md:px-8 pb-6 md:pb-8">
                         <div id="fin-meters-list"></div>
@@ -958,9 +961,9 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260303b"></script>
-    <script src="app-finance.js?v=20260303b"></script>
-    <script src="logo-data.js?v=20260303b"></script>
-    <script src="app-main.js?v=20260303b"></script>
+    <script src="app-core.js?v=20260303c"></script>
+    <script src="app-finance.js?v=20260303c"></script>
+    <script src="logo-data.js?v=20260303c"></script>
+    <script src="app-main.js?v=20260303c"></script>
 </body>
 </html>
