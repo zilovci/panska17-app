@@ -4219,25 +4219,45 @@ window.generateMeterReport = async function() {
     });
     if (mReadings.length < 2) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
 
-    var yearStart = year + '-01-01';
-    var yearEnd = year + '-12-31';
+    // Year boundaries with ±7 day tolerance
+    var TOLERANCE = 7;
+    var yearStartEarly = (parseInt(year) - 1) + '-12-' + (31 - TOLERANCE + 1); // Dec 25
+    var yearStartLate = year + '-01-0' + (TOLERANCE + 1); // Jan 08
+    var yearEndEarly = year + '-12-' + (31 - TOLERANCE + 1); // Dec 25
+    var nextYear = (parseInt(year) + 1);
+    var yearEndLate = nextYear + '-01-0' + (TOLERANCE + 1); // Jan 08
 
-    // Find the starting value: last reading AT or BEFORE yearStart
+    // Find the starting value: last reading AT or BEFORE yearStartLate
+    // (this catches Dec 25-31 of prev year AND Jan 1-7 of this year)
     var startIdx = -1;
     for (var i = 0; i < mReadings.length; i++) {
-      if (mReadings[i].date <= yearStart) startIdx = i;
+      if (mReadings[i].date <= yearStartLate) startIdx = i;
     }
 
-    // Find the ending value: last reading AT or BEFORE yearEnd that is after start
+    // Find the ending value: last reading AT or BEFORE yearEndLate that is after start
+    // (this catches Dec 25-31 of this year AND Jan 1-7 of next year)
     var endIdx = -1;
     for (var j = mReadings.length - 1; j >= 0; j--) {
-      if (mReadings[j].date <= yearEnd && j > startIdx) {
+      if (mReadings[j].date <= yearEndLate && j > startIdx) {
         endIdx = j;
         break;
       }
     }
 
     if (startIdx < 0 || endIdx < 0) return { cons: null, first: null, last: null, firstDate: null, lastDate: null };
+
+    // Check if start/end are too far from year boundaries (> tolerance)
+    var startDate = mReadings[startIdx].date;
+    var endDate = mReadings[endIdx].date;
+    var warning = null;
+
+    // Calculate days between start and end
+    var daysDiff = Math.round((new Date(endDate) - new Date(startDate)) / 86400000);
+    if (daysDiff > 380) {
+      warning = '⚠️ ' + daysDiff + ' dní';
+    } else if (daysDiff < 350 && daysDiff > 0) {
+      warning = '⚠️ ' + daysDiff + ' dní';
+    }
 
     // Sum consumption between consecutive readings from startIdx to endIdx
     // Skip replacement boundaries (final → initial)
@@ -4260,10 +4280,10 @@ window.generateMeterReport = async function() {
       cons: totalCons,
       first: parseFloat(mReadings[startIdx].value),
       last: parseFloat(mReadings[endIdx].value),
-      firstDate: mReadings[startIdx].date,
-      lastDate: mReadings[endIdx].date,
-      deductions: 0,
-      numReadings: mReadings.filter(function(r) { return r.date >= yearStart && r.date <= yearEnd; }).length
+      firstDate: startDate,
+      lastDate: endDate,
+      warning: warning,
+      numReadings: mReadings.filter(function(r) { return r.date >= yearStartEarly && r.date <= yearEndLate; }).length
     };
   }
 
@@ -4331,15 +4351,17 @@ window.generateMeterReport = async function() {
       years.forEach(function(y) {
         var yc = getYearConsumption(m.id, y);
         if (yc.cons !== null) {
-          // Check if there was a replacement in this year
           var hasReplacement = readings.some(function(r) {
             return r.meter_id === m.id && r.date >= y + '-01-01' && r.date <= y + '-12-31' && r.is_replacement;
           });
+          var label = yc.cons.toFixed(1);
           if (hasReplacement) {
-            row.push(yc.cons.toFixed(1) + '\n(výmena merača)');
+            label += '\n(výmena merača)';
           } else {
-            row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+            label += '\n(' + yc.firstDate + ' → ' + yc.lastDate + ')';
           }
+          if (yc.warning) label += '\n' + yc.warning;
+          row.push(label);
         } else {
           row.push('-');
         }
@@ -4363,11 +4385,14 @@ window.generateMeterReport = async function() {
           var hasReplacement = readings.some(function(r) {
             return r.meter_id === m.id && r.date >= y + '-01-01' && r.date <= y + '-12-31' && r.is_replacement;
           });
+          var label = yc.cons.toFixed(1);
           if (hasReplacement) {
-            row.push(yc.cons.toFixed(1) + '\n(výmena)');
+            label += '\n(výmena)';
           } else {
-            row.push(yc.cons.toFixed(1) + '\n(' + yc.first.toFixed(0) + '→' + yc.last.toFixed(0) + ')');
+            label += '\n(' + yc.firstDate + ' → ' + yc.lastDate + ')';
           }
+          if (yc.warning) label += '\n' + yc.warning;
+          row.push(label);
           subTotals[y] += yc.cons;
         } else {
           row.push('-');
