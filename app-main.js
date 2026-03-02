@@ -1175,7 +1175,7 @@ function stripDia(s) {
 }
 
 function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
-function fmtEur4(n) { return parseFloat(n || 0).toFixed(4).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+function fmtEur4(n) { var parts = parseFloat(n || 0).toFixed(4).split('.'); parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' '); return parts.join('.'); }
 
 window.redownloadInvoice = async function(invId) {
   var { data: inv } = await sb.from('invoices').select('*').eq('id', invId).single();
