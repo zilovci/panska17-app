@@ -2077,20 +2077,6 @@ window.generateInvoice = async function(existingInvoice) {
         });
       }
 
-      // TEMP AUDIT: show which expenses go to which group
-      var _auditLines = ['HEATING AUDIT:'];
-      ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(key) {
-        var g = heatGroups[key];
-        if (g.items.length > 0) {
-          _auditLines.push('\n' + g.label.toUpperCase() + ' (' + fmtEur(g.amount) + '):');
-          g.items.forEach(function(it) {
-            _auditLines.push('  ' + (it.desc || it.supplier || '?').substring(0,35) + ' = ' + fmtEur(it.amount) + (it.isAmort ? ' [AMORT ' + it.amortYears + 'r]' : '') + (it.isAuto ? ' [AUTO]' : '') + ' sub=' + (it.subType || '-'));
-          });
-        }
-      });
-      _auditLines.push('\nCELKOM: ' + fmtEur(heatingTotal));
-      alert(_auditLines.join('\n'));
-
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), '', totalHeatedArea.toFixed(2) + ' m2']);
 
