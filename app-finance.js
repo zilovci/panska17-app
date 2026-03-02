@@ -1989,8 +1989,8 @@ window.recalcAllExpenses = async function() {
           var combinedPct = totalArea > 0 ? (combinedEff / totalArea * 100) : 0;
           newAllocs.push({
             expense_id: e.id, zone_id: z.id,
-            percentage: parseFloat(combinedPct.toFixed(2)),
-            amount: parseFloat((saveAmount * combinedPct / 100).toFixed(2)),
+            percentage: parseFloat(combinedPct.toFixed(4)),
+            amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(2)),
             payer: 'owner',
             months_occupied: z.monthsOcc, months_total: totalMonths,
             tempering_used: isHeating ? z.temper : null,
@@ -2002,8 +2002,8 @@ window.recalcAllExpenses = async function() {
           var ownerPct = z.ownerEffArea / totalArea * 100;
           newAllocs.push({
             expense_id: e.id, zone_id: z.id,
-            percentage: parseFloat(tenantPct.toFixed(2)),
-            amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
+            percentage: parseFloat(tenantPct.toFixed(4)),
+            amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(2)),
             payer: z.payer,
             months_occupied: z.monthsOcc, months_total: totalMonths,
             tempering_used: isHeating ? z.temper : null,
@@ -2012,8 +2012,8 @@ window.recalcAllExpenses = async function() {
           if (ownerPct > 0) {
             newAllocs.push({
               expense_id: e.id, zone_id: z.id,
-              percentage: parseFloat(ownerPct.toFixed(2)),
-              amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+              percentage: parseFloat(ownerPct.toFixed(4)),
+              amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(2)),
               payer: 'owner',
               months_occupied: 0, months_total: totalMonths,
               tempering_used: isHeating ? z.temper : null,
@@ -2031,8 +2031,8 @@ window.recalcAllExpenses = async function() {
         var pct = chargeArea / totalArea * 100;
         newAllocs.push({
           expense_id: e.id, zone_id: z.id,
-          percentage: parseFloat(pct.toFixed(2)),
-          amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+          percentage: parseFloat(pct.toFixed(4)),
+          amount: parseFloat((saveAmount * chargeArea / totalArea).toFixed(2)),
           payer: z.payer,
           months_occupied: totalMonths,
           months_total: totalMonths,
@@ -2045,8 +2045,8 @@ window.recalcAllExpenses = async function() {
       var pct = z.effectiveArea / totalArea * 100;
       newAllocs.push({
         expense_id: e.id, zone_id: z.id,
-        percentage: parseFloat(pct.toFixed(2)),
-        amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+        percentage: parseFloat(pct.toFixed(4)),
+        amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(2)),
         payer: 'owner',
         tempering_used: z.temper,
         area_used: z.area
@@ -2057,6 +2057,13 @@ window.recalcAllExpenses = async function() {
     try {
       await sb.from('expense_allocations').delete().eq('expense_id', e.id);
       if (newAllocs.length > 0) {
+        // Remainder correction
+        var raSum = newAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
+        var raDiff = parseFloat((saveAmount - raSum).toFixed(2));
+        if (Math.abs(raDiff) > 0.001 && Math.abs(raDiff) < 1) {
+          var raLargest = newAllocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, newAllocs[0]);
+          raLargest.amount = parseFloat((raLargest.amount + raDiff).toFixed(2));
+        }
         var ins = await sb.from('expense_allocations').insert(newAllocs);
         if (ins.error) throw ins.error;
       }
@@ -3556,8 +3563,8 @@ window.saveExpense = async function() {
               allocs.push({
                 expense_id: expenseId,
                 zone_id: z.id,
-                percentage: parseFloat(combinedPct.toFixed(2)),
-                amount: parseFloat((saveAmount * combinedPct / 100).toFixed(2)),
+                percentage: parseFloat(combinedPct.toFixed(4)),
+                amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(2)),
                 payer: 'owner',
                 months_occupied: z.monthsOcc,
                 months_total: totalMonths,
@@ -3572,8 +3579,8 @@ window.saveExpense = async function() {
               allocs.push({
                 expense_id: expenseId,
                 zone_id: z.id,
-                percentage: parseFloat(tenantPct.toFixed(2)),
-                amount: parseFloat((saveAmount * tenantPct / 100).toFixed(2)),
+                percentage: parseFloat(tenantPct.toFixed(4)),
+                amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(2)),
                 payer: z.payer,
                 months_occupied: z.monthsOcc,
                 months_total: totalMonths,
@@ -3584,8 +3591,8 @@ window.saveExpense = async function() {
                 allocs.push({
                   expense_id: expenseId,
                   zone_id: z.id,
-                  percentage: parseFloat(ownerPct.toFixed(2)),
-                  amount: parseFloat((saveAmount * ownerPct / 100).toFixed(2)),
+                  percentage: parseFloat(ownerPct.toFixed(4)),
+                  amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(2)),
                   payer: 'owner',
                   months_occupied: 0,
                   months_total: totalMonths,
@@ -3603,14 +3610,16 @@ window.saveExpense = async function() {
               chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
             }
             var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
+            // Amount directly from ratio (not through rounded percentage)
+            var directAmount = totalArea > 0 ? (saveAmount * chargeArea / totalArea) : (saveAmount / zones.length);
             var _savedMonths = null;
             var _mInp = document.querySelector('[data-months-input="' + z.id + '"]');
             if (_mInp && _mInp.value) _savedMonths = parseInt(_mInp.value);
             allocs.push({
               expense_id: expenseId,
               zone_id: z.id,
-              percentage: parseFloat(pct.toFixed(2)),
-              amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+              percentage: parseFloat(pct.toFixed(4)),
+              amount: parseFloat(directAmount.toFixed(2)),
               payer: z.payer,
               months_occupied: _savedMonths != null && !isNaN(_savedMonths) ? _savedMonths : totalMonths,
               months_total: totalMonths,
@@ -3624,8 +3633,8 @@ window.saveExpense = async function() {
           allocs.push({
             expense_id: expenseId,
             zone_id: z.id,
-            percentage: parseFloat(pct.toFixed(2)),
-            amount: parseFloat((saveAmount * pct / 100).toFixed(2)),
+            percentage: parseFloat(pct.toFixed(4)),
+            amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(2)),
             payer: 'owner',
             tempering_used: z.temper,
             area_used: z.area
@@ -3641,6 +3650,14 @@ window.saveExpense = async function() {
       }
 
       if (allocs.length > 0) {
+        // Remainder correction: adjust largest alloc so sum exactly equals saveAmount
+        var allocSum = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
+        var diff = parseFloat((saveAmount - allocSum).toFixed(2));
+        if (Math.abs(diff) > 0.001 && Math.abs(diff) < 1) {
+          var largest = allocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, allocs[0]);
+          largest.amount = parseFloat((largest.amount + diff).toFixed(2));
+        }
+
         var insertResult = await sb.from('expense_allocations').insert(allocs);
         if (insertResult.error) {
           console.warn('Allocation insert failed, retrying without new columns:', insertResult.error);
