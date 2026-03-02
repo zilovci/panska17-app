@@ -1817,8 +1817,18 @@ window.generateInvoice = async function(existingInvoice) {
         }
       });
 
-      wRows.push([stripDia('Mesačný náklad'), '', fmtEur(wAmount / numMonths) + ' EUR']);
-      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      // Calculate forward total from per-zone Spolu (matches displayed numbers)
+      var wForwardTotal = 0;
+      wZoneIds.forEach(function(zid) {
+        var bz = wByZone[zid];
+        var vodaCalc = bz.cons > 0 && wUnitPrice > 0 ? (bz.cons * wUnitPrice) : bz.vodaAmt;
+        var cistenieCalc = bz.cons > 0 && wCistenieUnitPrice > 0 ? (bz.cons * wCistenieUnitPrice) : bz.cistenieAmt;
+        wForwardTotal += vodaCalc + cistenieCalc;
+      });
+      // Use forward total so Mesačný × 12 = Celkom = sum of Spolu
+      var wDisplayTotal = wForwardTotal > 0 ? wForwardTotal : wAmount;
+      wRows.push([stripDia('Mesačný náklad'), '', fmtEur(wDisplayTotal / numMonths) + ' EUR']);
+      wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wDisplayTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizácia', wRows);
     }
 

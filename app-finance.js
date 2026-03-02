@@ -1958,6 +1958,28 @@ window.recalcAllExpenses = async function() {
 
     if (totalArea === 0) { skipped++; skipDetails.push(eLabel.trim() + ' → plocha 0'); continue; }
 
+    // TEMP: diagnostic for heating recalc (show once)
+    if (isHeating && !window._heatRecalcDiagShown) {
+      window._heatRecalcDiagShown = true;
+      var _dLines = ['RECALC HEAT POOL (' + eLabel.trim() + '):'];
+      zoneList.forEach(function(z) {
+        var contrib;
+        if (z.isTimeWeighted) contrib = z.tenantEffBilling + z.ownerEffArea;
+        else if (z.payer === 'owner') contrib = z.ownerTemperedArea || 0;
+        else contrib = z.billingArea;
+        var zObj = zoneMap[z.id];
+        var zName = zObj ? zObj.name : z.id.substring(0,8);
+        _dLines.push(zName + ' p=' + z.payer + ' bill=' + z.billingArea + ' mOcc=' + z.monthsOcc + ' tw=' + z.isTimeWeighted + ' → ' + contrib.toFixed(2));
+      });
+      temperedZones.forEach(function(z) {
+        var zObj = zoneMap[z.id];
+        var zName = zObj ? zObj.name : z.id.substring(0,8);
+        _dLines.push('tempered ' + zName + ': area=' + z.area + ' t=' + z.temper + ' → ' + z.effectiveArea.toFixed(2));
+      });
+      _dLines.push('TOTAL POOL: ' + totalArea.toFixed(2));
+      alert(_dLines.join('\n'));
+    }
+
     // Build new allocations
     var newAllocs = [];
     zoneList.forEach(function(z) {
