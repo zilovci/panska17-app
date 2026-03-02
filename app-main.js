@@ -2053,6 +2053,35 @@ window.generateInvoice = async function(existingInvoice) {
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
 
+      // DIAG: compare DB allocs vs expected
+      var diagDirect = 0;
+      var diagPerExp = [];
+      // Get tenant's heated billing area (zones that have heating allocations)
+      var tenantHeatArea = 0;
+      var heatZonesSeen = {};
+      byCatBase['Vykurovanie'].items.forEach(function(a) {
+        if (!heatZonesSeen[a.zone_id]) {
+          heatZonesSeen[a.zone_id] = true;
+          var tz = tenantZones.find(function(z) { return z.id === a.zone_id; });
+          if (tz) tenantHeatArea += parseFloat(tz.billing_area_m2) || parseFloat(tz.area_m2) || 0;
+        }
+      });
+      byCatBase['Vykurovanie'].items.forEach(function(a) {
+        var amt = parseFloat(a.amount) || 0;
+        diagDirect += amt;
+        var expAmt = a.expenses ? parseFloat(a.expenses.amount) || 0 : 0;
+        var expDesc = a.expenses ? (a.expenses.description || a.expenses.supplier || '').substring(0, 25) : '?';
+        var pct = parseFloat(a.percentage) || 0;
+        var expectedAmt = totalHeatedArea > 0 ? (expAmt * tenantHeatArea / totalHeatedArea) : 0;
+        diagPerExp.push(expDesc + ': DB=' + amt.toFixed(2) + '(pct=' + pct.toFixed(1) + '%) exp=' + expectedAmt.toFixed(2) + ' diff=' + (amt - expectedAmt).toFixed(2));
+      });
+      var dL = ['HEAT ALLOCS (heatArea=' + tenantHeatArea.toFixed(1) + ' pool=' + totalHeatedArea.toFixed(1) + '):'];
+      diagPerExp.forEach(function(l) { dL.push(l); });
+      dL.push('---');
+      dL.push('DB direct=' + diagDirect.toFixed(2) + ' redir=' + _redirectedHeatShare.toFixed(2) + ' total=' + tenantHeatTotal.toFixed(2));
+      dL.push('Expected=' + (heatingTotal * tenantHeatArea / totalHeatedArea).toFixed(2));
+      alert(dL.join('\n'));
+
       // Group heating allocations by zone
       var hByZone = {};
       byCatBase['Vykurovanie'].items.forEach(function(a) {
