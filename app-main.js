@@ -1384,6 +1384,8 @@ window.generateInvoice = async function(existingInvoice) {
       byCatBase['Elektrina'].amount = elecNewTotal;
       byCatBase['Elektrina']._unitPrice = elecUnitPrice;
       byCatBase['Elektrina']._tenantCons = elecTenantCons;
+      byCatBase['Elektrina']._buildingAmount = elecBuildingAmount;
+      byCatBase['Elektrina']._buildingCons = elecBuildingCons;
     }
   }
 
@@ -1874,6 +1876,17 @@ window.generateInvoice = async function(existingInvoice) {
       var eMonthly = eTenantTotal / numMonths;
 
       var eRows = [];
+
+      // Building-level details
+      var elecBuildingInfo = elecBase._buildingAmount || 0;
+      var elecBuildingConsInfo = elecBase._buildingCons || 0;
+      if (elecBuildingInfo > 0) {
+        eRows.push([{content: stripDia('Náklady na elektrinu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
+        eRows.push([stripDia('  Celkom'), '', fmtEur(elecBuildingInfo) + ' EUR']);
+        if (elecBuildingConsInfo > 0) eRows.push([stripDia('  Spotreba podmeračov'), '', elecBuildingConsInfo.toFixed(2) + ' kWh']);
+        eRows.push(['', '', '']);
+      }
+
       if (ec.mainCons > 0) {
         eRows.push([stripDia('Hlavný merač (budova)'), '', ec.mainCons.toFixed(2) + ' kWh']);
         if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', ec.redirCons.toFixed(2) + ' kWh']);
@@ -1902,9 +1915,11 @@ window.generateInvoice = async function(existingInvoice) {
           eRows.push([{content: stripDia('  ' + ez.name + ':'), styles: {fontStyle: 'bold'}}, '', '']);
         }
         var indent = eMultiZone ? '    ' : '  ';
-        eRows.push([stripDia(indent + 'Elektrina'), ez.cons.toFixed(2) + ' kWh', fmtEur(ez.amount) + ' EUR']);
+        // Forward calc: consumption × unit price (consistent with Celkom)
+        var ezAmount = ez.cons > 0 && eUnitPrice > 0 ? (ez.cons * eUnitPrice) : ez.amount;
+        eRows.push([stripDia(indent + 'Elektrina'), ez.cons.toFixed(2) + ' kWh', fmtEur(ezAmount) + ' EUR']);
         if (eMultiZone) {
-          eRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+          eRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ezAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
