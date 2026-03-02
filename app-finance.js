@@ -927,6 +927,24 @@ window.loadExpenses = async function() {
   }
 
   // Client-side sorting
+  // Also load amortized expenses from prior years that span into this year
+  if (year && dateMode === 'period') {
+    var amortQ = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), zones(name, tenant_name), expense_allocations(*, zones(name, tenant_name))')
+      .eq('cost_type', 'amortized').gt('amort_years', 1).lt('period_to', year + '-01-01');
+    if (catFilter !== 'all') amortQ = amortQ.eq('category_id', catFilter);
+    var amortR = await amortQ;
+    var amortExps = (amortR.data || []).filter(function(ae) {
+      if (!ae.period_to || !ae.amort_years) return false;
+      var ptD = new Date(ae.period_to);
+      ptD.setFullYear(ptD.getFullYear() + ae.amort_years - 1);
+      return ptD.toISOString().substring(0, 10) >= year + '-01-01';
+    });
+    // Deduplicate
+    var seenIds = {};
+    expenses.forEach(function(e) { seenIds[e.id] = true; });
+    amortExps.forEach(function(ae) { if (!seenIds[ae.id]) expenses.push(ae); });
+  }
+
   var sortBy = document.getElementById('fin-sort') ? document.getElementById('fin-sort').value : 'ref';
   // Helper: compare ref numbers like "24-90" vs "24-91"
   function compareRef(ra, rb) {

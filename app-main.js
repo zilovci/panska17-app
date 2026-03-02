@@ -397,6 +397,21 @@ window.loadOverview = async function() {
     }
 
     allExp = (expenses || []).concat(expenses2 || []);
+
+    // Also get amortized expenses from prior years that still span into this year
+    var { data: amortExp = [] } = await sb.from('expenses')
+      .select(selectFields)
+      .eq('cost_type', 'amortized')
+      .gt('amort_years', 1)
+      .lt('period_to', year + '-01-01');
+    // Filter: period_to + amort_years - 1 >= year
+    amortExp = (amortExp || []).filter(function(ae) {
+      if (!ae.period_to || !ae.amort_years) return false;
+      var ptDate = new Date(ae.period_to);
+      ptDate.setFullYear(ptDate.getFullYear() + ae.amort_years - 1);
+      return ptDate.toISOString().substring(0, 10) >= year + '-01-01';
+    });
+    allExp = allExp.concat(amortExp);
   }
 
   // Deduplicate by id
@@ -1222,7 +1237,14 @@ window.generateInvoice = async function(existingInvoice) {
     if (!a.expenses) return false;
     var e = a.expenses;
     if (e.period_from && e.period_to) {
-      return e.period_from <= dateTo && e.period_to >= dateFrom;
+      var effectiveTo = e.period_to;
+      // Amortized expenses span multiple years
+      if (e.cost_type === 'amortized' && e.amort_years > 0) {
+        var ptDate = new Date(e.period_to);
+        ptDate.setFullYear(ptDate.getFullYear() + e.amort_years - 1);
+        effectiveTo = ptDate.toISOString().substring(0, 10);
+      }
+      return e.period_from <= dateTo && effectiveTo >= dateFrom;
     }
     return e.date && e.date >= dateFrom && e.date <= dateTo;
   });
