@@ -2009,17 +2009,17 @@ window.generateInvoice = async function(existingInvoice) {
       var totalHeatedArea = 0;
       if (heatOneExpId) {
         var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
-          .select('zone_id, payer, zones(billing_area_m2, area_m2, tempering_pct)')
+          .select('zone_id, payer, months_occupied, months_total, zones(name, billing_area_m2, area_m2, tempering_pct)')
           .eq('expense_id', heatOneExpId);
 
-        // Group by zone to handle time-weighted (2 rows: tenant+owner)
         var hzGroup = {};
         heatAllAllocs.forEach(function(ha) {
           if (!hzGroup[ha.zone_id]) hzGroup[ha.zone_id] = { rows: [], zones: ha.zones };
           hzGroup[ha.zone_id].rows.push(ha);
         });
 
-        // Static pool: full billing areas (no time-weighting)
+        var totalWeighted = 0;
+        var _diagZones = [];
         Object.keys(hzGroup).forEach(function(zid) {
           var g = hzGroup[zid];
           var z = g.zones || {};
@@ -2027,14 +2027,28 @@ window.generateInvoice = async function(existingInvoice) {
           var area = parseFloat(z.area_m2) || bArea;
           var temper = parseFloat(z.tempering_pct) || 0;
           var hasTenant = g.rows.some(function(r) { return r.payer !== 'owner'; });
+          var tenantRow = g.rows.find(function(r) { return r.payer !== 'owner'; });
+          var staticVal, weightedVal;
           if (hasTenant) {
-            // Tenant zone (full-year or time-weighted): full billing area
-            totalHeatedArea += bArea;
+            staticVal = bArea;
+            var mOcc = tenantRow && tenantRow.months_occupied != null ? tenantRow.months_occupied : 12;
+            var mTot = tenantRow && tenantRow.months_total != null ? tenantRow.months_total : 12;
+            var tenantEff = bArea * mOcc / mTot;
+            var ownerEff = area * temper / 100 * (mTot - mOcc) / mTot;
+            weightedVal = tenantEff + ownerEff;
           } else {
-            // Owner-only zone: tempered area
-            totalHeatedArea += area * temper / 100;
+            staticVal = area * temper / 100;
+            weightedVal = staticVal;
           }
+          totalHeatedArea += staticVal;
+          totalWeighted += weightedVal;
+          _diagZones.push({ name: (z.name || zid), static: staticVal, weighted: weightedVal, mOcc: tenantRow ? tenantRow.months_occupied : '-', mTot: tenantRow ? tenantRow.months_total : '-' });
         });
+
+        var dLines = ['Zone | Static | Weighted | Months'];
+        _diagZones.forEach(function(d) { dLines.push(d.name + ' | ' + d.static.toFixed(2) + ' | ' + d.weighted.toFixed(2) + ' | ' + d.mOcc + '/' + d.mTot); });
+        dLines.push('TOTAL | ' + totalHeatedArea.toFixed(2) + ' | ' + totalWeighted.toFixed(2));
+        alert(dLines.join('\n'));
       }
 
       var hRows = [];
