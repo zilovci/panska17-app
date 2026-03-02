@@ -1724,16 +1724,11 @@ window.generateInvoice = async function(existingInvoice) {
       // Collect unique water expense IDs
       var seenWaterExp = {};
       var waterExpIds = [];
-      var _waterDiag = []; // TEMP
       wItems.forEach(function(a) {
         var eid = a.expenses ? a.expenses.id : null;
         if (eid && !seenWaterExp[eid]) {
           seenWaterExp[eid] = true;
           waterExpIds.push(eid);
-          var fullAmt = parseFloat(a.expenses.amount) || 0;
-          var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
-          var yearlyAmt = isAmort ? fullAmt / a.expenses.amort_years : fullAmt;
-          _waterDiag.push((a.expenses.description || '?').substring(0,30) + ' amt=' + yearlyAmt.toFixed(2) + (isAmort ? ' AMORT' : ''));
           // Building total from full expense amount
           var fullAmt = parseFloat(a.expenses.amount) || 0;
           var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
@@ -1764,14 +1759,15 @@ window.generateInvoice = async function(existingInvoice) {
 
       var wRows = [];
 
-      // Building-level cost breakdown (only if multiple groups have amounts)
-      var hasMultipleGroups = waterGroups.voda.amount > 0 && waterGroups.cistenie.amount > 0;
-      if (hasMultipleGroups) {
+      // Building-level cost breakdown
+      var waterBuildingTotal = waterGroups.voda.amount + waterGroups.cistenie.amount;
+      if (waterBuildingTotal > 0) {
         wRows.push([{content: stripDia('Náklady na vodu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
         if (waterGroups.voda.amount > 0) wRows.push([stripDia('  ' + waterGroups.voda.label), '', fmtEur(waterGroups.voda.amount) + ' EUR']);
         if (waterGroups.cistenie.amount > 0) wRows.push([stripDia('  ' + waterGroups.cistenie.label), '', fmtEur(waterGroups.cistenie.amount) + ' EUR']);
-        var waterBuildingTotal = waterGroups.voda.amount + waterGroups.cistenie.amount;
-        wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(waterBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        if (waterGroups.voda.amount > 0 && waterGroups.cistenie.amount > 0) {
+          wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(waterBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        }
         wRows.push(['', '', '']);
       }
 
@@ -1783,19 +1779,6 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), '', wLoss.toFixed(2) + ' m3']);
       }
       // Unit prices
-      // TEMP diagnostic
-      _waterDiag.push('---');
-      _waterDiag.push('voda.amount=' + waterGroups.voda.amount.toFixed(2) + ' cistenie.amount=' + waterGroups.cistenie.amount.toFixed(2));
-      _waterDiag.push('mainCons=' + wc.mainCons.toFixed(2) + ' subCons=' + wc.subCons.toFixed(2) + ' redirCons=' + wc.redirCons.toFixed(2));
-      _waterDiag.push('straty=' + (wc.mainCons - wc.subCons - wc.redirCons).toFixed(2));
-      // Show per-expense meter data
-      wItems.forEach(function(a) {
-        if (!a.expenses) return;
-        var e = a.expenses;
-        var cons = parseFloat(a.consumption) || 0;
-        if (cons > 0) _waterDiag.push('  sub: ' + (e.description || '?').substring(0,25) + ' zone cons=' + cons.toFixed(2) + ' period=' + (e.period_from||'?') + '→' + (e.period_to||'?'));
-      });
-      alert('WATER DIAG:\n' + _waterDiag.join('\n'));
       var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
       if (wUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
