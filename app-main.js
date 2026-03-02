@@ -1639,13 +1639,18 @@ window.generateInvoice = async function(existingInvoice) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
 
-      // Only add meter readings if this expense's period doesn't overlap with already-counted periods
-      // (e.g., BVS water + cleaning both cover Jan-Dec = same meters, count once)
+      // Main meter is one physical device - take max, don't sum
+      // (multiple expenses may record same main meter reading)
+      var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
+      if (mainCons > mc.mainCons) {
+        mc.mainCons = mainCons;
+      }
+
+      // Sub-meter and redirected: only count once per period (overlap check)
       var ePFrom = a.expenses.period_from || '';
       var ePTo = a.expenses.period_to || '';
-      var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
       var isOverlapping = false;
-      if (mainCons > 0 && ePFrom && ePTo) {
+      if (ePFrom && ePTo) {
         for (var pi = 0; pi < mc.meterPeriods.length; pi++) {
           var mp = mc.meterPeriods[pi];
           if (ePFrom <= mp.to && ePTo >= mp.from) {
@@ -1655,15 +1660,10 @@ window.generateInvoice = async function(existingInvoice) {
         }
       }
 
-      if (mainCons > 0 && !isOverlapping) {
-        mc.mainCons += mainCons;
+      if (!isOverlapping) {
         mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
         mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
         if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
-      } else if (mainCons === 0) {
-        // No main meter (e.g. electricity) - still aggregate sub/redir consumption
-        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
-        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
       }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
