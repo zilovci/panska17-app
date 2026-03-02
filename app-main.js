@@ -1175,6 +1175,7 @@ function stripDia(s) {
 }
 
 function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+function fmtEur4(n) { return parseFloat(n || 0).toFixed(4).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
 
 window.redownloadInvoice = async function(invId) {
   var { data: inv } = await sb.from('invoices').select('*').eq('id', invId).single();
@@ -1485,12 +1486,12 @@ window.generateInvoice = async function(existingInvoice) {
 
   var costRows = catNames.map(function(c) {
     var monthlyAmt = byCatBase[c].amount / numMonths;
-    return [stripDia(c), fmtEur(monthlyAmt) + ' EUR', fmtEur(byCatBase[c].amount) + ' EUR'];
+    return [stripDia(c), fmtEur4(monthlyAmt) + ' EUR', fmtEur(byCatBase[c].amount) + ' EUR'];
   });
 
   costRows.push([
     { content: stripDia('NÁKLADY SPOLU'), styles: { fontStyle: 'bold' } },
-    { content: fmtEur(totalCosts / numMonths) + ' EUR', styles: { fontStyle: 'bold' } },
+    { content: fmtEur4(totalCosts / numMonths) + ' EUR', styles: { fontStyle: 'bold' } },
     { content: fmtEur(totalCosts) + ' EUR', styles: { fontStyle: 'bold' } }
   ]);
 
@@ -1827,7 +1828,7 @@ window.generateInvoice = async function(existingInvoice) {
       });
       // Use forward total so Mesačný × 12 = Celkom = sum of Spolu
       var wDisplayTotal = wForwardTotal > 0 ? wForwardTotal : wAmount;
-      wRows.push([stripDia('Mesačný náklad'), '', fmtEur(wDisplayTotal / numMonths) + ' EUR']);
+      wRows.push([stripDia('Mesačný náklad'), '', fmtEur4(wDisplayTotal / numMonths) + ' EUR']);
       wRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(wDisplayTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Voda a kanalizácia', wRows);
     }
@@ -1863,7 +1864,6 @@ window.generateInvoice = async function(existingInvoice) {
       var eZoneIds = Object.keys(eByZone);
       var eMultiZone = eZoneIds.length > 1;
 
-      eRows.push(['', '', '']);
       eRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
       eZoneIds.forEach(function(zid) {
         var ez = eByZone[zid];
@@ -1877,7 +1877,7 @@ window.generateInvoice = async function(existingInvoice) {
         }
       });
 
-      eRows.push([stripDia('Mesačný náklad'), '', fmtEur(eMonthly) + ' EUR']);
+      eRows.push([stripDia('Mesačný náklad'), '', fmtEur4(eMonthly) + ' EUR']);
       eRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(eTenantTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Elektrina', eRows);
     }
@@ -2089,12 +2089,12 @@ window.generateInvoice = async function(existingInvoice) {
         var indent = hMultiZone ? '    ' : '  ';
         if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), '', hz.area.toFixed(2) + ' m2']);
         if (hMultiZone && hz.amount > 0) {
-          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(hz.amount / numMonths) + ' EUR']);
+          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur4(hz.amount / numMonths) + ' EUR']);
           hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
-      hRows.push([stripDia('Mesačný náklad'), '', fmtEur(tenantHeatTotal / numMonths) + ' EUR']);
+      hRows.push([stripDia('Mesačný náklad'), '', fmtEur4(tenantHeatTotal / numMonths) + ' EUR']);
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(tenantHeatTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
@@ -2169,12 +2169,12 @@ window.generateInvoice = async function(existingInvoice) {
         var indent = epsMultiZone ? '    ' : '  ';
         if (ez.area > 0) epsRows.push([stripDia(indent + 'Plocha'), '', ez.area.toFixed(2) + ' m2']);
         if (epsMultiZone && ez.amount > 0) {
-          epsRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur(ez.amount / numMonths) + ' EUR']);
+          epsRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur4(ez.amount / numMonths) + ' EUR']);
           epsRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(ez.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
-      epsRows.push([stripDia('Mesačný náklad'), '', fmtEur(epsAmount / numMonths) + ' EUR']);
+      epsRows.push([stripDia('Mesačný náklad'), '', fmtEur4(epsAmount / numMonths) + ' EUR']);
       epsRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(epsAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('EPS a PO', epsRows);
     }
