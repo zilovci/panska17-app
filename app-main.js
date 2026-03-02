@@ -1740,7 +1740,7 @@ window.generateInvoice = async function(existingInvoice) {
           if (sub && sub.match(/[Čč]isten|[Úú]držba/)) { group = 'cistenie'; }
           else if (sub && sub.match(/[Vv]od/)) { group = 'voda'; }
           else if (descLow.match(/bvs|bratislavsk|vodn|stočn/)) { group = 'voda'; }
-          else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) { group = 'cistenie'; }
+          else if (descLow.match(/čisten|cisteneni|údržb|udrzb|revíz|reviz/)) { group = 'cistenie'; }
           else { group = 'voda'; }
           waterGroups[group].amount += yearlyAmt;
         }
@@ -1753,7 +1753,7 @@ window.generateInvoice = async function(existingInvoice) {
         var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
         if (sub && sub.match(/[Čč]isten|[Úú]držba/)) { waterGroupTenant.cistenie += allocAmt; }
         else if (sub && sub.match(/[Vv]od/)) { waterGroupTenant.voda += allocAmt; }
-        else if (descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/)) { waterGroupTenant.cistenie += allocAmt; }
+        else if (descLow.match(/čisten|cisteneni|údržb|udrzb|revíz|reviz/)) { waterGroupTenant.cistenie += allocAmt; }
         else { waterGroupTenant.voda += allocAmt; }
       });
 
@@ -1800,7 +1800,7 @@ window.generateInvoice = async function(existingInvoice) {
         bz.amount += parseFloat(a.amount) || 0;
         var sub = a.expenses ? a.expenses.sub_type : null;
         var descLow = a.expenses ? ((a.expenses.description || '') + ' ' + (a.expenses.supplier || '')).toLowerCase() : '';
-        var isCistenie = (sub && sub.match(/[Čč]isten|[Úú]držba/)) || descLow.match(/čisten|cisteneni|údržb|udrzb|kanal|revíz|reviz/);
+        var isCistenie = (sub && sub.match(/[Čč]isten|[Úú]držba/)) || descLow.match(/čisten|cisteneni|údržb|udrzb|revíz|reviz/);
         if (isCistenie) { bz.cistenieAmt += parseFloat(a.amount) || 0; }
         else { bz.vodaAmt += parseFloat(a.amount) || 0; }
         var cons = parseFloat(a.consumption) || 0;
