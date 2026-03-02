@@ -1631,7 +1631,7 @@ window.generateInvoice = async function(existingInvoice) {
         mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
         totalAmount: 0,
-        meterPeriods: [] // track periods to avoid double-counting same meter readings
+        metersCounted: false // all meters are same physical devices - count once
       };
     }
     var mc = meterCategories[cat];
@@ -1639,32 +1639,19 @@ window.generateInvoice = async function(existingInvoice) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
 
-      // Main meter is one physical device - take max, don't sum
-      // (multiple expenses may record same main meter reading)
+      // All meters (main, sub, redirected) are same physical devices across expenses
+      // Count once only - take first expense that has meter data
       var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
-      if (mainCons > mc.mainCons) {
+      var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
+      var redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
+
+      if (!mc.metersCounted && (mainCons > 0 || subCons > 0)) {
         mc.mainCons = mainCons;
+        mc.subCons = subCons;
+        mc.redirCons = redirCons;
+        mc.metersCounted = true;
       }
 
-      // Sub-meter and redirected: only count once per period (overlap check)
-      var ePFrom = a.expenses.period_from || '';
-      var ePTo = a.expenses.period_to || '';
-      var isOverlapping = false;
-      if (ePFrom && ePTo) {
-        for (var pi = 0; pi < mc.meterPeriods.length; pi++) {
-          var mp = mc.meterPeriods[pi];
-          if (ePFrom <= mp.to && ePTo >= mp.from) {
-            isOverlapping = true;
-            break;
-          }
-        }
-      }
-
-      if (!isOverlapping) {
-        mc.subCons += parseFloat(a.expenses.meter_sub_consumption) || 0;
-        mc.redirCons += parseFloat(a.expenses.meter_redirected_consumption) || 0;
-        if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
-      }
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
     }
   });
