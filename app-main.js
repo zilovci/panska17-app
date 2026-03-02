@@ -1354,29 +1354,32 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Recalculate electricity using building-level unit price (consistent for all tenants)
   if (byCatBase['Elektrina']) {
-    var elecExpenses = {};
     var elecTenantCons = 0;
+    var elecBuildingAmount = 0;
+    var elecBuildingCons = 0;
+    var elecMetersCounted = false;
+    var elecSeenExpIds = {};
     periodAllocs.forEach(function(a) {
       if (!a.expenses || !a.expenses.cost_categories) return;
       if (a.expenses.cost_categories.name !== 'Elektrina') return;
       if (a.expenses.alloc_method !== 'meter') return;
       var eid = a.expenses.id;
-      if (!elecExpenses[eid]) {
-        elecExpenses[eid] = {
-          amount: parseFloat(a.expenses.amount) || 0,
-          subCons: parseFloat(a.expenses.meter_sub_consumption) || 0,
-          redirCons: parseFloat(a.expenses.meter_redirected_consumption) || 0
-        };
+      if (!elecSeenExpIds[eid]) {
+        elecSeenExpIds[eid] = true;
+        elecBuildingAmount += parseFloat(a.expenses.amount) || 0;
+
+        // Same physical meters across expenses - count once only
+        if (!elecMetersCounted) {
+          var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
+          if (subCons > 0) {
+            elecBuildingCons = subCons;
+            elecMetersCounted = true;
+          }
+        }
       }
       if (zoneIds.indexOf(a.zone_id) >= 0 && a.payer !== 'owner') {
         elecTenantCons += parseFloat(a.consumption) || 0;
       }
-    });
-    var elecBuildingAmount = 0, elecBuildingCons = 0;
-    Object.keys(elecExpenses).forEach(function(eid) {
-      var ee = elecExpenses[eid];
-      elecBuildingAmount += ee.amount;
-      elecBuildingCons += ee.subCons; // only tenant sub-meters, NOT redirect
     });
     if (elecBuildingCons > 0 && elecTenantCons > 0) {
       var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
