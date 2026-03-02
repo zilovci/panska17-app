@@ -1795,6 +1795,11 @@ window.recalcAllExpenses = async function() {
   var zoneMap = {};
   zones.forEach(function(z) { zoneMap[z.id] = z; });
 
+  // Load tenant lease dates for months recalculation
+  var { data: recalcTenants = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
+  var recalcLeaseMap = {};
+  recalcTenants.forEach(function(t) { recalcLeaseMap[t.id] = t; });
+
   // Load categories
   var { data: cats = [] } = await sb.from('cost_categories').select('*');
   var catMap = {};
@@ -1881,14 +1886,31 @@ window.recalcAllExpenses = async function() {
       var z = zoneMap[zid];
       if (!z) return;
       var aInfo = zoneAllocMap[zid];
+      // Recalculate months from lease dates (DB values may be buggy)
+      var mOcc = totalMonths; // default: full period
+      if (z.tenant_id && recalcLeaseMap[z.tenant_id]) {
+        var tl = recalcLeaseMap[z.tenant_id];
+        var leaseOverlap = window.calcLeaseOverlapMonths(
+          tl.lease_from || '', tl.lease_to || '',
+          e.period_from, e.period_to
+        );
+        if (leaseOverlap !== null && leaseOverlap > 0) {
+          mOcc = leaseOverlap;
+        } else if (leaseOverlap === 0 && aInfo.payer === 'tenant') {
+          // Zone was allocated as tenant but lease overlap=0
+          // This happens when tenant left and lease_to is at period boundary
+          // Keep totalMonths (they were there during the period)
+          mOcc = totalMonths;
+        }
+      }
       zoneList.push({
         id: zid,
         area: z.area_m2 || 0,
         billingArea: z.billing_area_m2 || z.area_m2 || 0,
         temper: z.tempering_pct || 0,
         payer: aInfo.payer || 'tenant',
-        monthsOcc: aInfo.months_occupied != null ? aInfo.months_occupied : totalMonths,
-        monthsTotal: aInfo.months_total || totalMonths,
+        monthsOcc: mOcc,
+        monthsTotal: totalMonths,
         isTimeWeighted: false
       });
     });
