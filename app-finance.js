@@ -4190,8 +4190,7 @@ window.aiExtractReceipt = async function() {
 // ============ METER REPORT ============
 
 window.generateMeterReport = async function() {
-  var sb = window.sbClient;
-  if (!sb) { alert('Nie je pripojenie k databáze.'); return; }
+  if (typeof sb === 'undefined') { alert('Nie je pripojenie k databáze.'); return; }
 
   // Load all data
   var { data: meters = [] } = await sb.from('meters').select('*').order('sort_order');
@@ -4283,8 +4282,7 @@ window.generateMeterReport = async function() {
   // Generate PDF
   var { jsPDF } = window.jspdf;
   var doc = new jsPDF('landscape', 'mm', 'a4');
-  doc.addFont('/roboto-font.js', 'Roboto', 'normal');
-  doc.addFont('/roboto-font.js', 'Roboto', 'bold');
+  if (typeof registerRobotoFont === 'function') registerRobotoFont(doc);
   doc.setFont('Roboto');
 
   var pageW = doc.internal.pageSize.getWidth();

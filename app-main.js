@@ -1688,8 +1688,18 @@ window.generateInvoice = async function(existingInvoice) {
 
     // Helper: detail section with consistent format
     function detailSection(title, rows) {
-      // Check if we need a new page
-      if (dy > 240) { doc.addPage(); dy = 20; }
+      // Estimate section height: title + rows
+      var pageH = doc.internal.pageSize.getHeight();
+      var rowHeight = 4.2; // approximate per row
+      var estimatedHeight = 8 + (rows.length * rowHeight); // title + table
+      var spaceLeft = pageH - dy - 15; // bottom margin
+
+      // If section won't fit, start new page
+      if (estimatedHeight > spaceLeft && dy > 30) {
+        doc.addPage();
+        dy = 20;
+      }
+
       doc.setFontSize(10);
       doc.setFont('Roboto', 'bold');
       doc.setTextColor(0);
@@ -2135,10 +2145,8 @@ window.generateInvoice = async function(existingInvoice) {
       detailSection('Vykurovanie', hRows);
     }
 
-    // --- EPS a PO --- (always on new page)
+    // --- EPS a PO ---
     if (hasEps) {
-      doc.addPage();
-      dy = 36;
       var epsAmount = byCatBase['EPS a PO'].amount;
 
       // Building total = sum of full expense amounts (deduplicated)
