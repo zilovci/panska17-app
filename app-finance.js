@@ -163,7 +163,7 @@ async function loadFinance() {
         '</select>' +
         '<span data-months-zone="' + z.id + '" class="alloc-months-wrap hidden flex flex-col gap-0">' +
           '<span class="flex items-center gap-0.5">' +
-            '<input type="number" min="0" max="12" step="1" data-months-input="' + z.id + '" class="alloc-months-input w-7 text-center border border-orange-300 rounded px-0.5 py-0 text-[9px] font-bold text-orange-600" onchange="window.updateAllocPreview()" oninput="window.updateAllocPreview()">' +
+            '<input type="number" min="0" max="12" step="1" data-months-input="' + z.id + '" class="alloc-months-input w-7 text-center border border-orange-300 rounded px-0.5 py-0 text-[9px] font-bold text-orange-600" onfocus="this.setAttribute(\'data-auto\',\'false\')" onchange="this.setAttribute(\'data-auto\',\'false\');window.updateAllocPreview()" oninput="this.setAttribute(\'data-auto\',\'false\');window.updateAllocPreview()">' +
             '<span class="text-[7px] text-orange-400 font-bold alloc-months-total">/12 mes.</span>' +
           '</span>' +
           '<span class="alloc-months-detail text-[7px] text-slate-400 leading-tight"></span>' +
@@ -265,11 +265,7 @@ async function loadFinance() {
       var leaseTo = cb.getAttribute('data-lease-to') || '';
       var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
 
-      // TEMP: debug B4S
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
-      if (zoneName.indexOf('B4S') >= 0 || zoneName.indexOf('b4s') >= 0) {
-        console.log('B4S DEBUG: leaseFrom=' + leaseFrom + ' leaseTo=' + leaseTo + ' periodFrom=' + periodFrom + ' periodTo=' + periodTo + ' autoMonths=' + autoMonths);
-      }
       
       // Update total label - ALWAYS from current period
       var totalLabel = monthsWraps[m].querySelector('.alloc-months-total');
@@ -277,17 +273,16 @@ async function loadFinance() {
       var inp = monthsWraps[m].querySelector('.alloc-months-input');
       if (inp) {
         inp.max = totalMonths;
-        // Auto-fill if: no value yet, or user hasn't manually edited
-        if (!inp.value || inp.getAttribute('data-auto') === 'true') {
+        // Auto-fill ONLY if data-auto is true (never touched by user)
+        if (inp.getAttribute('data-auto') === 'true') {
           if (autoMonths !== null) {
             inp.value = autoMonths;
           } else {
             inp.value = totalMonths;
           }
-          inp.setAttribute('data-auto', 'true');
         }
         // Clamp to current period total
-        if (parseInt(inp.value) > totalMonths) inp.value = totalMonths;
+        if (inp.value && parseInt(inp.value) > totalMonths) inp.value = totalMonths;
       }
 
       // Build detail text showing where the number comes from
@@ -3765,8 +3760,12 @@ window.editExpense = async function(id) {
         // Use saved value from DB
         monthsInput.value = allocData.months_occupied;
         monthsInput.setAttribute('data-auto', 'false');
+      } else if (allocData) {
+        // Zone has allocation but months never saved - default to full period
+        monthsInput.value = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+        monthsInput.setAttribute('data-auto', 'false');
       } else {
-        // No saved value - let auto-calc from lease dates
+        // No allocation at all (new zone) - let auto-calc from lease dates
         monthsInput.value = '';
         monthsInput.setAttribute('data-auto', 'true');
       }
