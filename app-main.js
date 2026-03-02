@@ -1724,11 +1724,16 @@ window.generateInvoice = async function(existingInvoice) {
       // Collect unique water expense IDs
       var seenWaterExp = {};
       var waterExpIds = [];
+      var _waterDiag = []; // TEMP
       wItems.forEach(function(a) {
         var eid = a.expenses ? a.expenses.id : null;
         if (eid && !seenWaterExp[eid]) {
           seenWaterExp[eid] = true;
           waterExpIds.push(eid);
+          var fullAmt = parseFloat(a.expenses.amount) || 0;
+          var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
+          var yearlyAmt = isAmort ? fullAmt / a.expenses.amort_years : fullAmt;
+          _waterDiag.push((a.expenses.description || '?').substring(0,30) + ' amt=' + yearlyAmt.toFixed(2) + (isAmort ? ' AMORT' : ''));
           // Building total from full expense amount
           var fullAmt = parseFloat(a.expenses.amount) || 0;
           var isAmort = a.expenses.cost_type === 'amortized' && a.expenses.amort_years > 0;
@@ -1778,6 +1783,11 @@ window.generateInvoice = async function(existingInvoice) {
         if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), '', wLoss.toFixed(2) + ' m3']);
       }
       // Unit prices
+      // TEMP diagnostic
+      _waterDiag.push('---');
+      _waterDiag.push('voda.amount=' + waterGroups.voda.amount.toFixed(2) + ' cistenie.amount=' + waterGroups.cistenie.amount.toFixed(2));
+      _waterDiag.push('mainCons=' + wc.mainCons.toFixed(2));
+      alert('WATER DIAG:\n' + _waterDiag.join('\n'));
       var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
       if (wUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
