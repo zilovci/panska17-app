@@ -1968,7 +1968,7 @@ window.generateInvoice = async function(existingInvoice) {
         } else if (h.subType === 'Plyn') {
           group = 'plyn';
         } else if (h.subType === 'Údržba, revízie') {
-          group = 'voda';
+          group = 'kuric';
         } else if (h.isAuto && descLow.match(/elektromer|elektri/)) {
           group = 'elektrina';
         } else if (descLow.match(/spp|plyn|gas/) && !descLow.match(/gasenerg/)) {
