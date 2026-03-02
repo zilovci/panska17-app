@@ -2111,6 +2111,20 @@ window.generateInvoice = async function(existingInvoice) {
       var hZoneIds = Object.keys(hByZone).filter(function(zid) { return hByZone[zid].amount > 0.01; });
       var hMultiZone = hZoneIds.length > 1;
 
+      // Forward-calculate tenant total from unit price × area (matches displayed numbers)
+      var tenantHeatArea = 0;
+      hZoneIds.forEach(function(zid) { tenantHeatArea += hByZone[zid].area; });
+      var tenantHeatForward = totalHeatedArea > 0 ? (heatingTotal * tenantHeatArea / totalHeatedArea) : tenantHeatTotal;
+      // Use forward total for per-zone amounts too
+      hZoneIds.forEach(function(zid) {
+        var hz = hByZone[zid];
+        if (totalHeatedArea > 0) {
+          hz.forwardAmount = heatingTotal * hz.area / totalHeatedArea;
+        } else {
+          hz.forwardAmount = hz.amount;
+        }
+      });
+
       hRows.push(['', '', '']);
       hRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
 
@@ -2121,14 +2135,14 @@ window.generateInvoice = async function(existingInvoice) {
         }
         var indent = hMultiZone ? '    ' : '  ';
         if (hz.area > 0) hRows.push([stripDia(indent + 'Plocha'), '', hz.area.toFixed(2) + ' m2']);
-        if (hMultiZone && hz.amount > 0) {
-          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur4(hz.amount / numMonths) + ' EUR']);
-          hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.amount) + ' EUR', styles: {fontStyle: 'bold'}}]);
+        if (hMultiZone && hz.forwardAmount > 0) {
+          hRows.push([stripDia(indent + 'Náklad na mesiac'), '', fmtEur4(hz.forwardAmount / numMonths) + ' EUR']);
+          hRows.push([stripDia(indent + 'Spolu'), '', {content: fmtEur(hz.forwardAmount) + ' EUR', styles: {fontStyle: 'bold'}}]);
         }
       });
 
-      hRows.push([stripDia('Mesačný náklad'), '', fmtEur4(tenantHeatTotal / numMonths) + ' EUR']);
-      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(tenantHeatTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
+      hRows.push([stripDia('Mesačný náklad'), '', fmtEur4(tenantHeatForward / numMonths) + ' EUR']);
+      hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(tenantHeatForward) + ' EUR', styles: {fontStyle: 'bold'}}]);
       detailSection('Vykurovanie', hRows);
     }
 
