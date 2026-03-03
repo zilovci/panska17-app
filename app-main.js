@@ -1870,7 +1870,7 @@ window.generateInvoice = async function(existingInvoice) {
       if (elecBuildingInfo > 0) {
         eRows.push([{content: stripDia('Náklady na elektrinu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
         eRows.push([stripDia('  Celkom'), '', fmtEur(elecBuildingInfo) + ' EUR']);
-        if (elecBuildingConsInfo > 0) eRows.push([stripDia('  Spotreba podmeračov'), '', elecBuildingConsInfo.toFixed(2) + ' kWh']);
+        if (elecBuildingConsInfo > 0) eRows.push([stripDia('  Spotreba meračov'), '', elecBuildingConsInfo.toFixed(2) + ' kWh']);
         eRows.push(['', '', '']);
       }
 
