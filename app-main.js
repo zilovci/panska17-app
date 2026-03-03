@@ -1532,15 +1532,15 @@ window.generateInvoice = async function(existingInvoice) {
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Položka'), { content: stripDia('Mesačne (EUR)'), styles: { halign: 'right' } }, { content: stripDia('Ročne (EUR)'), styles: { halign: 'right' } }]],
+    head: [[stripDia('Položka'), { content: stripDia('Mesačne (EUR)'), styles: { halign: 'center' } }, { content: stripDia('Ročne (EUR)'), styles: { halign: 'center' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left', font: 'Roboto' },
     headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
     columnStyles: {
       0: { cellWidth: 90 },
-      1: { cellWidth: 40, halign: 'right' },
-      2: { cellWidth: 40, halign: 'right' }
+      1: { cellWidth: 40, halign: 'center' },
+      2: { cellWidth: 40, halign: 'center' }
     }
   });
 
