@@ -1579,7 +1579,7 @@ window.generateInvoice = async function(existingInvoice) {
     styles: { fontSize: 9, cellPadding: 2, font: 'Roboto' },
     columnStyles: {
       0: { cellWidth: 90 },
-      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 5 } },
+      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 2 } },
       2: { cellWidth: 12, halign: 'left', cellPadding: { top: 2, bottom: 2, left: 0, right: 2 } }
     }
   });
