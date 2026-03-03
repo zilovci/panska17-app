@@ -1520,19 +1520,19 @@ window.generateInvoice = async function(existingInvoice) {
 
   var costRows = catNames.map(function(c) {
     var monthlyAmt = byCatBase[c].amount / numMonths;
-    return [stripDia(c), fmtEur4(monthlyAmt) + ' EUR', fmtEur(byCatBase[c].amount) + ' EUR'];
+    return [stripDia(c), fmtEur4(monthlyAmt), fmtEur(byCatBase[c].amount)];
   });
 
   costRows.push([
     { content: stripDia('NÁKLADY SPOLU'), styles: { fontStyle: 'bold' } },
-    { content: fmtEur4(totalCosts / numMonths) + ' EUR', styles: { fontStyle: 'bold' } },
-    { content: fmtEur(totalCosts) + ' EUR', styles: { fontStyle: 'bold' } }
+    { content: fmtEur4(totalCosts / numMonths), styles: { fontStyle: 'bold' } },
+    { content: fmtEur(totalCosts), styles: { fontStyle: 'bold' } }
   ]);
 
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Položka'), { content: stripDia('Mesačne'), styles: { halign: 'right' } }, { content: stripDia('Ročne'), styles: { halign: 'right' } }]],
+    head: [[stripDia('Položka'), { content: stripDia('Mesačne (EUR)'), styles: { halign: 'right' } }, { content: stripDia('Ročne (EUR)'), styles: { halign: 'right' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left', font: 'Roboto' },
