@@ -1539,8 +1539,8 @@ window.generateInvoice = async function(existingInvoice) {
     headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] },
     columnStyles: {
       0: { cellWidth: 90 },
-      1: { cellWidth: 40, halign: 'right' },
-      2: { cellWidth: 40, halign: 'right' }
+      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 8 } },
+      2: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 8 } }
     }
   });
 
@@ -1578,7 +1578,7 @@ window.generateInvoice = async function(existingInvoice) {
     styles: { fontSize: 9, cellPadding: 2, font: 'Roboto' },
     columnStyles: {
       0: { cellWidth: 90 },
-      1: { cellWidth: 40, halign: 'right' }
+      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 8 } }
     }
   });
 
