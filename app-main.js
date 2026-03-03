@@ -1544,7 +1544,7 @@ window.generateInvoice = async function(existingInvoice) {
     }
   });
 
-  y = doc.lastAutoTable.finalY + 8;
+  y = doc.lastAutoTable.finalY + 10;
 
   // VYÚČTOVANIE (balance summary - no monthly payment list)
   doc.setFontSize(11);
@@ -1553,12 +1553,12 @@ window.generateInvoice = async function(existingInvoice) {
   y += 5;
 
   var balanceRows = [
-    [stripDia('Náklady spolu'), fmtEur(totalCosts), 'EUR'],
-    [stripDia('Zálohy zaplatené'), fmtEur(paidAdvances), 'EUR']
+    [stripDia('Náklady spolu'), fmtEur(totalCosts) + ' EUR'],
+    [stripDia('Zálohy zaplatené'), fmtEur(paidAdvances) + ' EUR']
   ];
 
   if (paidSettlements > 0) {
-    balanceRows.push([stripDia('Priebežné úhrady'), fmtEur(paidSettlements), 'EUR']);
+    balanceRows.push([stripDia('Priebežné úhrady'), fmtEur(paidSettlements) + ' EUR']);
   }
 
   // balance already calculated above
@@ -1567,8 +1567,7 @@ window.generateInvoice = async function(existingInvoice) {
 
   balanceRows.push([
     { content: stripDia(balLabel), styles: { fontStyle: 'bold' } },
-    { content: (balAmount > 0 ? fmtEur(balAmount) : '0.00'), styles: { fontStyle: 'bold' } },
-    { content: 'EUR', styles: { fontStyle: 'bold' } }
+    { content: (balAmount > 0 ? fmtEur(balAmount) + ' EUR' : '0.00 EUR'), styles: { fontStyle: 'bold' } }
   ]);
 
   doc.autoTable({
@@ -1579,8 +1578,7 @@ window.generateInvoice = async function(existingInvoice) {
     styles: { fontSize: 9, cellPadding: 2, font: 'Roboto' },
     columnStyles: {
       0: { cellWidth: 90 },
-      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 5 } },
-      2: { cellWidth: 15, halign: 'left', cellPadding: { top: 2, bottom: 2, left: 1, right: 2 } }
+      1: { cellWidth: 40, halign: 'right', cellPadding: { top: 2, bottom: 2, left: 2, right: 5 } }
     }
   });
 
