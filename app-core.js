@@ -245,7 +245,7 @@ window.switchZone = function(zoneId) {
 function matchesZone(zoneId) {
   if (currentZoneId) return zoneId === currentZoneId;
   // "Všetko" - admin vidí všetko, ostatní len pridelené
-  var isAdmin = currentRole === 'admin' || currentRole === 'ekonom' || currentRole === 'spravca';
+  var isAdmin = currentRole === 'admin' || currentRole === 'ekonom' || currentRole === 'spravca' || currentRole === 'zastupca';
   if (isAdmin) return true;
   return userZoneIds.indexOf(zoneId) !== -1;
 }
@@ -1047,11 +1047,11 @@ window.resetToNewEntry = function() {
 };
 
 // -------- Permission helpers --------
-function canEdit() { return ['admin', 'ekonom', 'spravca'].includes(currentRole); }
-function canAdd() { return ['admin', 'ekonom', 'spravca', 'pracovnik'].includes(currentRole); }
+function canEdit() { return ['admin', 'ekonom', 'spravca', 'zastupca'].includes(currentRole); }
+function canAdd() { return ['admin', 'ekonom', 'spravca', 'zastupca', 'pracovnik'].includes(currentRole); }
 
 function canEditEntry(entry) {
-  if (['admin', 'ekonom', 'spravca'].includes(currentRole)) return true;
+  if (['admin', 'ekonom', 'spravca', 'zastupca'].includes(currentRole)) return true;
   if (currentRole === 'pracovnik') {
     var today = new Date().toISOString().split('T')[0];
     var entryDate = entry.event_date ? entry.event_date.split('T')[0] : '';
