@@ -1354,37 +1354,61 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Recalculate electricity using building-level unit price (consistent for all tenants)
   if (byCatBase['Elektrina']) {
-    var elecTenantCons = 0;
     var elecBuildingAmount = 0;
     var elecBuildingCons = 0;
     var elecMeterPeriods = [];
-    var elecSeenExpIds = {};
+    var elecSkippedExpIds = {};
+
+    // Pass 1: collect expenses, determine which periods win (wider period wins on overlap)
+    var elecExpenseMap = {};
     periodAllocs.forEach(function(a) {
       if (!a.expenses || !a.expenses.cost_categories) return;
       if (a.expenses.cost_categories.name !== 'Elektrina') return;
       if (a.expenses.alloc_method !== 'meter') return;
       var eid = a.expenses.id;
-      if (!elecSeenExpIds[eid]) {
-        elecSeenExpIds[eid] = true;
+      if (!elecExpenseMap[eid]) {
+        elecExpenseMap[eid] = a.expenses;
         elecBuildingAmount += parseFloat(a.expenses.amount) || 0;
 
-        // Overlap detection: overlapping periods = same meters (skip), non-overlapping = add
-        // e.g. 1H (Jan-Jun) + 2H (Jul-Dec) don't overlap → sum consumption
         var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
         var ePFrom = a.expenses.period_from || '';
         var ePTo = a.expenses.period_to || '';
-        var isOverlapping = false;
+        var newDays = (ePFrom && ePTo) ? Math.round((new Date(ePTo) - new Date(ePFrom)) / 86400000) : 0;
+
+        var overlapIdx = -1;
         if (ePFrom && ePTo && elecMeterPeriods.length > 0) {
           for (var pi = 0; pi < elecMeterPeriods.length; pi++) {
             var mp = elecMeterPeriods[pi];
-            if (ePFrom < mp.to && ePTo > mp.from) { isOverlapping = true; break; }
+            if (ePFrom < mp.to && ePTo > mp.from) { overlapIdx = pi; break; }
           }
         }
-        if (!isOverlapping && subCons > 0) {
+        if (overlapIdx >= 0) {
+          var existingMp = elecMeterPeriods[overlapIdx];
+          var existingDays = Math.round((new Date(existingMp.to) - new Date(existingMp.from)) / 86400000);
+          if (newDays > existingDays && subCons > 0) {
+            elecBuildingCons = elecBuildingCons - existingMp.subCons + subCons;
+            elecSkippedExpIds[existingMp.expId] = true;
+            existingMp.from = ePFrom;
+            existingMp.to = ePTo;
+            existingMp.subCons = subCons;
+            existingMp.expId = eid;
+          } else {
+            elecSkippedExpIds[eid] = true;
+          }
+        } else if (subCons > 0) {
           elecBuildingCons += subCons;
-          if (ePFrom && ePTo) elecMeterPeriods.push({ from: ePFrom, to: ePTo });
+          if (ePFrom && ePTo) elecMeterPeriods.push({ from: ePFrom, to: ePTo, subCons: subCons, expId: eid });
         }
       }
+    });
+
+    // Pass 2: sum tenant consumption only from non-skipped expenses
+    var elecTenantCons = 0;
+    periodAllocs.forEach(function(a) {
+      if (!a.expenses || !a.expenses.cost_categories) return;
+      if (a.expenses.cost_categories.name !== 'Elektrina') return;
+      if (a.expenses.alloc_method !== 'meter') return;
+      if (elecSkippedExpIds[a.expenses.id]) return;
       if (zoneIds.indexOf(a.zone_id) >= 0 && a.payer !== 'owner') {
         elecTenantCons += parseFloat(a.consumption) || 0;
       }
@@ -1651,30 +1675,48 @@ window.generateInvoice = async function(existingInvoice) {
       mc.expenses.push(a.expenses);
 
       // Check if this expense's period overlaps with already-counted periods
-      // Overlapping = same physical meters (e.g., BVS water + cleaning both Jan-Dec) → skip
-      // Non-overlapping = different time periods (e.g., electricity 1H + 2H) → add
+      // Overlapping → keep wider period (it already contains the narrower one)
+      // Non-overlapping → sum (e.g., electricity 1H + 2H)
       var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
       var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
       var redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
       var ePFrom = a.expenses.period_from || '';
       var ePTo = a.expenses.period_to || '';
+      var newDays = (ePFrom && ePTo) ? Math.round((new Date(ePTo) - new Date(ePFrom)) / 86400000) : 0;
 
-      var isOverlapping = false;
+      var overlapIdx = -1;
       if (ePFrom && ePTo && mc.meterPeriods.length > 0) {
         for (var pi = 0; pi < mc.meterPeriods.length; pi++) {
           var mp = mc.meterPeriods[pi];
           if (ePFrom < mp.to && ePTo > mp.from) {
-            isOverlapping = true;
+            overlapIdx = pi;
             break;
           }
         }
       }
 
-      if (!isOverlapping && (mainCons > 0 || subCons > 0)) {
+      if (overlapIdx >= 0) {
+        // Overlapping period found — keep whichever covers more days
+        var existingMp = mc.meterPeriods[overlapIdx];
+        var existingDays = Math.round((new Date(existingMp.to) - new Date(existingMp.from)) / 86400000);
+        if (newDays > existingDays && (mainCons > 0 || subCons > 0)) {
+          // New period is wider — replace existing consumption
+          mc.mainCons = mc.mainCons - existingMp.mainCons + mainCons;
+          mc.subCons = mc.subCons - existingMp.subCons + subCons;
+          mc.redirCons = mc.redirCons - existingMp.redirCons + redirCons;
+          existingMp.from = ePFrom;
+          existingMp.to = ePTo;
+          existingMp.mainCons = mainCons;
+          existingMp.subCons = subCons;
+          existingMp.redirCons = redirCons;
+        }
+        // else: existing is wider or equal — skip new one's meters
+      } else if (mainCons > 0 || subCons > 0) {
+        // No overlap — add consumption
         mc.mainCons += mainCons;
         mc.subCons += subCons;
         mc.redirCons += redirCons;
-        if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
+        if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo, mainCons: mainCons, subCons: subCons, redirCons: redirCons });
       }
 
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
