@@ -1357,7 +1357,7 @@ window.generateInvoice = async function(existingInvoice) {
     var elecTenantCons = 0;
     var elecBuildingAmount = 0;
     var elecBuildingCons = 0;
-    var elecMetersCounted = false;
+    var elecMeterPeriods = [];
     var elecSeenExpIds = {};
     periodAllocs.forEach(function(a) {
       if (!a.expenses || !a.expenses.cost_categories) return;
@@ -1368,13 +1368,21 @@ window.generateInvoice = async function(existingInvoice) {
         elecSeenExpIds[eid] = true;
         elecBuildingAmount += parseFloat(a.expenses.amount) || 0;
 
-        // Same physical meters across expenses - count once only
-        if (!elecMetersCounted) {
-          var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
-          if (subCons > 0) {
-            elecBuildingCons = subCons;
-            elecMetersCounted = true;
+        // Overlap detection: overlapping periods = same meters (skip), non-overlapping = add
+        // e.g. 1H (Jan-Jun) + 2H (Jul-Dec) don't overlap → sum consumption
+        var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
+        var ePFrom = a.expenses.period_from || '';
+        var ePTo = a.expenses.period_to || '';
+        var isOverlapping = false;
+        if (ePFrom && ePTo && elecMeterPeriods.length > 0) {
+          for (var pi = 0; pi < elecMeterPeriods.length; pi++) {
+            var mp = elecMeterPeriods[pi];
+            if (ePFrom < mp.to && ePTo > mp.from) { isOverlapping = true; break; }
           }
+        }
+        if (!isOverlapping && subCons > 0) {
+          elecBuildingCons += subCons;
+          if (ePFrom && ePTo) elecMeterPeriods.push({ from: ePFrom, to: ePTo });
         }
       }
       if (zoneIds.indexOf(a.zone_id) >= 0 && a.payer !== 'owner') {
@@ -1634,7 +1642,7 @@ window.generateInvoice = async function(existingInvoice) {
         mainCons: 0, subCons: 0, redirCons: 0,
         unit: a.expenses.meter_consumption_unit || 'm\u00B3',
         totalAmount: 0,
-        metersCounted: false // all meters are same physical devices - count once
+        meterPeriods: [] // track periods to detect overlaps
       };
     }
     var mc = meterCategories[cat];
@@ -1642,17 +1650,31 @@ window.generateInvoice = async function(existingInvoice) {
       mc.expenseIds.push(a.expenses.id);
       mc.expenses.push(a.expenses);
 
-      // All meters (main, sub, redirected) are same physical devices across expenses
-      // Count once only - take first expense that has meter data
+      // Check if this expense's period overlaps with already-counted periods
+      // Overlapping = same physical meters (e.g., BVS water + cleaning both Jan-Dec) → skip
+      // Non-overlapping = different time periods (e.g., electricity 1H + 2H) → add
       var mainCons = parseFloat(a.expenses.meter_main_consumption) || 0;
       var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
       var redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
+      var ePFrom = a.expenses.period_from || '';
+      var ePTo = a.expenses.period_to || '';
 
-      if (!mc.metersCounted && (mainCons > 0 || subCons > 0)) {
-        mc.mainCons = mainCons;
-        mc.subCons = subCons;
-        mc.redirCons = redirCons;
-        mc.metersCounted = true;
+      var isOverlapping = false;
+      if (ePFrom && ePTo && mc.meterPeriods.length > 0) {
+        for (var pi = 0; pi < mc.meterPeriods.length; pi++) {
+          var mp = mc.meterPeriods[pi];
+          if (ePFrom < mp.to && ePTo > mp.from) {
+            isOverlapping = true;
+            break;
+          }
+        }
+      }
+
+      if (!isOverlapping && (mainCons > 0 || subCons > 0)) {
+        mc.mainCons += mainCons;
+        mc.subCons += subCons;
+        mc.redirCons += redirCons;
+        if (ePFrom && ePTo) mc.meterPeriods.push({ from: ePFrom, to: ePTo });
       }
 
       mc.totalAmount += parseFloat(a.expenses.amount) || 0;
