@@ -1561,6 +1561,9 @@ window.generateInvoice = async function(existingInvoice) {
     numMonths = Math.max(1, Math.round((dtp - dfp) / (30.44 * 24 * 60 * 60 * 1000)));
   }
 
+  var isFullYear = numMonths >= 11 && numMonths <= 13;
+  var periodColLabel = isFullYear ? 'Ročne (EUR)' : 'Za obdobie (EUR)';
+
   var costRows = catNames.map(function(c) {
     var monthlyAmt = byCatBase[c].amount / numMonths;
     return [stripDia(c), fmtEur4(monthlyAmt), fmtEur(byCatBase[c].amount)];
@@ -1575,7 +1578,7 @@ window.generateInvoice = async function(existingInvoice) {
   doc.autoTable({
     startY: y,
     margin: { left: M, right: M },
-    head: [[stripDia('Položka'), { content: stripDia('Mesačne (EUR)'), styles: { halign: 'right' } }, { content: stripDia('Ročne (EUR)'), styles: { halign: 'right' } }]],
+    head: [[stripDia('Položka'), { content: stripDia('Mesačne (EUR)'), styles: { halign: 'right' } }, { content: stripDia(periodColLabel), styles: { halign: 'right' } }]],
     body: costRows,
     theme: 'plain',
     styles: { fontSize: 9, cellPadding: 2, halign: 'left', font: 'Roboto' },
