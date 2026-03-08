@@ -1931,8 +1931,30 @@ window.recalcAllExpenses = async function() {
     var eLabel = (e.ref_number || '') + ' ' + (e.description || '').substring(0, 40);
     if (allocs.length === 0) { skipped++; skipDetails.push(eLabel.trim() + ' → bez alokácií'); continue; }
 
-    // Skip meter-based
-    if (e.alloc_method === 'meter') { skipped++; skipDetails.push(eLabel.trim() + ' → merač (ručne)'); continue; }
+    // Meter-based: re-save through editExpense + saveExpense (headless)
+    if (e.alloc_method === 'meter') {
+      try {
+        window._headlessRecalc = true;
+        document.getElementById('modal-expense').classList.add('hidden');
+        await window.editExpense(e.id);
+        // Wait for calcMeterAllocation to complete
+        await new Promise(function(resolve) { setTimeout(resolve, 1500); });
+        if (window._meterAllocations && window._meterAllocations.length > 0) {
+          await window.saveExpense();
+          updated++;
+        } else {
+          skipped++;
+          skipDetails.push(eLabel.trim() + ' → merač: žiadne odčítania');
+        }
+      } catch(mErr) {
+        errors++;
+        skipDetails.push(eLabel.trim() + ' → merač CHYBA: ' + mErr.message);
+      } finally {
+        window._headlessRecalc = false;
+        document.getElementById('modal-expense').classList.add('hidden');
+      }
+      continue;
+    }
 
     var cat = catMap[e.category_id] || {};
     var emptyRule = cat.empty_zone_rule || 'owner';
@@ -3563,7 +3585,7 @@ window.saveExpense = async function() {
               consumption_unit: lossAlloc.unit || 'm³',
               area_used: commonZone.area_m2 || null
             });
-          } else {
+          } else if (!window._headlessRecalc) {
             alert('Upozornenie: Straty (' + lossAlloc.consumption.toFixed(2) + ' ' + (lossAlloc.unit || 'm³') + ' / ' + lossAlloc.amount.toFixed(2) + ' €) sa nepodarilo uložiť – chýba zóna "Spoločné priestory".');
           }
         }
@@ -3757,7 +3779,7 @@ window.saveExpense = async function() {
           if (retryResult.error) {
             alert('CHYBA: Alokácie sa nepodarilo uložiť!\n\n' + retryResult.error.message);
             console.error('Allocation insert retry failed:', retryResult.error);
-          } else {
+          } else if (!window._headlessRecalc) {
             alert('Upozornenie: Alokácie uložené, ale bez sledovania zmien plôch/temperovania.\n\nSpustite migrácie v Supabase:\n- migration_add_tempering_used.sql\n- migration_add_area_used.sql');
           }
         }
@@ -3784,7 +3806,7 @@ window.saveExpense = async function() {
       }
       var expectedSaved = expAmount - redirectedAmount;
       var diff = Math.abs(savedTotal - expectedSaved);
-      if (diff > 1 && savedAllocs.length > 0) {
+      if (diff > 1 && savedAllocs.length > 0 && !window._headlessRecalc) {
         var ownerTotal = savedAllocs.filter(function(a) { return a.payer === 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
         var tenantTotal = savedAllocs.filter(function(a) { return a.payer !== 'owner'; }).reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
         // Show which zones have zero or missing allocations
@@ -3820,9 +3842,11 @@ window.saveExpense = async function() {
     }
   }
 
-  window.closeExpenseModal();
-  await loadExpenses();
-  if (window.loadOverview) await window.loadOverview();
+  if (!window._headlessRecalc) {
+    window.closeExpenseModal();
+    await loadExpenses();
+    if (window.loadOverview) await window.loadOverview();
+  }
 };
 
 window.editExpense = async function(id) {
@@ -3968,7 +3992,7 @@ window.editExpense = async function(id) {
     aiBtn.classList.add('hidden');
   }
 
-  document.getElementById('modal-expense').classList.remove('hidden');
+  if (!window._headlessRecalc) document.getElementById('modal-expense').classList.remove('hidden');
 
   // Recalculate months visibility and allocation preview with loaded data
   try {
