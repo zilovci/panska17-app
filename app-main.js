@@ -1216,6 +1216,25 @@ window.generateInvoice = async function(existingInvoice) {
   var { data: tenant } = await sb.from('tenants').select('*').eq('id', tenantId).single();
   if (!tenant) { alert('Najomca nenajdeny.'); return; }
 
+  // Clamp invoice period to tenant's lease dates
+  var leaseClamped = false;
+  var origFrom = dateFrom, origTo = dateTo;
+  if (tenant.lease_from && dateFrom < tenant.lease_from) {
+    dateFrom = tenant.lease_from;
+    leaseClamped = true;
+  }
+  if (tenant.lease_to && dateTo > tenant.lease_to) {
+    dateTo = tenant.lease_to;
+    leaseClamped = true;
+  }
+  if (dateFrom > dateTo) {
+    alert('Nájomca nebol v priestore počas zvoleného obdobia.\n\nZmluva: ' + (tenant.lease_from || '?') + ' – ' + (tenant.lease_to || '∞'));
+    return;
+  }
+  if (leaseClamped) {
+    alert('⚠️ Obdobie skrátené podľa zmluvy nájomcu:\n\nPôvodné: ' + origFrom + ' – ' + origTo + '\nSkrátené: ' + dateFrom + ' – ' + dateTo + '\n\nZmluva: ' + (tenant.lease_from || '?') + ' – ' + (tenant.lease_to || '∞'));
+  }
+
   // Load owner (prenajímateľ) from tenants with is_owner=true
   var { data: owners = [] } = await sb.from('tenants').select('*').eq('is_owner', true).limit(1);
   var owner = owners.length > 0 ? owners[0] : null;
