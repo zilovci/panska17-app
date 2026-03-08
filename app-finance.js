@@ -3898,24 +3898,30 @@ window.editExpense = async function(id) {
         window.onPayerChange(payerSel);
       }
     }
-    // Restore months from saved allocation (if available)
-    // Only auto-calc from lease dates if no saved value exists
+    // Always recalculate months from current lease dates
+    // (saved months_occupied may be stale if lease was edited since)
     var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
-    if (monthsInput) {
-      var allocData = allocMap[cbs[i].value];
-      if (allocData && allocData.months_occupied != null && allocData.months_total != null) {
-        // Use saved value from DB
-        monthsInput.value = allocData.months_occupied;
-        monthsInput.setAttribute('data-auto', 'false');
-      } else if (allocData) {
-        // Zone has allocation but months never saved - default to full period
-        monthsInput.value = window.getPeriodMonths ? window.getPeriodMonths() : 12;
-        monthsInput.setAttribute('data-auto', 'false');
+    if (monthsInput && isAlloc) {
+      var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
+      var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
+      var periodFrom = document.getElementById('exp-period-from').value;
+      var periodTo = document.getElementById('exp-period-to').value;
+      if (leaseFrom || leaseTo) {
+        var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+        if (autoMonths !== null && autoMonths > 0) {
+          monthsInput.value = autoMonths;
+        } else {
+          var totalM = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+          monthsInput.value = totalM;
+        }
       } else {
-        // No allocation at all (new zone) - let auto-calc from lease dates
-        monthsInput.value = '';
-        monthsInput.setAttribute('data-auto', 'true');
+        var totalM = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+        monthsInput.value = totalM;
       }
+      monthsInput.setAttribute('data-auto', 'true');
+    } else if (monthsInput) {
+      monthsInput.value = '';
+      monthsInput.setAttribute('data-auto', 'true');
     }
   }
 
