@@ -1869,13 +1869,17 @@ window.runReconciliation = async function() {
 function fmtE(n) { return (parseFloat(n) || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' \u20AC'; }
 
 // ============ RECALCULATE ALL EXPENSES ============
-window.recalcAllExpenses = async function() {
+window.recalcAllExpenses = async function(dryRun) {
   var year = document.getElementById('fin-year').value;
   var catFilter = document.getElementById('fin-cat-filter').value;
   var dateMode = document.getElementById('fin-date-mode').value;
   if (!year) { alert('Vyberte rok'); return; }
   var catLabel = catFilter === 'all' ? 'všetky kategórie' : document.getElementById('fin-cat-filter').options[document.getElementById('fin-cat-filter').selectedIndex].text;
-  if (!confirm('Prepočítať VŠETKY alokácie za rok ' + year + ' (' + catLabel + ')?\n\n• Plošné: podľa aktuálnych plôch a lease dátumov\n• Vykurovanie: vrátane temperingu\n• Merače: podľa aktuálnych odčítaní\n\nToto prepíše existujúce alokácie!')) return;
+
+  // First call (from button) = always start with dry run
+  if (dryRun === undefined) {
+    return window.recalcAllExpenses(true);
+  }
 
   // Load current zones
   var { data: zones = [] } = await sb.from('zones').select('*');
@@ -1949,23 +1953,26 @@ window.recalcAllExpenses = async function() {
         // Wait for calcMeterAllocation to complete
         await new Promise(function(resolve) { setTimeout(resolve, 1500); });
         if (window._meterAllocations && window._meterAllocations.length > 0) {
-          await window.saveExpense();
-          // Compare old vs new
-          var { data: newAllocs = [] } = await sb.from('expense_allocations').select('zone_id, payer, amount, zones(name, tenant_name)').eq('expense_id', e.id);
-          var newTotal = newAllocs.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+          // Compare old vs calculated
+          var newTotal = window._meterAllocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
           var diff = newTotal - oldTotal;
           if (Math.abs(diff) > 0.5) {
             var details = [];
-            newAllocs.forEach(function(na) {
-              var key = na.zone_id + '_' + na.payer;
+            window._meterAllocations.forEach(function(na) {
+              if (!na.zoneId) return;
+              var key = na.zoneId + '_' + na.payer;
               var oldAmt = oldByZone[key] ? oldByZone[key].amount : 0;
               var newAmt = parseFloat(na.amount) || 0;
-              var zName = na.zones ? (na.zones.tenant_name || na.zones.name) : '?';
+              var zn = zoneMap[na.zoneId];
+              var zName = zn ? (zn.tenant_name || zn.name) : '?';
               if (Math.abs(newAmt - oldAmt) > 0.5) {
                 details.push('  ' + zName + ' (' + na.payer + '): ' + oldAmt.toFixed(2) + ' → ' + newAmt.toFixed(2));
               }
             });
             changeLog.push(eLabel.trim() + ' [merač]: ' + oldTotal.toFixed(2) + ' → ' + newTotal.toFixed(2) + ' (' + (diff > 0 ? '+' : '') + diff.toFixed(2) + ')' + (details.length > 0 ? '\n' + details.join('\n') : ''));
+          }
+          if (!dryRun) {
+            await window.saveExpense();
           }
           updated++;
         } else {
@@ -2169,7 +2176,6 @@ window.recalcAllExpenses = async function() {
 
     // Replace allocations
     try {
-      await sb.from('expense_allocations').delete().eq('expense_id', e.id);
       if (newAllocs.length > 0) {
         // Remainder correction
         var raSum = newAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
@@ -2178,8 +2184,11 @@ window.recalcAllExpenses = async function() {
           var raLargest = newAllocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, newAllocs[0]);
           raLargest.amount = parseFloat((raLargest.amount + raDiff).toFixed(2));
         }
-        var ins = await sb.from('expense_allocations').insert(newAllocs);
-        if (ins.error) throw ins.error;
+        if (!dryRun) {
+          await sb.from('expense_allocations').delete().eq('expense_id', e.id);
+          var ins = await sb.from('expense_allocations').insert(newAllocs);
+          if (ins.error) throw ins.error;
+        }
       }
       // Compare old vs new
       var newTotal = newAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
@@ -2216,9 +2225,23 @@ window.recalcAllExpenses = async function() {
   var skipInfo = skipped > 0 ? '\n⏭ Preskočených: ' + skipped + '\n' + skipDetails.join('\n') : '';
   var changeInfo = changeLog.length > 0 ? '\n\n📊 ZMENY:\n' + changeLog.join('\n\n') : '\n\nŽiadne zmeny v sumách.';
   if (changeLog.length > 0) console.log('=== RECALC CHANGES ===\n' + changeLog.join('\n\n'));
-  alert('Hotovo!\n\n✅ Prepočítaných: ' + updated + skipInfo + (errors > 0 ? '\n❌ Chýb: ' + errors : '') + changeInfo);
-  await loadExpenses();
-  if (window.loadOverview) await window.loadOverview();
+
+  if (dryRun) {
+    // Show preview and ask for confirmation
+    if (changeLog.length === 0) {
+      alert('Prepočet za rok ' + year + ':\n\n✅ Skontrolovaných: ' + updated + skipInfo + (errors > 0 ? '\n❌ Chýb: ' + errors : '') + '\n\nŽiadne zmeny v sumách. Nič sa neuloží.');
+      return;
+    }
+    var doSave = confirm('NÁHĽAD ZMIEN za rok ' + year + ':\n\n✅ Skontrolovaných: ' + updated + skipInfo + (errors > 0 ? '\n❌ Chýb: ' + errors : '') + changeInfo + '\n\n━━━━━━━━━━━━━━━━━━━━\nChcete tieto zmeny ULOŽIŤ?');
+    if (doSave) {
+      await window.recalcAllExpenses(false);
+    }
+  } else {
+    // Save completed
+    alert('Hotovo!\n\n✅ Uložených: ' + updated + skipInfo + (errors > 0 ? '\n❌ Chýb: ' + errors : '') + changeInfo);
+    await loadExpenses();
+    if (window.loadOverview) await window.loadOverview();
+  }
 };
 
 window.saveZoneAreas = async function() {
