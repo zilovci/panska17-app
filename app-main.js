@@ -1420,6 +1420,7 @@ window.generateInvoice = async function(existingInvoice) {
       byCatBase['Elektrina']._tenantCons = elecTenantCons;
       byCatBase['Elektrina']._buildingAmount = elecBuildingAmount;
       byCatBase['Elektrina']._buildingCons = elecBuildingCons;
+      byCatBase['Elektrina']._skippedExpIds = elecSkippedExpIds;
     }
   }
 
@@ -1946,7 +1947,8 @@ window.generateInvoice = async function(existingInvoice) {
         eRows.push(['', '', '']);
       }
 
-      // Group by zone
+      // Group by zone - filter out consumption from skipped (overlapping) expenses
+      var eSkipped = elecBase._skippedExpIds || {};
       var eByZone = {};
       elecBase.items.forEach(function(a) {
         var zid = a.zone_id;
@@ -1954,8 +1956,12 @@ window.generateInvoice = async function(existingInvoice) {
           var zone = tenantZones.find(function(z) { return z.id === zid; });
           eByZone[zid] = { name: zone ? zone.name : '?', cons: 0, amount: 0 };
         }
-        eByZone[zid].cons += parseFloat(a.consumption) || 0;
+        // Amount always from DB (both invoices are real charges)
         eByZone[zid].amount += parseFloat(a.amount) || 0;
+        // Consumption only from non-skipped expenses (avoid double-counting)
+        if (!a.expenses || !eSkipped[a.expenses.id]) {
+          eByZone[zid].cons += parseFloat(a.consumption) || 0;
+        }
       });
 
       var eZoneIds = Object.keys(eByZone);
