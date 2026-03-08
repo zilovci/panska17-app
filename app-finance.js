@@ -807,13 +807,58 @@ window.saveReading = async function() {
     await sb.from('meter_readings').insert(data);
   }
 
+  // Check for affected expenses that may need re-saving
+  var meter = allMeters.find(function(m) { return m.id === currentReadingMeterId; });
+  if (meter) {
+    var meterType = meter.type;
+    var catMeterTypeMap = { water: /[Vv]od|[Kk]anal/, electricity: /[Ee]lektr/, gas: /[Pp]lyn|[Vv]ykur/ };
+    var catPattern = catMeterTypeMap[meterType];
+    if (catPattern) {
+      var { data: affectedExps = [] } = await sb.from('expenses').select('id, description, period_from, period_to, cost_categories(name)')
+        .eq('alloc_method', 'meter')
+        .lte('period_from', data.date)
+        .gte('period_to', data.date);
+      var matching = affectedExps.filter(function(e) {
+        return e.cost_categories && catPattern.test(e.cost_categories.name);
+      });
+      if (matching.length > 0) {
+        var names = matching.map(function(e) { return (e.description || e.cost_categories.name) + ' (' + (e.period_from || '') + ' – ' + (e.period_to || '') + ')'; }).join('\n');
+        alert('⚠️ Odčítanie uložené.\n\nTieto náklady používajú tento merač a treba ich preuložiť:\n\n' + names);
+      }
+    }
+  }
+
   document.getElementById('modal-reading').classList.add('hidden');
   await loadMeters();
 };
 
 window.deleteReading = async function(id) {
   if (!confirm('Vymazať toto odčítanie?')) return;
+  // Fetch reading details before deleting
+  var { data: rdg } = await sb.from('meter_readings').select('meter_id, date').eq('id', id).single();
   await sb.from('meter_readings').delete().eq('id', id);
+
+  // Check for affected expenses
+  if (rdg) {
+    var meter = allMeters.find(function(m) { return m.id === rdg.meter_id; });
+    if (meter) {
+      var catMeterTypeMap = { water: /[Vv]od|[Kk]anal/, electricity: /[Ee]lektr/, gas: /[Pp]lyn|[Vv]ykur/ };
+      var catPattern = catMeterTypeMap[meter.type];
+      if (catPattern) {
+        var { data: affectedExps = [] } = await sb.from('expenses').select('id, description, period_from, period_to, cost_categories(name)')
+          .eq('alloc_method', 'meter')
+          .lte('period_from', rdg.date)
+          .gte('period_to', rdg.date);
+        var matching = affectedExps.filter(function(e) {
+          return e.cost_categories && catPattern.test(e.cost_categories.name);
+        });
+        if (matching.length > 0) {
+          var names = matching.map(function(e) { return (e.description || e.cost_categories.name) + ' (' + (e.period_from || '') + ' – ' + (e.period_to || '') + ')'; }).join('\n');
+          alert('⚠️ Odčítanie vymazané.\n\nTieto náklady treba preuložiť:\n\n' + names);
+        }
+      }
+    }
+  }
   await loadMeters();
 };
 
@@ -891,7 +936,27 @@ window.saveMeterReplacement = async function() {
 
   document.getElementById('modal-replacement').classList.add('hidden');
   await loadMeters();
-  alert('Merač vymenený. Staré číslo: ' + (meter.meter_number || '–') + ' → Nové: ' + (newNumber || '–'));
+
+  // Check for affected expenses
+  var catMeterTypeMap = { water: /[Vv]od|[Kk]anal/, electricity: /[Ee]lektr/, gas: /[Pp]lyn|[Vv]ykur/ };
+  var catPattern = catMeterTypeMap[meter.type];
+  if (catPattern) {
+    var { data: affectedExps = [] } = await sb.from('expenses').select('id, description, period_from, period_to, cost_categories(name)')
+      .eq('alloc_method', 'meter')
+      .lte('period_from', replDate)
+      .gte('period_to', replDate);
+    var matching = affectedExps.filter(function(e) {
+      return e.cost_categories && catPattern.test(e.cost_categories.name);
+    });
+    if (matching.length > 0) {
+      var names = matching.map(function(e) { return (e.description || e.cost_categories.name) + ' (' + (e.period_from || '') + ' – ' + (e.period_to || '') + ')'; }).join('\n');
+      alert('Merač vymenený. Staré číslo: ' + (meter.meter_number || '–') + ' → Nové: ' + (newNumber || '–') + '\n\n⚠️ Tieto náklady treba preuložiť:\n\n' + names);
+    } else {
+      alert('Merač vymenený. Staré číslo: ' + (meter.meter_number || '–') + ' → Nové: ' + (newNumber || '–'));
+    }
+  } else {
+    alert('Merač vymenený. Staré číslo: ' + (meter.meter_number || '–') + ' → Nové: ' + (newNumber || '–'));
+  }
 };
 
 window.loadExpenses = async function() {
