@@ -1875,7 +1875,7 @@ window.recalcAllExpenses = async function() {
   var dateMode = document.getElementById('fin-date-mode').value;
   if (!year) { alert('Vyberte rok'); return; }
   var catLabel = catFilter === 'all' ? 'všetky kategórie' : document.getElementById('fin-cat-filter').options[document.getElementById('fin-cat-filter').selectedIndex].text;
-  if (!confirm('Prepočítať plošné alokácie za rok ' + year + ' (' + catLabel + ') podľa aktuálnych plôch, lease dátumov a temperingu?\n\nMeračové náklady sa nezmenia.')) return;
+  if (!confirm('Prepočítať VŠETKY alokácie za rok ' + year + ' (' + catLabel + ')?\n\n• Plošné: podľa aktuálnych plôch a lease dátumov\n• Vykurovanie: vrátane temperingu\n• Merače: podľa aktuálnych odčítaní\n\nToto prepíše existujúce alokácie!')) return;
 
   // Load current zones
   var { data: zones = [] } = await sb.from('zones').select('*');
