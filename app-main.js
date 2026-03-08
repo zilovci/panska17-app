@@ -1355,7 +1355,8 @@ window.generateInvoice = async function(existingInvoice) {
   // Recalculate electricity using building-level unit price (consistent for all tenants)
   if (byCatBase['Elektrina']) {
     var elecBuildingAmount = 0;
-    var elecBuildingCons = 0;
+    var elecBuildingCons = 0;  // tenant sub-meters
+    var elecRedirCons = 0;     // redirect (kotolňa)
     var elecMeterPeriods = [];
     var elecSkippedExpIds = {};
 
@@ -1371,6 +1372,7 @@ window.generateInvoice = async function(existingInvoice) {
         elecBuildingAmount += parseFloat(a.expenses.amount) || 0; // always sum - real invoices
 
         var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
+        var redirCons = parseFloat(a.expenses.meter_redirected_consumption) || 0;
         var ePFrom = a.expenses.period_from || '';
         var ePTo = a.expenses.period_to || '';
         var newDays = (ePFrom && ePTo) ? Math.round((new Date(ePTo) - new Date(ePFrom)) / 86400000) : 0;
@@ -1387,17 +1389,20 @@ window.generateInvoice = async function(existingInvoice) {
           var existingDays = Math.round((new Date(existingMp.to) - new Date(existingMp.from)) / 86400000);
           if (newDays > existingDays && subCons > 0) {
             elecBuildingCons = elecBuildingCons - existingMp.subCons + subCons;
+            elecRedirCons = elecRedirCons - (existingMp.redirCons || 0) + redirCons;
             elecSkippedExpIds[existingMp.expId] = true;
             existingMp.from = ePFrom;
             existingMp.to = ePTo;
             existingMp.subCons = subCons;
+            existingMp.redirCons = redirCons;
             existingMp.expId = eid;
           } else {
             elecSkippedExpIds[eid] = true;
           }
         } else if (subCons > 0) {
           elecBuildingCons += subCons;
-          if (ePFrom && ePTo) elecMeterPeriods.push({ from: ePFrom, to: ePTo, subCons: subCons, expId: eid });
+          elecRedirCons += redirCons;
+          if (ePFrom && ePTo) elecMeterPeriods.push({ from: ePFrom, to: ePTo, subCons: subCons, redirCons: redirCons, expId: eid });
         }
       }
     });
@@ -1413,13 +1418,18 @@ window.generateInvoice = async function(existingInvoice) {
         elecTenantCons += parseFloat(a.consumption) || 0;
       }
     });
-    if (elecBuildingCons > 0 && elecTenantCons > 0) {
-      var elecUnitPrice = elecBuildingAmount / elecBuildingCons;
-      // Don't overwrite amount - DB is source of truth
+
+    var elecAllCons = elecBuildingCons + elecRedirCons; // total all meters
+    if (elecAllCons > 0 && elecTenantCons > 0) {
+      var elecUnitPrice = elecBuildingAmount / elecAllCons; // same price for all (tenants + redirect)
+      // Forward-calc tenant amount for first page
+      var elecTenantAmount = parseFloat((elecUnitPrice * elecTenantCons).toFixed(2));
+      byCatBase['Elektrina'].amount = elecTenantAmount;
       byCatBase['Elektrina']._unitPrice = elecUnitPrice;
       byCatBase['Elektrina']._tenantCons = elecTenantCons;
       byCatBase['Elektrina']._buildingAmount = elecBuildingAmount;
       byCatBase['Elektrina']._buildingCons = elecBuildingCons;
+      byCatBase['Elektrina']._redirCons = elecRedirCons;
       byCatBase['Elektrina']._skippedExpIds = elecSkippedExpIds;
     }
   }
@@ -1929,40 +1939,44 @@ window.generateInvoice = async function(existingInvoice) {
 
       // Building-level details (like water: total, redirect, losses, unit price)
       var elecBuildingAmt = elecBase._buildingAmount || 0;
-      var elecBuildingConsInfo = elecBase._buildingCons || 0; // tenant pool only
+      var elecBuildingConsInfo = elecBase._buildingCons || 0;
+      var elecRedirConsInfo = elecBase._redirCons || 0;
+      var elecTotalCons = elecBuildingConsInfo + elecRedirConsInfo;
+      var elecDisplayUnitPrice = elecBase._unitPrice || 0;
+
       if (elecBuildingAmt > 0) {
         eRows.push([{content: stripDia('Náklady na elektrinu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
         eRows.push([stripDia('  Celkom'), '', fmtEur(elecBuildingAmt) + ' EUR']);
 
-        // Total submeters = tenants + redirect
-        var elecTotalCons = elecBuildingConsInfo + (ec.redirCons || 0);
         if (elecTotalCons > 0) eRows.push([stripDia('  Spotreba meračov'), '', elecTotalCons.toFixed(2) + ' kWh']);
-        if (ec.redirCons > 0) eRows.push([stripDia('    z toho kotolňa (vykurovanie)'), '', ec.redirCons.toFixed(2) + ' kWh']);
+        if (elecRedirConsInfo > 0) eRows.push([stripDia('    z toho kotolňa (vykurovanie)'), '', elecRedirConsInfo.toFixed(2) + ' kWh']);
 
-        // Unit price = total amount / total consumption (same as allocation)
-        var elecDisplayUnitPrice = elecTotalCons > 0 ? (elecBuildingAmt / elecTotalCons) : 0;
         if (elecDisplayUnitPrice > 0) eRows.push([stripDia('  Jednotková cena'), '', elecDisplayUnitPrice.toFixed(6) + ' EUR/kWh']);
         eRows.push(['', '', '']);
       }
 
-      // Group by zone - filter out consumption from skipped (overlapping) expenses
+      // Group by zone - consumption deduplicated, amount = unitPrice × consumption
       var eSkipped = elecBase._skippedExpIds || {};
+
       var eByZone = {};
       elecBase.items.forEach(function(a) {
         var zid = a.zone_id;
         if (!eByZone[zid]) {
           var zone = tenantZones.find(function(z) { return z.id === zid; });
-          eByZone[zid] = { name: zone ? zone.name : '?', cons: 0, amount: 0 };
+          eByZone[zid] = { name: zone ? zone.name : '?', cons: 0 };
         }
-        // Amount always from all invoices (real charges)
-        eByZone[zid].amount += parseFloat(a.amount) || 0;
         // Consumption only from non-skipped (avoid double-counting meters)
         if (!a.expenses || !eSkipped[a.expenses.id]) {
           eByZone[zid].cons += parseFloat(a.consumption) || 0;
         }
       });
 
-      var eTenantTotal = elecBase.amount;
+      // Forward calculate: amount = unitPrice × consumption
+      var eTenantTotal = 0;
+      Object.keys(eByZone).forEach(function(zid) {
+        eByZone[zid].amount = parseFloat((elecDisplayUnitPrice * eByZone[zid].cons).toFixed(2));
+        eTenantTotal += eByZone[zid].amount;
+      });
       var eMonthly = eTenantTotal / numMonths;
 
       var eZoneIds = Object.keys(eByZone);
