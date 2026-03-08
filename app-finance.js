@@ -1875,7 +1875,7 @@ window.recalcAllExpenses = async function() {
   var dateMode = document.getElementById('fin-date-mode').value;
   if (!year) { alert('Vyberte rok'); return; }
   var catLabel = catFilter === 'all' ? 'všetky kategórie' : document.getElementById('fin-cat-filter').options[document.getElementById('fin-cat-filter').selectedIndex].text;
-  if (!confirm('Prepočítať plošné alokácie za rok ' + year + ' (' + catLabel + ') podľa aktuálnych plôch zón?\n\nMeračové náklady sa nezmenia.')) return;
+  if (!confirm('Prepočítať plošné alokácie za rok ' + year + ' (' + catLabel + ') podľa aktuálnych plôch, lease dátumov a temperingu?\n\nMeračové náklady sa nezmenia.')) return;
 
   // Load current zones
   var { data: zones = [] } = await sb.from('zones').select('*');
@@ -1937,9 +1937,6 @@ window.recalcAllExpenses = async function() {
     var cat = catMap[e.category_id] || {};
     var emptyRule = cat.empty_zone_rule || 'owner';
     var isHeating = emptyRule === 'owner_temper';
-
-    // Skip heating - too many variables (tempering, time-weighting, zone selection)
-    if (isHeating) { skipped++; skipDetails.push(eLabel.trim() + ' → vykurovanie (ručne)'); continue; }
 
     // Determine save amount
     var saveAmount = e.amount || 0;
