@@ -1928,21 +1928,23 @@ window.generateInvoice = async function(existingInvoice) {
 
       var eRows = [];
 
-      // Building-level details
-      var elecBuildingInfo = elecBase._buildingAmount || 0;
-      var elecBuildingConsInfo = elecBase._buildingCons || 0;
-      if (elecBuildingInfo > 0) {
+      // Building-level details (like water: total, redirect, losses, unit price)
+      var elecBuildingAmt = elecBase._buildingAmount || 0;
+      var elecBuildingConsInfo = elecBase._buildingCons || 0; // tenant pool only
+      if (elecBuildingAmt > 0) {
         eRows.push([{content: stripDia('Náklady na elektrinu pre budovu:'), styles: {fontStyle: 'bold'}}, '', '']);
-        eRows.push([stripDia('  Celkom'), '', fmtEur(elecBuildingInfo) + ' EUR']);
-        if (elecBuildingConsInfo > 0) eRows.push([stripDia('  Spotreba meračov'), '', elecBuildingConsInfo.toFixed(2) + ' kWh']);
+        eRows.push([stripDia('  Celkom'), '', fmtEur(elecBuildingAmt) + ' EUR']);
+
+        // Total submeters = tenants + redirect
+        var elecTotalCons = elecBuildingConsInfo + (ec.redirCons || 0);
+        if (elecTotalCons > 0) eRows.push([stripDia('  Spotreba meračov'), '', elecTotalCons.toFixed(2) + ' kWh']);
+        if (ec.redirCons > 0) eRows.push([stripDia('    z toho kotolňa (vykurovanie)'), '', ec.redirCons.toFixed(2) + ' kWh']);
+
+        // Unit price = total amount / total consumption (same as allocation)
+        var elecDisplayUnitPrice = elecTotalCons > 0 ? (elecBuildingAmt / elecTotalCons) : 0;
+        if (elecDisplayUnitPrice > 0) eRows.push([stripDia('  Jednotková cena'), '', elecDisplayUnitPrice.toFixed(6) + ' EUR/kWh']);
         eRows.push(['', '', '']);
       }
-
-      if (ec.mainCons > 0) {
-        eRows.push([stripDia('Hlavný merač (budova)'), '', ec.mainCons.toFixed(2) + ' kWh']);
-        if (ec.redirCons > 0) eRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', ec.redirCons.toFixed(2) + ' kWh']);
-      }
-      if (eUnitPrice > 0) eRows.push([stripDia('Jednotková cena'), '', eUnitPrice.toFixed(6) + ' EUR/kWh']);
 
       // Group by zone
       var eByZone = {};
