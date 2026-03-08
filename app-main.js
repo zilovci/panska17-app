@@ -1368,7 +1368,6 @@ window.generateInvoice = async function(existingInvoice) {
       var eid = a.expenses.id;
       if (!elecExpenseMap[eid]) {
         elecExpenseMap[eid] = a.expenses;
-        elecBuildingAmount += parseFloat(a.expenses.amount) || 0;
 
         var subCons = parseFloat(a.expenses.meter_sub_consumption) || 0;
         var ePFrom = a.expenses.period_from || '';
@@ -1402,6 +1401,13 @@ window.generateInvoice = async function(existingInvoice) {
       }
     });
 
+    // Sum building amount only from non-skipped expenses
+    Object.keys(elecExpenseMap).forEach(function(eid) {
+      if (!elecSkippedExpIds[eid]) {
+        elecBuildingAmount += parseFloat(elecExpenseMap[eid].amount) || 0;
+      }
+    });
+
     // Pass 2: sum tenant consumption only from non-skipped expenses
     var elecTenantCons = 0;
     periodAllocs.forEach(function(a) {
@@ -1421,6 +1427,14 @@ window.generateInvoice = async function(existingInvoice) {
       byCatBase['Elektrina']._buildingAmount = elecBuildingAmount;
       byCatBase['Elektrina']._buildingCons = elecBuildingCons;
       byCatBase['Elektrina']._skippedExpIds = elecSkippedExpIds;
+
+      // Recalculate tenant amount excluding skipped expenses
+      var elecFilteredAmount = 0;
+      byCatBase['Elektrina'].items.forEach(function(a) {
+        if (a.expenses && elecSkippedExpIds[a.expenses.id]) return;
+        elecFilteredAmount += parseFloat(a.amount) || 0;
+      });
+      byCatBase['Elektrina'].amount = elecFilteredAmount;
     }
   }
 
@@ -1924,8 +1938,6 @@ window.generateInvoice = async function(existingInvoice) {
       var ec = meterCategories['Elektrina'];
       var elecBase = byCatBase['Elektrina'];
       var eUnitPrice = elecBase._unitPrice || 0;
-      var eTenantTotal = elecBase.amount;
-      var eMonthly = eTenantTotal / numMonths;
 
       var eRows = [];
 
@@ -1950,19 +1962,23 @@ window.generateInvoice = async function(existingInvoice) {
       // Group by zone - filter out consumption from skipped (overlapping) expenses
       var eSkipped = elecBase._skippedExpIds || {};
       var eByZone = {};
+      var eTenantFiltered = 0;
       elecBase.items.forEach(function(a) {
+        // Skip allocations from overlapping (narrower) expenses entirely
+        if (a.expenses && eSkipped[a.expenses.id]) return;
         var zid = a.zone_id;
         if (!eByZone[zid]) {
           var zone = tenantZones.find(function(z) { return z.id === zid; });
           eByZone[zid] = { name: zone ? zone.name : '?', cons: 0, amount: 0 };
         }
-        // Amount always from DB (both invoices are real charges)
         eByZone[zid].amount += parseFloat(a.amount) || 0;
-        // Consumption only from non-skipped expenses (avoid double-counting)
-        if (!a.expenses || !eSkipped[a.expenses.id]) {
-          eByZone[zid].cons += parseFloat(a.consumption) || 0;
-        }
+        eByZone[zid].cons += parseFloat(a.consumption) || 0;
+        eTenantFiltered += parseFloat(a.amount) || 0;
       });
+
+      // Use filtered total for display
+      var eTenantTotal = eTenantFiltered;
+      var eMonthly = eTenantTotal / numMonths;
 
       var eZoneIds = Object.keys(eByZone);
       var eMultiZone = eZoneIds.length > 1;
