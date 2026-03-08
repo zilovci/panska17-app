@@ -2033,7 +2033,9 @@ window.generateInvoice = async function(existingInvoice) {
           subType: a.expenses.sub_type || null,
           isAuto: !!a.expenses.is_auto_generated,
           isAmort: isAmort,
-          amortYears: a.expenses.amort_years || 0
+          amortYears: a.expenses.amort_years || 0,
+          periodFrom: a.expenses.period_from || '',
+          periodTo: a.expenses.period_to || ''
         });
         heatingTotal += yearlyAmount;
       });
@@ -2181,7 +2183,19 @@ window.generateInvoice = async function(existingInvoice) {
       });
       hRows.push([{content: stripDia('Celkom'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(heatingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       if (totalHeatedArea > 0) {
-        hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / numMonths).toFixed(6) + ' EUR']);
+        // Use expense period months (not invoice period) for unit price calculation
+        var heatExpMonths = 12; // default
+        var longestHeatPeriod = 0;
+        heatingInputs.forEach(function(h) {
+          if (h.periodFrom && h.periodTo) {
+            var pDays = Math.round((new Date(h.periodTo) - new Date(h.periodFrom)) / 86400000);
+            if (pDays > longestHeatPeriod) {
+              longestHeatPeriod = pDays;
+              heatExpMonths = Math.max(1, Math.round(pDays / 30.44));
+            }
+          }
+        });
+        hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / heatExpMonths).toFixed(6) + ' EUR']);
       }
 
       // Tenant's total
@@ -2263,7 +2277,22 @@ window.generateInvoice = async function(existingInvoice) {
         epsRows.push([{content: stripDia('Náklady na EPS pre budovu:'), styles: {fontStyle: 'bold'}}, '', {content: fmtEur(epsBuildingTotal) + ' EUR', styles: {fontStyle: 'bold'}}]);
       }
       if (totalProtectedArea > 0 && epsBuildingTotal > 0) {
-        epsRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (epsBuildingTotal / totalProtectedArea / numMonths).toFixed(6) + ' EUR']);
+        // Use expense period months (not invoice period)
+        var epsExpMonths = 12;
+        var longestEpsPeriod = 0;
+        var epsSeenIds = {};
+        epsItems.forEach(function(a) {
+          if (!a.expenses || epsSeenIds[a.expenses.id]) return;
+          epsSeenIds[a.expenses.id] = true;
+          if (a.expenses.period_from && a.expenses.period_to) {
+            var pDays = Math.round((new Date(a.expenses.period_to) - new Date(a.expenses.period_from)) / 86400000);
+            if (pDays > longestEpsPeriod) {
+              longestEpsPeriod = pDays;
+              epsExpMonths = Math.max(1, Math.round(pDays / 30.44));
+            }
+          }
+        });
+        epsRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (epsBuildingTotal / totalProtectedArea / epsExpMonths).toFixed(6) + ' EUR']);
       }
       epsRows.push(['', '', '']);
       epsRows.push([{content: stripDia('Váš podiel:'), styles: {fontStyle: 'bold'}}, '', '']);
