@@ -449,15 +449,34 @@ window.loadOverview = async function() {
     tenantFilter.innerHTML = tOpts;
   }
 
+  // Collect unique categories for filter dropdown
+  var catFilter = document.getElementById('fin-overview-cat');
+  var selectedCat = catFilter ? catFilter.value : '';
+  var allCatNames = {};
+  allExp.forEach(function(e) {
+    var cn = e.cost_categories ? e.cost_categories.name : 'Ostatné';
+    allCatNames[cn] = true;
+  });
+  if (catFilter) {
+    var cOpts = '<option value="">Všetky kategórie</option>';
+    Object.keys(allCatNames).sort().forEach(function(cn) {
+      cOpts += '<option value="' + cn + '"' + (selectedCat === cn ? ' selected' : '') + '>' + cn + '</option>';
+    });
+    catFilter.innerHTML = cOpts;
+  }
+
   // Build matrix: zone -> category -> amount + items
   var matrix = {};
-  var zoneItems = {}; // zoneName -> catName -> [{expense info + alloc amount}]
+  var zoneItems = {};
   var catTotals = {};
   var ownerKey = '__VLASTNÍK__';
 
   allExp.forEach(function(e) {
     var catName = e.cost_categories ? e.cost_categories.name : 'Ostatné';
     if (!e.expense_allocations || e.expense_allocations.length === 0) return;
+
+    // Apply category filter
+    if (selectedCat && catName !== selectedCat) return;
 
     e.expense_allocations.forEach(function(a) {
       if (!a.zones) return;
