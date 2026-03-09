@@ -1215,6 +1215,9 @@ window.generateInvoice = async function(existingInvoice) {
   var tenantId = document.getElementById('fin-inv-tenant').value;
   var dateFrom = document.getElementById('fin-inv-from').value;
   var dateTo = document.getElementById('fin-inv-to').value;
+  var genDateInput = document.getElementById('fin-inv-gen-date');
+  var genDate = (genDateInput && genDateInput.value) ? new Date(genDateInput.value + 'T00:00:00') : new Date();
+  var genDateStr = genDate.toLocaleDateString('sk-SK');
   if (!tenantId) { alert('Vyberte najomcu.'); return; }
   if (!dateFrom || !dateTo) { alert('Vyplnte obdobie.'); return; }
 
@@ -1503,7 +1506,7 @@ window.generateInvoice = async function(existingInvoice) {
       .like('invoice_number', 'VYUCT-' + yearLabel + '-%');
     var nextNum = existingInv.length + 1;
     invNumber = 'VYUCT-' + yearLabel + '-' + String(nextNum).padStart(3, '0');
-    var dueDateObj = new Date();
+    var dueDateObj = new Date(genDate.getTime());
     dueDateObj.setDate(dueDateObj.getDate() + 15);
     dueDateStr = dueDateObj.toISOString().split('T')[0];
     isNewInvoice = true;
@@ -2386,7 +2389,7 @@ window.generateInvoice = async function(existingInvoice) {
     doc.setFont('Roboto', 'normal');
     doc.setTextColor(150);
     doc.text(pi + ' / ' + totalPages, W / 2, 282, { align: 'center' });
-    doc.text(stripDia('Vyúčtovanie vygenerované ' + new Date().toLocaleDateString('sk-SK')), M, 282);
+    doc.text(stripDia('Vyúčtovanie vygenerované ' + genDateStr), M, 282);
     // Priestor on all pages (top right)
     if (pi > 1) {
       doc.setFontSize(9);
@@ -2453,6 +2456,12 @@ var invoiceStatuses = {
 window.loadInvoices = async function() {
   var list = document.getElementById('fin-inv-list');
   if (!list) return;
+
+  // Set default generation date to today if empty
+  var genDateEl = document.getElementById('fin-inv-gen-date');
+  if (genDateEl && !genDateEl.value) {
+    genDateEl.value = new Date().toISOString().split('T')[0];
+  }
 
   var { data: invoices = [] } = await sb.from('invoices')
     .select('*, tenants(name, company_name)')
