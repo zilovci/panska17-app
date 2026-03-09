@@ -1937,12 +1937,13 @@ window.generateInvoice = async function(existingInvoice) {
         wRows.push([stripDia('Hlavný merač (budova)'), '', wc.mainCons.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', wc.redirCons.toFixed(2) + ' m3']);
       }
-      // Unit prices
-      var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
+      // Unit prices - use mainCons if available, otherwise subCons as denominator
+      var wDenominator = wc.mainCons > 0 ? wc.mainCons : (wc.subCons > 0 ? wc.subCons + (wc.redirCons || 0) : 0);
+      var wUnitPrice = (wDenominator > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wDenominator) : 0;
       if (wUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
       }
-      var wCistenieUnitPrice = (wc.mainCons > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wc.mainCons) : 0;
+      var wCistenieUnitPrice = (wDenominator > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wDenominator) : 0;
       if (wCistenieUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (cistenie)'), '', wCistenieUnitPrice.toFixed(6) + ' EUR/m3']);
       }
