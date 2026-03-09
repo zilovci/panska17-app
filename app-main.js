@@ -1873,8 +1873,6 @@ window.generateInvoice = async function(existingInvoice) {
       if (wc.mainCons > 0) {
         wRows.push([stripDia('Hlavný merač (budova)'), '', wc.mainCons.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', wc.redirCons.toFixed(2) + ' m3']);
-        var wLoss = wc.mainCons - wc.subCons - wc.redirCons;
-        if (Math.abs(wLoss) > 0.5) wRows.push([stripDia('  straty / nepresnosť'), '', wLoss.toFixed(2) + ' m3']);
       }
       // Unit prices
       var wUnitPrice = (wc.mainCons > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wc.mainCons) : 0;
