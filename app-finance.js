@@ -1948,10 +1948,16 @@ window.recalcAllExpenses = async function(dryRun) {
     if (e.alloc_method === 'meter') {
       try {
         window._headlessRecalc = true;
+        window._meterAllocations = null; // reset before calculation
+        window._meterCalcDone = false;
         document.getElementById('modal-expense').classList.add('hidden');
         await window.editExpense(e.id);
-        // Wait for calcMeterAllocation to complete
-        await new Promise(function(resolve) { setTimeout(resolve, 1500); });
+        // Wait for calcMeterAllocation to complete (poll every 200ms, max 10s)
+        var waitCount = 0;
+        while (!window._meterCalcDone && waitCount < 50) {
+          await new Promise(function(resolve) { setTimeout(resolve, 200); });
+          waitCount++;
+        }
         if (window._meterAllocations && window._meterAllocations.length > 0) {
           // Compare old vs calculated
           var newTotal = window._meterAllocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
@@ -2810,6 +2816,7 @@ var catMeterType = {
 };
 
 window.calcMeterAllocation = async function() {
+  window._meterCalcDone = false;
   var meterRows = document.getElementById('alloc-meter-rows');
   var preview = document.getElementById('exp-alloc-preview');
   var allocRows = document.getElementById('exp-alloc-rows');
@@ -2820,6 +2827,7 @@ window.calcMeterAllocation = async function() {
   if (!periodFrom || !periodTo) {
     meterRows.innerHTML = '<p class="text-[9px] text-red-400">Vyplňte obdobie od-do pre výpočet spotreby.</p>';
     preview.classList.add('hidden');
+    window._meterCalcDone = true;
     return;
   }
 
@@ -2852,6 +2860,7 @@ window.calcMeterAllocation = async function() {
     var hint = meterType ? ('Žiadne ' + meterType + ' merače.') : 'Pre túto kategóriu nie sú merače.';
     meterRows.innerHTML = '<p class="text-[9px] text-slate-400">' + hint + ' Pridajte merače v sekcii Merače alebo nastavte kategóriu na merači.</p>';
     preview.classList.add('hidden');
+    window._meterCalcDone = true;
     return;
   }
 
@@ -3501,6 +3510,8 @@ window.calcMeterAllocation = async function() {
       calculatedAmount: a.amount  // pre-calculated proportional amount
     };
   });
+
+  window._meterCalcDone = true;
 };
 
 // Recalc meter when period changes
