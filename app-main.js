@@ -1559,9 +1559,9 @@ window.generateInvoice = async function(existingInvoice) {
     if (owner.ico) { doc.text(stripDia('IČO: ' + owner.ico), colL, oy); oy += 4; }
     if (owner.dic) { doc.text(stripDia('DIČ: ' + owner.dic), colL, oy); oy += 4; }
     if (owner.ic_dph) { doc.text(stripDia('IČ DPH: ' + owner.ic_dph), colL, oy); oy += 4; }
-    doc.text('IBAN: ' + (owner.iban || 'SK00 0000 0000 0000 0000 0000'), colL, oy); oy += 4;
     if (owner.phone) { doc.text(stripDia('Tel: ' + owner.phone), colL, oy); oy += 4; }
     if (owner.email) { doc.text(stripDia('Email: ' + owner.email), colL, oy); oy += 4; }
+    doc.text('IBAN: ' + (owner.iban || 'SK00 0000 0000 0000 0000 0000'), colL, oy); oy += 4;
   } else {
     doc.text(stripDia('Ing. Vladimír Žila, správca'), colL, oy); oy += 4;
     doc.text(stripDia('Panská 17, 811 01 Bratislava'), colL, oy); oy += 4;
