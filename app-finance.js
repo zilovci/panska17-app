@@ -3800,11 +3800,12 @@ window.saveExpense = async function() {
             if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
               chargeArea = z.ownerTemperedArea;
             } else {
-              chargeArea = (z.payer === 'tenant') ? (z.billingArea || z.area) : z.area;
+              chargeArea = z.billingArea || z.area;
             }
             var pct = totalArea > 0 ? (chargeArea / totalArea * 100) : (100 / zones.length);
             // Amount directly from ratio (not through rounded percentage)
             var directAmount = totalArea > 0 ? (saveAmount * chargeArea / totalArea) : (saveAmount / zones.length);
+            if (isNaN(directAmount)) directAmount = 0;
             var _savedMonths = null;
             var _mInp = document.querySelector('[data-months-input="' + z.id + '"]');
             if (_mInp && _mInp.value) _savedMonths = parseInt(_mInp.value);
