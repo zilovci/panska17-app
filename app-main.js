@@ -1196,7 +1196,13 @@ window.redownloadInvoice = async function(invId) {
   var { data: inv } = await sb.from('invoices').select('*').eq('id', invId).single();
   if (!inv) { alert('Vyúčtovanie nenájdené.'); return; }
 
-  // Set fields and generate without saving new record
+  // If finalized (has saved PDF), open saved version
+  if (inv.pdf_url && inv.status !== 'draft') {
+    window.open(inv.pdf_url, '_blank');
+    return;
+  }
+
+  // Draft or no saved PDF - generate live
   document.getElementById('fin-inv-tenant').value = inv.tenant_id;
   document.getElementById('fin-inv-from').value = inv.period_from;
   document.getElementById('fin-inv-to').value = inv.period_to;
@@ -2404,7 +2410,28 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Save PDF
   var fileName = stripDia(invNumber + '_' + (tenant.company_name || tenant.name).replace(/[^a-zA-Z0-9]/g, '_') + '.pdf');
-  doc.save(fileName);
+
+  // If this is a finalization (status change to sent), upload PDF to storage
+  if (existingInvoice && existingInvoice._finalize) {
+    try {
+      var pdfBlob = doc.output('blob');
+      var storagePath = 'invoices/' + invNumber + '.pdf';
+      await sb.storage.from('receipts').upload(storagePath, pdfBlob, { upsert: true, contentType: 'application/pdf' });
+      var { data: urlData } = sb.storage.from('receipts').getPublicUrl(storagePath);
+      var pdfUrl = urlData ? urlData.publicUrl : null;
+      if (pdfUrl) {
+        await sb.from('invoices').update({ pdf_url: pdfUrl }).eq('id', existingInvoice.id);
+      }
+      // Also download for user
+      doc.save(fileName);
+    } catch(uploadErr) {
+      console.error('PDF upload error:', uploadErr);
+      alert('⚠️ PDF sa nepodarilo uložiť do storage. Faktúra bola uložená bez statického PDF.');
+      doc.save(fileName);
+    }
+  } else {
+    doc.save(fileName);
+  }
 
   // Refresh list
   await window.loadInvoices();
@@ -2475,6 +2502,7 @@ window.loadInvoices = async function() {
       '<div class="flex-1 min-w-0">' +
         '<span class="text-xs font-black text-slate-700">' + inv.invoice_number + '</span>' +
         ' <span class="text-[8px] font-bold px-2 py-0.5 rounded-full ' + st.cls + '">' + st.label + '</span>' +
+        (inv.pdf_url ? ' <i class="fa-solid fa-lock text-[8px] text-blue-400" title="Finalizovaná"></i>' : '') +
         ' <span class="text-xs font-bold text-slate-500">' + tenantLabel + '</span>' +
         ' <span class="text-[9px] text-slate-400">' +
           fmtD(inv.period_from) + ' - ' + fmtD(inv.period_to) + ' • ' +
@@ -2488,6 +2516,26 @@ window.loadInvoices = async function() {
 };
 
 window.changeInvoiceStatus = async function(id, newStatus) {
+  // When finalizing (draft → sent), generate and lock PDF
+  if (newStatus === 'sent') {
+    var { data: inv } = await sb.from('invoices').select('*').eq('id', id).single();
+    if (!inv) return;
+    if (!inv.pdf_url) {
+      if (!confirm('Finalizovať faktúru? PDF sa uloží a nebude sa dať zmeniť.')) {
+        // Reset dropdown back
+        var sel = document.getElementById('inv-detail-status');
+        if (sel) sel.value = inv.status;
+        return;
+      }
+      // Generate and upload PDF
+      document.getElementById('fin-inv-tenant').value = inv.tenant_id;
+      document.getElementById('fin-inv-from').value = inv.period_from;
+      document.getElementById('fin-inv-to').value = inv.period_to;
+      inv._finalize = true;
+      await window.generateInvoice(inv);
+    }
+  }
+
   var update = { status: newStatus };
   if (newStatus === 'sent') update.sent_date = new Date().toISOString().split('T')[0];
   if (newStatus === 'paid') update.paid_date = new Date().toISOString().split('T')[0];
@@ -2497,7 +2545,18 @@ window.changeInvoiceStatus = async function(id, newStatus) {
 };
 
 window.deleteInvoice = async function(id) {
-  if (!confirm('Vymazať vyúčtovanie?')) return;
+  var { data: inv } = await sb.from('invoices').select('invoice_number, pdf_url, status').eq('id', id).single();
+  if (!inv) return;
+  var msg = inv.status !== 'draft' && inv.pdf_url
+    ? 'Vymazať FINÁLNE vyúčtovanie ' + inv.invoice_number + '? Toto je nezvratné!'
+    : 'Vymazať vyúčtovanie ' + inv.invoice_number + '?';
+  if (!confirm(msg)) return;
+  // Delete PDF from storage if exists
+  if (inv.pdf_url && inv.invoice_number) {
+    try {
+      await sb.storage.from('receipts').remove(['invoices/' + inv.invoice_number + '.pdf']);
+    } catch(e) { console.warn('PDF delete from storage failed:', e); }
+  }
   await sb.from('invoices').delete().eq('id', id);
   await window.loadInvoices();
 };
@@ -2520,7 +2579,12 @@ window.showInvoiceDetail = async function(id) {
   else if (inv.balance < -0.01) { balLabel = 'Preplatok: ' + fmtEur(Math.abs(inv.balance)) + ' €'; balCls = 'text-green-600'; }
   else { balLabel = 'Vyrovnané'; balCls = 'text-slate-500'; }
 
+  var isLocked = inv.pdf_url && inv.status !== 'draft';
+  var readonlyAttr = isLocked ? ' readonly disabled' : '';
+  var inputCls = isLocked ? 'w-28 text-right bg-slate-100 text-slate-500 rounded-lg px-2 py-1 text-sm font-bold' : 'w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold';
+
   var html = '' +
+    (isLocked ? '<div class="bg-blue-50 rounded-xl p-3 flex items-center gap-2"><i class="fa-solid fa-lock text-blue-400"></i><span class="text-[9px] font-bold text-blue-600">Finalizovaná faktúra — PDF je uložené a nemenné</span></div>' : '') +
     '<div class="bg-slate-50 rounded-xl p-4 space-y-2">' +
       '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Nájomca</span><span class="font-bold">' + tenantLabel + '</span></div>' +
       (t.ico ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">IČO</span><span>' + t.ico + (t.dic ? ' • DIČ: ' + t.dic : '') + '</span></div>' : '') +
@@ -2529,9 +2593,9 @@ window.showInvoiceDetail = async function(id) {
     '</div>' +
 
     '<div class="bg-slate-50 rounded-xl p-4 space-y-2">' +
-      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Náklady</span><input type="number" step="0.01" id="inv-edit-costs" value="' + (inv.total_costs || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
-      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Zálohy zaplatené</span><input type="number" step="0.01" id="inv-edit-advances" value="' + (inv.total_advances || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
-      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Priebežné úhrady</span><input type="number" step="0.01" id="inv-edit-settlements" value="' + (inv.total_settlements || 0) + '" onchange="window.recalcInvoiceBalance()" class="w-28 text-right border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold"></div>' +
+      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Náklady</span><input type="number" step="0.01" id="inv-edit-costs" value="' + (inv.total_costs || 0) + '" onchange="window.recalcInvoiceBalance()" class="' + inputCls + '"' + readonlyAttr + '></div>' +
+      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Zálohy zaplatené</span><input type="number" step="0.01" id="inv-edit-advances" value="' + (inv.total_advances || 0) + '" onchange="window.recalcInvoiceBalance()" class="' + inputCls + '"' + readonlyAttr + '></div>' +
+      '<div class="flex justify-between items-center"><span class="text-[9px] font-black text-slate-400 uppercase">Priebežné úhrady</span><input type="number" step="0.01" id="inv-edit-settlements" value="' + (inv.total_settlements || 0) + '" onchange="window.recalcInvoiceBalance()" class="' + inputCls + '"' + readonlyAttr + '></div>' +
       '<div class="flex justify-between border-t border-slate-200 pt-2"><span class="text-[9px] font-black text-slate-400 uppercase">Výsledok</span><span id="inv-edit-balance" class="font-black text-base ' + balCls + '">' + balLabel + '</span></div>' +
       (inv.due_date ? '<div class="flex justify-between"><span class="text-[9px] font-black text-slate-400 uppercase">Splatnosť</span><span>' + fmtD(inv.due_date) + '</span></div>' : '') +
     '</div>' +
