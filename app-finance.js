@@ -2705,7 +2705,7 @@ window.updateAllocPreview = function() {
         var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
         if (temper > 0) temperNote = ' <span class="text-orange-400">(kúr. ' + temper + '%)</span>';
       } else {
-        effArea = z.area;
+        effArea = z.billingArea || z.area;
       }
       var pct = totalArea > 0 ? (effArea / totalArea * 100) : 0;
       var amt = displayAmount * pct / 100;
@@ -2764,7 +2764,7 @@ window.updateAllocPreview = function() {
       } else if (isHeating && z.payer === 'owner' && z.ownerTemperedArea !== undefined) {
         effArea = z.ownerTemperedArea;
       } else {
-        effArea = z.area;
+        effArea = z.billingArea || z.area;
       }
       grandTotal += displayAmount * (totalArea > 0 ? effArea / totalArea * 100 : 0) / 100;
     });
