@@ -652,6 +652,9 @@
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest">Prehľad nákladov</h3>
                         <div class="flex items-center gap-2">
                             <select id="fin-overview-year" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                            <select id="fin-overview-tenant" onchange="window.loadOverview()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                                <option value="">Všetci nájomcovia</option>
+                            </select>
                             <div id="fin-overview-mode" class="flex bg-slate-100 rounded-lg p-0.5 text-[9px] font-bold">
                                 <button onclick="window.setOverviewMode('period')" data-mode="period" class="px-2 py-1 rounded-md bg-white text-slate-800 shadow-sm">Podľa obdobia</button>
                                 <button onclick="window.setOverviewMode('payment')" data-mode="payment" class="px-2 py-1 rounded-md text-slate-400">Podľa zaplatenia</button>
@@ -972,9 +975,9 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260304w"></script>
-    <script src="app-finance.js?v=20260304w"></script>
-    <script src="logo-data.js?v=20260304w"></script>
-    <script src="app-main.js?v=20260304w"></script>
+    <script src="app-core.js?v=20260304x"></script>
+    <script src="app-finance.js?v=20260304x"></script>
+    <script src="logo-data.js?v=20260304x"></script>
+    <script src="app-main.js?v=20260304x"></script>
 </body>
 </html>

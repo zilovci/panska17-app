@@ -425,6 +425,30 @@ window.loadOverview = async function() {
   // Get categories
   var { data: cats = [] } = await sb.from('cost_categories').select('id, name').order('name');
 
+  // Collect unique tenants for filter dropdown
+  var tenantFilter = document.getElementById('fin-overview-tenant');
+  var selectedTenantId = tenantFilter ? tenantFilter.value : '';
+  var tenantMap = {};
+  allExp.forEach(function(e) {
+    if (!e.expense_allocations) return;
+    e.expense_allocations.forEach(function(a) {
+      if (!a.zones || !a.zones.tenant_id || a.payer === 'owner') return;
+      var tid = a.zones.tenant_id;
+      if (!tenantMap[tid]) {
+        var tName = a.zones.tenant_name || a.zones.name || '?';
+        tName = tName.replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.\s*s\s*r\.?\s*o\.?|s\.\s*r\.\s*o\.)$/i, '').trim();
+        tenantMap[tid] = tName;
+      }
+    });
+  });
+  if (tenantFilter) {
+    var tOpts = '<option value="">Všetci nájomcovia</option>';
+    Object.keys(tenantMap).sort(function(a, b) { return tenantMap[a].localeCompare(tenantMap[b]); }).forEach(function(tid) {
+      tOpts += '<option value="' + tid + '"' + (selectedTenantId === tid ? ' selected' : '') + '>' + tenantMap[tid] + '</option>';
+    });
+    tenantFilter.innerHTML = tOpts;
+  }
+
   // Build matrix: zone -> category -> amount + items
   var matrix = {};
   var zoneItems = {}; // zoneName -> catName -> [{expense info + alloc amount}]
@@ -437,6 +461,13 @@ window.loadOverview = async function() {
 
     e.expense_allocations.forEach(function(a) {
       if (!a.zones) return;
+
+      // Apply tenant filter
+      if (selectedTenantId) {
+        if (a.payer === 'owner') return; // hide owner rows when filtering by tenant
+        if (a.zones.tenant_id !== selectedTenantId) return;
+      }
+
       var zName = a.zones.name;
       var tName = a.zones.tenant_name || '';
       // Strip s.r.o., a.s., spol. s r.o., etc.
