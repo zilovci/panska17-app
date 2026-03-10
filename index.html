@@ -473,14 +473,16 @@
                             <option value="all">Všetky</option>
                             <option value="problems">⚠ Len problémy</option>
                         </select>
-                        <label class="text-[9px] font-black text-slate-400 uppercase">Zoradiť:</label>
-                        <select id="fin-sort" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
-                            <option value="ref">Ref. číslo</option>
-                            <option value="date">Dátum faktúry</option>
-                            <option value="category">Kategória</option>
-                            <option value="supplier">Dodávateľ</option>
-                            <option value="amount">Suma</option>
-                        </select>
+                        <div class="flex items-center gap-1">
+                            <label class="text-[9px] font-black text-slate-400 uppercase">Zoradiť:</label>
+                            <select id="fin-sort" onchange="window.loadExpenses()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold">
+                                <option value="ref">Ref. číslo</option>
+                                <option value="date">Dátum faktúry</option>
+                                <option value="category">Kategória</option>
+                                <option value="supplier">Dodávateľ</option>
+                                <option value="amount">Suma</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div id="fin-expenses-list"></div>
@@ -979,9 +981,9 @@
         </div>
     </div>
 
-    <script src="app-core.js?v=20260305e"></script>
-    <script src="app-finance.js?v=20260305e"></script>
-    <script src="logo-data.js?v=20260305e"></script>
-    <script src="app-main.js?v=20260305e"></script>
+    <script src="app-core.js?v=20260305f"></script>
+    <script src="app-finance.js?v=20260305f"></script>
+    <script src="logo-data.js?v=20260305f"></script>
+    <script src="app-main.js?v=20260305f"></script>
 </body>
 </html>
