@@ -53,7 +53,7 @@ async function loadFinance() {
   // Category filter dropdown
   var catFilter = document.getElementById('fin-cat-filter');
   if (catFilter) {
-    catFilter.innerHTML = '<option value="all">Všetky</option>' + cats.map(function(c) {
+    catFilter.innerHTML = '<option value="all">Všetky</option><option value="__problems__">⚠️ Problémy</option>' + cats.map(function(c) {
       return '<option value="' + c.id + '">' + c.name + '</option>';
     }).join('');
   }
@@ -1799,15 +1799,32 @@ window.runReconciliation = async function() {
   html += '</table></div>';
 
   // Per category
+  var _problemFilterEl = document.getElementById('fin-problem-filter');
+  var showOnlyProblems = _problemFilterEl && _problemFilterEl.value === 'problems';
+
   catNames.forEach(function(catName) {
     var cat = byCat[catName];
     var catDiff = cat.expTotal - cat.allocTotal - cat.childTotal;
     var catOk = Math.abs(catDiff) <= 1;
+
+    // Count problems in this category
+    var problemCount = 0;
+    if (showOnlyProblems) {
+      cat.expenses.forEach(function(exp) {
+        var absDiff = Math.abs(exp.diff);
+        if (absDiff > 1) problemCount++;
+        else if (exp.allocCount === 0 && !exp.isChild) problemCount++;
+        else if (exp.allocCount > 0 && Math.abs(exp.allocTotal) < 0.01 && exp.yearlyAmount > 0.01) problemCount++;
+        else if (exp.method === 'meter' && exp.meterSubCons !== null && exp.meterSubCons === 0 && exp.yearlyAmount > 0.01) problemCount++;
+      });
+      if (!catOk) problemCount++; // category-level mismatch is also a problem
+      if (problemCount === 0) return;
+    }
     var catBg = catOk ? 'bg-slate-50' : 'bg-red-50';
 
     html += '<div class="' + catBg + ' border border-slate-200 rounded-lg p-3">' +
       '<div class="flex justify-between items-center cursor-pointer" onclick="this.nextElementSibling.classList.toggle(\'hidden\')">' +
-        '<span class="text-[10px] font-black text-slate-700">' + (catOk ? '\u2705' : '\u26A0') + ' ' + catName + ' <span class="text-[8px] text-slate-400">(' + cat.expenses.length + ')</span></span>' +
+        '<span class="text-[10px] font-black text-slate-700">' + (catOk ? '\u2705' : '\u26A0') + ' ' + catName + ' <span class="text-[8px] text-slate-400">(' + (showOnlyProblems ? problemCount + ' probl\u00E9m' + (problemCount > 1 ? 'ov' : '') : cat.expenses.length) + ')</span></span>' +
         '<span class="text-[9px]">' +
           '<span class="font-bold mr-3">' + fmtE(cat.expTotal) + '</span>' +
           '<span class="text-blue-600 mr-1">N:' + fmtE(cat.tenantTotal) + '</span>' +
@@ -1817,8 +1834,8 @@ window.runReconciliation = async function() {
         '</span>' +
       '</div>';
 
-    // Detail table (collapsed)
-    html += '<div class="hidden mt-2 overflow-x-auto">' +
+    // Detail table (collapsed by default, auto-expanded if problem filter active)
+    html += '<div class="' + (showOnlyProblems ? '' : 'hidden ') + 'mt-2 overflow-x-auto">' +
       '<table class="w-full text-[8px]">' +
       '<tr class="text-slate-400 border-b border-slate-200">' +
         '<th class="text-left py-1">Ref.</th><th class="text-left">Popis</th><th class="text-left">Dodávateľ</th>' +
@@ -1827,6 +1844,16 @@ window.runReconciliation = async function() {
 
     cat.expenses.forEach(function(exp) {
       var absDiff = Math.abs(exp.diff);
+
+      // Determine if this expense has a problem
+      var hasProblem = false;
+      if (absDiff > 1) hasProblem = true;
+      if (exp.allocCount === 0 && !exp.isChild) hasProblem = true;
+      if (exp.allocCount > 0 && Math.abs(exp.allocTotal) < 0.01 && exp.yearlyAmount > 0.01) hasProblem = true;
+      if (exp.method === 'meter' && exp.meterSubCons !== null && exp.meterSubCons === 0 && exp.yearlyAmount > 0.01) hasProblem = true;
+
+      // Skip non-problems if filter active
+      if (showOnlyProblems && !hasProblem) return;
       var rowCls = absDiff > 1 ? ' class="bg-red-50"' : (exp.isAuto ? ' class="bg-blue-50 opacity-70"' : (exp.isChild ? ' class="bg-teal-50 opacity-80"' : ''));
       var badges = '';
       if (exp.method === 'meter') badges += '<span class="text-[6px] bg-purple-100 text-purple-600 px-1 rounded">M</span> ';
