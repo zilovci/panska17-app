@@ -2572,6 +2572,9 @@ window.updateAllocPreview = function() {
     var monthsOcc = monthsInput && monthsInput.value ? (parseInt(monthsInput.value)) : totalMonths;
     if (isNaN(monthsOcc)) monthsOcc = totalMonths;
     
+    // Owner zones pay full period regardless of lease/exclude rules
+    if (z.payer === 'owner') monthsOcc = totalMonths;
+
     if (monthsOcc < totalMonths) {
       var monthsEmpty = totalMonths - monthsOcc;
       z.tenantEffArea = z.area * monthsOcc / totalMonths;
@@ -3699,9 +3702,13 @@ window.saveExpense = async function() {
           var temper = cb ? (parseFloat(cb.getAttribute('data-temper')) || 0) : 0;
           z.temper = temper;
           z.isTimeWeighted = false;
+          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
+          z.payer = sel ? sel.value : 'tenant';
           var monthsInput = document.querySelector('[data-months-input="' + z.id + '"]');
           var monthsOcc = monthsInput && monthsInput.value ? (parseInt(monthsInput.value)) : totalMonths;
           if (isNaN(monthsOcc)) monthsOcc = totalMonths;
+          // Owner zones pay full period regardless of lease/exclude rules
+          if (z.payer === 'owner') monthsOcc = totalMonths;
           if (monthsOcc < totalMonths) {
             var monthsEmpty = totalMonths - monthsOcc;
             var ownerWeight = emptyRule === 'exclude' ? 0 : (emptyRule === 'owner_temper' ? (temper / 100) : 1);
@@ -3713,8 +3720,6 @@ window.saveExpense = async function() {
             z.ownerEffArea = z.area * ownerWeight * monthsEmpty / totalMonths;
             z.emptyRule = emptyRule;
           }
-          var sel = document.querySelector('[data-payer-zone="' + z.id + '"]');
-          z.payer = sel ? sel.value : 'tenant';
         });
 
         var allCbs = document.querySelectorAll('.alloc-zone-cb');
