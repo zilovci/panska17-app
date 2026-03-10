@@ -263,7 +263,12 @@ async function loadFinance() {
       // Auto-calculate from lease dates
       var leaseFrom = cb.getAttribute('data-lease-from') || '';
       var leaseTo = cb.getAttribute('data-lease-to') || '';
-      var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+
+      // Check if this zone is set as owner - owners pay full period
+      var payerSel = document.querySelector('[data-payer-zone="' + zoneId + '"]');
+      var isOwner = payerSel && payerSel.value === 'owner';
+
+      var autoMonths = isOwner ? totalMonths : window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
 
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
       
@@ -4016,21 +4021,27 @@ window.editExpense = async function(id) {
     // (saved months_occupied may be stale if lease was edited since)
     var monthsInput = document.querySelector('[data-months-input="' + cbs[i].value + '"]');
     if (monthsInput && isAlloc) {
-      var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
-      var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
-      var periodFrom = document.getElementById('exp-period-from').value;
-      var periodTo = document.getElementById('exp-period-to').value;
-      if (leaseFrom || leaseTo) {
-        var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
-        if (autoMonths !== null && autoMonths > 0) {
-          monthsInput.value = autoMonths;
+      var allocPayer = allocMap[cbs[i].value] ? allocMap[cbs[i].value].payer : 'tenant';
+      var totalM = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+
+      if (allocPayer === 'owner') {
+        // Owner always pays full period
+        monthsInput.value = totalM;
+      } else {
+        var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
+        var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
+        var periodFrom = document.getElementById('exp-period-from').value;
+        var periodTo = document.getElementById('exp-period-to').value;
+        if (leaseFrom || leaseTo) {
+          var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+          if (autoMonths !== null && autoMonths > 0) {
+            monthsInput.value = autoMonths;
+          } else {
+            monthsInput.value = totalM;
+          }
         } else {
-          var totalM = window.getPeriodMonths ? window.getPeriodMonths() : 12;
           monthsInput.value = totalM;
         }
-      } else {
-        var totalM = window.getPeriodMonths ? window.getPeriodMonths() : 12;
-        monthsInput.value = totalM;
       }
       monthsInput.setAttribute('data-auto', 'true');
     } else if (monthsInput) {
