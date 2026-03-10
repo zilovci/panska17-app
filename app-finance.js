@@ -1733,6 +1733,7 @@ window.runReconciliation = async function() {
       isAuto: e.is_auto_generated,
       isChild: isChild,
       allocCount: allocs.length,
+      meterSubCons: e.meter_sub_consumption != null ? parseFloat(e.meter_sub_consumption) : null,
       periodFrom: e.period_from,
       periodTo: e.period_to
     });
@@ -1833,6 +1834,8 @@ window.runReconciliation = async function() {
       if (exp.costType === 'amortized') badges += '<span class="text-[6px] bg-amber-100 text-amber-600 px-1 rounded">' + exp.amortYears + 'r</span> ';
       if (exp.childAmount > 0) badges += '<span class="text-[6px] bg-teal-100 text-teal-600 px-1 rounded">\u2192 ' + fmtE(exp.childAmount) + '</span> ';
       if (exp.allocCount === 0 && !exp.isChild) badges += '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded">\u2205</span> ';
+      if (exp.allocCount > 0 && Math.abs(exp.allocTotal) < 0.01 && exp.yearlyAmount > 0.01) badges += '<span class="text-[6px] bg-yellow-100 text-yellow-700 px-1 rounded">0 \u20AC</span> ';
+      if (exp.method === 'meter' && exp.meterSubCons !== null && exp.meterSubCons === 0 && exp.yearlyAmount > 0.01) badges += '<span class="text-[6px] bg-red-100 text-red-600 px-1 rounded">0 kWh/m\u00B3</span> ';
 
       html += '<tr' + rowCls + '>' +
         '<td class="py-0.5 text-slate-500">' + exp.ref + '</td>' +
