@@ -979,7 +979,7 @@ window.loadExpenses = async function() {
     }
   }
 
-  if (catFilter !== 'all') query = query.eq('category_id', catFilter);
+  if (catFilter !== 'all' && catFilter !== 'problems') query = query.eq('category_id', catFilter);
 
   var result = await query;
   var expenses = result.data || [];
@@ -995,7 +995,7 @@ window.loadExpenses = async function() {
         q2 = q2.gte('date', year + '-01-01').lte('date', year + '-12-31');
       }
     }
-    if (catFilter !== 'all') q2 = q2.eq('category_id', catFilter);
+    if (catFilter !== 'all' && catFilter !== 'problems') q2 = q2.eq('category_id', catFilter);
     var r2 = await q2;
     expenses = r2.data || [];
   }
@@ -1005,7 +1005,7 @@ window.loadExpenses = async function() {
   if (year && dateMode === 'period') {
     var amortQ = sb.from('expenses').select('*, cost_categories(name, empty_zone_rule), zones(name, tenant_name), expense_allocations(*, zones(name, tenant_name))')
       .eq('cost_type', 'amortized').gt('amort_years', 1).lt('period_to', year + '-01-01');
-    if (catFilter !== 'all') amortQ = amortQ.eq('category_id', catFilter);
+    if (catFilter !== 'all' && catFilter !== 'problems') amortQ = amortQ.eq('category_id', catFilter);
     var amortR = await amortQ;
     var amortExps = (amortR.data || []).filter(function(ae) {
       if (!ae.period_to || !ae.amort_years) return false;
@@ -1799,8 +1799,8 @@ window.runReconciliation = async function() {
   html += '</table></div>';
 
   // Per category
-  var _problemFilterEl = document.getElementById('fin-problem-filter');
-  var showOnlyProblems = _problemFilterEl && _problemFilterEl.value === 'problems';
+  var _catFilterVal = document.getElementById('fin-cat-filter').value;
+  var showOnlyProblems = _catFilterVal === 'problems';
 
   catNames.forEach(function(catName) {
     var cat = byCat[catName];
@@ -1941,7 +1941,7 @@ window.recalcAllExpenses = async function(dryRun) {
     q1 = q1.gte('date', year + '-01-01').lte('date', year + '-12-31');
     q2 = q2.lte('period_from', year + '-12-31').gte('period_to', year + '-01-01');
   }
-  if (catFilter !== 'all') {
+  if (catFilter !== 'all' && catFilter !== 'problems') {
     q1 = q1.eq('category_id', catFilter);
     if (q2) q2 = q2.eq('category_id', catFilter);
   }
