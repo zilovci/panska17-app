@@ -3197,33 +3197,21 @@ window.calcMeterAllocation = async function() {
             note: 'zvyšok (' + mc.consumption.toFixed(0) + ' - ' + childTotal.toFixed(0) + ')'
           });
         } else if (uncoveredZones.length > 1) {
-          // Multiple uncovered zones - split remainder by time-weighted area
-          var uncTotalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+          // Multiple uncovered zones - split remainder by area
           var uncZonesWithArea = uncoveredZones.map(function(zId) {
             var z = allZones.find(function(az) { return az.id === zId; });
-            var area = z ? (parseFloat(z.area_m2) || 0) : 0;
-            var mOcc = uncTotalMonths;
-            var cb = document.querySelector('.alloc-zone-cb[value="' + zId + '"]');
-            if (cb) {
-              var lf = cb.getAttribute('data-lease-from') || '';
-              var lt = cb.getAttribute('data-lease-to') || '';
-              if (lf || lt) {
-                var ov = window.calcLeaseOverlapMonths(lf, lt, periodFrom, periodTo);
-                if (ov !== null && ov >= 0) mOcc = ov;
-              }
-            }
-            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: area, monthsOcc: mOcc, weightedArea: area * mOcc };
+            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
           });
-          var uncTotalWeighted = uncZonesWithArea.reduce(function(s, z) { return s + z.weightedArea; }, 0);
+          var uncTotalArea = uncZonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
           uncZonesWithArea.forEach(function(z) {
-            var share = uncTotalWeighted > 0 ? (z.weightedArea / uncTotalWeighted) : (1 / uncoveredZones.length);
+            var share = uncTotalArea > 0 ? (z.area / uncTotalArea) : (1 / uncoveredZones.length);
             zoneAllocs.push({
               zoneId: z.id,
               zoneName: z.name,
               consumption: remainder * share,
               meterName: mc.meter.name,
-              payer: z.monthsOcc > 0 ? 'tenant' : 'owner',
-              note: 'zvyšok ' + z.area + ' m² × ' + z.monthsOcc + ' mes.'
+              payer: 'tenant',
+              note: 'zvyšok podľa m²'
             });
           });
         }
@@ -3236,71 +3224,23 @@ window.calcMeterAllocation = async function() {
           });
         }
       } else {
-        // No child meters - split by time-weighted area
-        var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
-
-        // For each zone, find total occupied months
-        // Check existing area-based allocations - different months_occupied values
-        // indicate different tenants (e.g., Eiben=5 + Gschill=7 = 12)
-        var zoneOccupiedMonths = {};
-        for (var zi = 0; zi < mc.zones.length; zi++) {
-          var zId = mc.zones[zi];
-
-          // Get current tenant lease overlap
-          var currentMonths = 0;
-          var cb = document.querySelector('.alloc-zone-cb[value="' + zId + '"]');
-          if (cb) {
-            var leaseFrom = cb.getAttribute('data-lease-from') || '';
-            var leaseTo = cb.getAttribute('data-lease-to') || '';
-            if (leaseFrom || leaseTo) {
-              var overlap = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
-              if (overlap !== null && overlap > 0) currentMonths = overlap;
-            }
-          }
-
-          // Check existing allocations for this zone - sum distinct months_occupied
-          var { data: histAllocs = [] } = await sb.from('expense_allocations')
-            .select('months_occupied')
-            .eq('zone_id', zId)
-            .eq('payer', 'tenant')
-            .not('months_occupied', 'is', null);
-          if (!histAllocs) histAllocs = [];
-
-          var seenMonths = {};
-          var sumMonths = 0;
-          histAllocs.forEach(function(a) {
-            var mo = parseInt(a.months_occupied);
-            if (mo > 0 && !seenMonths[mo]) {
-              seenMonths[mo] = true;
-              sumMonths += mo;
-            }
-          });
-          if (sumMonths > totalMonths) sumMonths = totalMonths;
-
-          // Use best of: current tenant, historical sum
-          var bestMonths = Math.max(currentMonths, sumMonths);
-          zoneOccupiedMonths[zId] = bestMonths > 0 ? bestMonths : totalMonths;
-        }
-
+        // No child meters - split by area
         var zonesWithArea = mc.zones.map(function(zId) {
           var z = allZones.find(function(az) { return az.id === zId; });
-          var area = z ? (parseFloat(z.area_m2) || 0) : 0;
-          var monthsOcc = zoneOccupiedMonths[zId] || totalMonths;
-          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: area, monthsOcc: monthsOcc, weightedArea: area * monthsOcc };
+          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
         });
-        var totalWeightedArea = zonesWithArea.reduce(function(s, z) { return s + z.weightedArea; }, 0);
+        var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
 
         zonesWithArea.forEach(function(z) {
-          var share = totalWeightedArea > 0 ? (z.weightedArea / totalWeightedArea) : 0;
+          var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
           var zoneCons = mc.consumption * share;
-          var payer = z.monthsOcc > 0 ? 'tenant' : 'owner';
           zoneAllocs.push({
             zoneId: z.id,
             zoneName: z.name,
             consumption: zoneCons,
             meterName: mc.meter.name,
-            payer: payer,
-            note: z.area + ' m² × ' + z.monthsOcc + ' mes.'
+            payer: 'tenant',
+            note: z.area + ' m² z ' + totalZoneArea + ' m²'
           });
         });
       }
