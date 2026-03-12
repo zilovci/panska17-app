@@ -3100,8 +3100,9 @@ window.calcMeterAllocation = async function() {
   var redirectedTotal = 0;      // NET (after deduction) - used for amount calculation
   var redirectedFullTotal = 0;  // FULL meter reading - used for remainder/loss calculation
 
-  meterConsumption.forEach(function(mc) {
-    if (mc.meter.is_main) return; // Handle main meter separately
+  for (var _mci = 0; _mci < meterConsumption.length; _mci++) {
+    var mc = meterConsumption[_mci];
+    if (mc.meter.is_main) continue; // Handle main meter separately
 
     // Redirected meters (e.g., vodomer kotolne → Vykurovanie) - subtract but don't allocate here
     if (mc.isRedirected) {
@@ -3119,7 +3120,7 @@ window.calcMeterAllocation = async function() {
       redirectedTotal += redirectedCons;
       redirectedFullTotal += mc.consumption;  // full reading for remainder calc
 
-      return;
+      continue;
     }
 
     // Skip child meters (parent is not main) - they're handled by their parent
@@ -3128,7 +3129,7 @@ window.calcMeterAllocation = async function() {
       if (parentMc && !parentMc.meter.is_main) {
         // This is a level-2 child (e.g., Elektromer A1 under Elektromer Blok A)
         // Don't add to subMeterTotal - parent already covers it
-        return;
+        continue;
       }
     }
 
@@ -3237,21 +3238,54 @@ window.calcMeterAllocation = async function() {
       } else {
         // No child meters - split by time-weighted area
         var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
-        // Load lease dates for zones to determine months of occupancy
-        var zonesWithArea = mc.zones.map(function(zId) {
-          var z = allZones.find(function(az) { return az.id === zId; });
-          var area = z ? (parseFloat(z.area_m2) || 0) : 0;
-          var monthsOcc = totalMonths;
-          // Get lease dates from checkbox attributes (set by refreshZoneLeaseDates)
+
+        // For each zone, find total occupied months
+        // Check existing area-based allocations - different months_occupied values
+        // indicate different tenants (e.g., Eiben=5 + Gschill=7 = 12)
+        var zoneOccupiedMonths = {};
+        for (var zi = 0; zi < mc.zones.length; zi++) {
+          var zId = mc.zones[zi];
+
+          // Get current tenant lease overlap
+          var currentMonths = 0;
           var cb = document.querySelector('.alloc-zone-cb[value="' + zId + '"]');
           if (cb) {
             var leaseFrom = cb.getAttribute('data-lease-from') || '';
             var leaseTo = cb.getAttribute('data-lease-to') || '';
             if (leaseFrom || leaseTo) {
               var overlap = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
-              if (overlap !== null && overlap >= 0) monthsOcc = overlap;
+              if (overlap !== null && overlap > 0) currentMonths = overlap;
             }
           }
+
+          // Check existing allocations for this zone - sum distinct months_occupied
+          var { data: histAllocs = [] } = await sb.from('expense_allocations')
+            .select('months_occupied')
+            .eq('zone_id', zId)
+            .eq('payer', 'tenant')
+            .not('months_occupied', 'is', null);
+          if (!histAllocs) histAllocs = [];
+
+          var seenMonths = {};
+          var sumMonths = 0;
+          histAllocs.forEach(function(a) {
+            var mo = parseInt(a.months_occupied);
+            if (mo > 0 && !seenMonths[mo]) {
+              seenMonths[mo] = true;
+              sumMonths += mo;
+            }
+          });
+          if (sumMonths > totalMonths) sumMonths = totalMonths;
+
+          // Use best of: current tenant, historical sum
+          var bestMonths = Math.max(currentMonths, sumMonths);
+          zoneOccupiedMonths[zId] = bestMonths > 0 ? bestMonths : totalMonths;
+        }
+
+        var zonesWithArea = mc.zones.map(function(zId) {
+          var z = allZones.find(function(az) { return az.id === zId; });
+          var area = z ? (parseFloat(z.area_m2) || 0) : 0;
+          var monthsOcc = zoneOccupiedMonths[zId] || totalMonths;
           return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: area, monthsOcc: monthsOcc, weightedArea: area * monthsOcc };
         });
         var totalWeightedArea = zonesWithArea.reduce(function(s, z) { return s + z.weightedArea; }, 0);
@@ -3271,7 +3305,7 @@ window.calcMeterAllocation = async function() {
         });
       }
     }
-  });
+  }
 
   // Main meter remainder = common areas / losses
   var mainConsumption = 0;
