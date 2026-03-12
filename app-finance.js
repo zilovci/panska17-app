@@ -3196,21 +3196,33 @@ window.calcMeterAllocation = async function() {
             note: 'zvyšok (' + mc.consumption.toFixed(0) + ' - ' + childTotal.toFixed(0) + ')'
           });
         } else if (uncoveredZones.length > 1) {
-          // Multiple uncovered zones - split remainder by area
+          // Multiple uncovered zones - split remainder by time-weighted area
+          var uncTotalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
           var uncZonesWithArea = uncoveredZones.map(function(zId) {
             var z = allZones.find(function(az) { return az.id === zId; });
-            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+            var area = z ? (parseFloat(z.area_m2) || 0) : 0;
+            var mOcc = uncTotalMonths;
+            var cb = document.querySelector('.alloc-zone-cb[value="' + zId + '"]');
+            if (cb) {
+              var lf = cb.getAttribute('data-lease-from') || '';
+              var lt = cb.getAttribute('data-lease-to') || '';
+              if (lf || lt) {
+                var ov = window.calcLeaseOverlapMonths(lf, lt, periodFrom, periodTo);
+                if (ov !== null && ov >= 0) mOcc = ov;
+              }
+            }
+            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: area, monthsOcc: mOcc, weightedArea: area * mOcc };
           });
-          var uncTotalArea = uncZonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+          var uncTotalWeighted = uncZonesWithArea.reduce(function(s, z) { return s + z.weightedArea; }, 0);
           uncZonesWithArea.forEach(function(z) {
-            var share = uncTotalArea > 0 ? (z.area / uncTotalArea) : (1 / uncoveredZones.length);
+            var share = uncTotalWeighted > 0 ? (z.weightedArea / uncTotalWeighted) : (1 / uncoveredZones.length);
             zoneAllocs.push({
               zoneId: z.id,
               zoneName: z.name,
               consumption: remainder * share,
               meterName: mc.meter.name,
-              payer: 'tenant',
-              note: 'zvyšok podľa m²'
+              payer: z.monthsOcc > 0 ? 'tenant' : 'owner',
+              note: 'zvyšok ' + z.area + ' m² × ' + z.monthsOcc + ' mes.'
             });
           });
         }
@@ -3223,23 +3235,38 @@ window.calcMeterAllocation = async function() {
           });
         }
       } else {
-        // No child meters - split by area (original behavior)
+        // No child meters - split by time-weighted area
+        var totalMonths = window.getPeriodMonths ? window.getPeriodMonths() : 12;
+        // Load lease dates for zones to determine months of occupancy
         var zonesWithArea = mc.zones.map(function(zId) {
           var z = allZones.find(function(az) { return az.id === zId; });
-          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
+          var area = z ? (parseFloat(z.area_m2) || 0) : 0;
+          var monthsOcc = totalMonths;
+          // Get lease dates from checkbox attributes (set by refreshZoneLeaseDates)
+          var cb = document.querySelector('.alloc-zone-cb[value="' + zId + '"]');
+          if (cb) {
+            var leaseFrom = cb.getAttribute('data-lease-from') || '';
+            var leaseTo = cb.getAttribute('data-lease-to') || '';
+            if (leaseFrom || leaseTo) {
+              var overlap = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+              if (overlap !== null && overlap >= 0) monthsOcc = overlap;
+            }
+          }
+          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: area, monthsOcc: monthsOcc, weightedArea: area * monthsOcc };
         });
-        var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+        var totalWeightedArea = zonesWithArea.reduce(function(s, z) { return s + z.weightedArea; }, 0);
 
         zonesWithArea.forEach(function(z) {
-          var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
+          var share = totalWeightedArea > 0 ? (z.weightedArea / totalWeightedArea) : 0;
           var zoneCons = mc.consumption * share;
+          var payer = z.monthsOcc > 0 ? 'tenant' : 'owner';
           zoneAllocs.push({
             zoneId: z.id,
             zoneName: z.name,
             consumption: zoneCons,
             meterName: mc.meter.name,
-            payer: 'tenant',
-            note: z.area + ' m² z ' + totalZoneArea + ' m²'
+            payer: payer,
+            note: z.area + ' m² × ' + z.monthsOcc + ' mes.'
           });
         });
       }
