@@ -459,8 +459,9 @@ async function loadMeters() {
   var mtrParent = document.getElementById('mtr-parent');
   if (mtrParent) {
     mtrParent.innerHTML = '<option value="">— žiadny —</option>' +
-      meters.filter(function(m) { return m.is_main; }).map(function(m) {
-        return '<option value="' + m.id + '">' + m.name + '</option>';
+      meters.map(function(m) {
+        var label = m.name + (m.is_main ? ' [HLAVNÝ]' : '');
+        return '<option value="' + m.id + '">' + label + '</option>';
       }).join('');
   }
 
