@@ -1309,6 +1309,7 @@ window.generateInvoice = async function(existingInvoice) {
   var { data: allocs = [] } = await sb.from('expense_allocations')
     .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, sub_type, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
+  if (!allocs) allocs = [];
 
   // Filter by period overlap
   var periodAllocs = allocs.filter(function(a) {
