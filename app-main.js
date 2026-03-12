@@ -281,10 +281,25 @@ window.saveTenant = async function() {
 
   // Update zone assignments
   if (tenantId) {
+    // Check for conflicts - zones already assigned to another tenant
+    var cbs = document.querySelectorAll('.ten-zone-cb:checked');
+    var conflicts = [];
+    for (var i = 0; i < cbs.length; i++) {
+      var zone = allZones.find(function(z) { return z.id === cbs[i].value; });
+      if (zone && zone.tenant_id && zone.tenant_id !== tenantId) {
+        conflicts.push(zone.name + ' (' + (zone.tenant_name || '?') + ')');
+      }
+    }
+    if (conflicts.length > 0) {
+      if (!confirm('⚠️ Tieto priestory už majú iného nájomcu:\n\n' + conflicts.join('\n') + '\n\nChcete ich preradiť?')) {
+        window.closeTenantModal();
+        await window.loadTenants();
+        return;
+      }
+    }
     // Clear old assignments
     await sb.from('zones').update({ tenant_id: null }).eq('tenant_id', tenantId);
     // Set new
-    var cbs = document.querySelectorAll('.ten-zone-cb:checked');
     for (var i = 0; i < cbs.length; i++) {
       await sb.from('zones').update({ tenant_id: tenantId }).eq('id', cbs[i].value);
     }
