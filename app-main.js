@@ -175,6 +175,45 @@ window.loadTenants = async function() {
     tenants.map(function(t) {
     var tZones = zones.filter(function(z) { return z.tenant_id === t.id; });
     var zoneNames = tZones.map(function(z) { return z.tenant_name || z.name; }).join(', ');
+
+    // Warnings
+    var warnings = [];
+    // 1. No zones assigned (skip owners without zones - that's ok)
+    if (tZones.length === 0 && !t.is_owner && !t.no_billing) {
+      warnings.push('<span class="text-[8px] bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">⚠ bez priestoru</span>');
+    }
+    // 2. Overlapping lease on same zone with another tenant
+    tZones.forEach(function(tz) {
+      var otherTenants = tenants.filter(function(ot) {
+        if (ot.id === t.id) return false;
+        return zones.some(function(oz) { return oz.id === tz.id && oz.tenant_id === ot.id; });
+      });
+      // Check historical: other tenants that had this zone and overlap in time
+      tenants.forEach(function(ot) {
+        if (ot.id === t.id || ot.is_owner) return;
+        // Both have lease dates and share same zone name... but we only know current assignment
+        // Check if another tenant has overlapping lease AND was previously on same zone
+      });
+    });
+    // Check lease overlap: find other tenants assigned to same zones
+    tZones.forEach(function(tz) {
+      tenants.forEach(function(ot) {
+        if (ot.id === t.id) return;
+        var otZones = zones.filter(function(z) { return z.tenant_id === ot.id; });
+        var sharedZone = otZones.find(function(oz) { return oz.id === tz.id; });
+        if (!sharedZone) return;
+        // Same zone, check lease overlap
+        if (t.lease_from && ot.lease_from) {
+          var tEnd = t.lease_to || '2099-12-31';
+          var otEnd = ot.lease_to || '2099-12-31';
+          if (t.lease_from <= otEnd && ot.lease_from <= tEnd) {
+            warnings.push('<span class="text-[8px] bg-yellow-100 text-yellow-700 font-bold px-1.5 py-0.5 rounded-full">⚠ ' + (tz.tenant_name || tz.name) + ': prekrýva sa s ' + (ot.company_name || ot.name) + '</span>');
+          }
+        }
+      });
+    });
+    var warningHtml = warnings.length > 0 ? ' ' + warnings.join(' ') : '';
+
     // Partial year indicator
     var partialTag = '';
     if (filterYear) {
@@ -190,7 +229,7 @@ window.loadTenants = async function() {
     }
     return '<div class="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">' +
       '<div class="flex-1 min-w-0">' +
-        '<p class="text-sm font-bold text-slate-800">' + (t.is_owner ? '👑 ' : '') + (t.company_name || t.name) + partialTag + '</p>' +
+        '<p class="text-sm font-bold text-slate-800">' + (t.is_owner ? '👑 ' : '') + (t.company_name || t.name) + partialTag + warningHtml + '</p>' +
         '<p class="text-[9px] text-slate-400">' +
           (t.ico ? 'IČO: ' + t.ico + ' • ' : '') +
           (t.lease_from ? fmtD(t.lease_from) + ' – ' + (t.lease_to ? fmtD(t.lease_to) : '∞') + ' • ' : '') +
