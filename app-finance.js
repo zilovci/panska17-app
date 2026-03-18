@@ -362,6 +362,15 @@ async function loadFinance() {
     }
   }
 
+  // Dashboard year dropdown
+  var dashYearSel = document.getElementById('fin-dash-year');
+  if (dashYearSel && dashYearSel.options.length === 0) {
+    var curYearD = new Date().getFullYear();
+    for (var yd = curYearD; yd >= 2020; yd--) {
+      dashYearSel.innerHTML += '<option value="' + yd + '">' + yd + '</option>';
+    }
+  }
+
   // Payment year dropdown
   var payYearSel = document.getElementById('fin-pay-year');
   if (payYearSel && payYearSel.options.length === 0) {
@@ -408,6 +417,7 @@ async function loadFinance() {
   await window.loadPayments();
   await window.loadInvoices();
   await window.loadOverview();
+  await window.loadDashboard();
 }
 
 // ---- MERAČE ----

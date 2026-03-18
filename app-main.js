@@ -3059,5 +3059,109 @@ window.printReport = async () => {
 };
 
 
+window.loadDashboard = async function() {
+  var dashEl = document.getElementById('fin-dashboard');
+  if (!dashEl) return;
+  var yearSel = document.getElementById('fin-dash-year');
+  if (!yearSel) return;
+  var year = yearSel.value || new Date().getFullYear();
+
+  // Load data
+  var { data: tenants = [] } = await sb.from('tenants').select('id, name, company_name, monthly_rent, monthly_advance').order('name');
+  var { data: payments = [] } = await sb.from('tenant_payments').select('*')
+    .gte('month', year + '-01-01').lte('month', year + '-12-31');
+  var { data: expenses = [] } = await sb.from('expenses').select('id, amount, date, period_from, period_to, cost_type')
+    .gte('date', year + '-01-01').lte('date', year + '-12-31');
+
+  // Summary
+  var rentExpected = 0, rentPaid = 0, advExpected = 0, advPaid = 0, settlementTotal = 0;
+  payments.forEach(function(p) {
+    var amt = parseFloat(p.amount) || 0;
+    if (p.type === 'rent') { rentExpected += amt; if (p.paid) rentPaid += amt; }
+    else if (p.type === 'advance' || !p.type) { advExpected += amt; if (p.paid) advPaid += amt; }
+    else if (p.type === 'settlement') { if (p.paid) settlementTotal += amt; }
+  });
+
+  var expTotal = 0;
+  expenses.forEach(function(e) { expTotal += parseFloat(e.amount) || 0; });
+
+  var rentOutstanding = rentExpected - rentPaid;
+  var advOutstanding = advExpected - advPaid;
+
+  function card(label, paid, expected, color) {
+    var outstanding = expected - paid;
+    var pct = expected > 0 ? Math.round(paid / expected * 100) : 0;
+    var barColor = pct >= 100 ? 'bg-green-400' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400';
+    return '<div class="bg-white rounded-2xl p-5 shadow-sm flex-1 min-w-[140px]">' +
+      '<p class="text-[8px] font-black uppercase tracking-widest text-slate-400">' + label + '</p>' +
+      '<p class="text-xl font-black text-slate-900 mt-1">' + paid.toFixed(0) + ' <span class="text-[10px] text-slate-400">/ ' + expected.toFixed(0) + ' €</span></p>' +
+      '<div class="w-full bg-slate-100 rounded-full h-1.5 mt-2"><div class="' + barColor + ' rounded-full h-1.5" style="width:' + Math.min(pct, 100) + '%"></div></div>' +
+      (outstanding > 0 ? '<p class="text-[9px] font-bold text-red-500 mt-1">Nedoplatok: ' + outstanding.toFixed(0) + ' €</p>' :
+       outstanding < 0 ? '<p class="text-[9px] font-bold text-green-600 mt-1">Preplatok: ' + Math.abs(outstanding).toFixed(0) + ' €</p>' :
+       '<p class="text-[9px] font-bold text-green-600 mt-1">Vyrovnané ✓</p>') +
+    '</div>';
+  }
+
+  var html = '<div class="flex flex-wrap gap-3">' +
+    card('Nájomné', rentPaid, rentExpected, 'indigo') +
+    card('Zálohy', advPaid, advExpected, 'blue') +
+    '<div class="bg-white rounded-2xl p-5 shadow-sm flex-1 min-w-[140px]">' +
+      '<p class="text-[8px] font-black uppercase tracking-widest text-slate-400">Náklady</p>' +
+      '<p class="text-xl font-black text-slate-900 mt-1">' + expTotal.toFixed(0) + ' €</p>' +
+      '<p class="text-[9px] text-slate-400 mt-2">' + expenses.length + ' položiek</p>' +
+    '</div>' +
+    (settlementTotal !== 0 ? '<div class="bg-white rounded-2xl p-5 shadow-sm flex-1 min-w-[140px]">' +
+      '<p class="text-[8px] font-black uppercase tracking-widest text-slate-400">Vyúčtovania</p>' +
+      '<p class="text-xl font-black text-orange-600 mt-1">' + settlementTotal.toFixed(0) + ' €</p>' +
+    '</div>' : '') +
+  '</div>';
+
+  // Per-tenant table
+  var tenantRows = tenants.map(function(t) {
+    var tPays = payments.filter(function(p) { return p.tenant_id === t.id; });
+    if (tPays.length === 0) return '';
+
+    var tRentExp = 0, tRentPaid = 0, tAdvExp = 0, tAdvPaid = 0, tSettle = 0;
+    tPays.forEach(function(p) {
+      var amt = parseFloat(p.amount) || 0;
+      if (p.type === 'rent') { tRentExp += amt; if (p.paid) tRentPaid += amt; }
+      else if (p.type === 'advance' || !p.type) { tAdvExp += amt; if (p.paid) tAdvPaid += amt; }
+      else if (p.type === 'settlement' && p.paid) tSettle += amt;
+    });
+
+    var tLabel = (t.company_name || t.name).replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?)$/i, '').trim();
+    var totalOwed = (tRentExp - tRentPaid) + (tAdvExp - tAdvPaid);
+    var statusCls = totalOwed > 0 ? 'text-red-500' : totalOwed < 0 ? 'text-green-600' : 'text-green-600';
+    var statusText = totalOwed > 0 ? '-' + totalOwed.toFixed(0) + ' €' : totalOwed < 0 ? '+' + Math.abs(totalOwed).toFixed(0) + ' €' : '✓';
+
+    var paidCount = tPays.filter(function(p) { return p.paid; }).length;
+    var totalCount = tPays.length;
+
+    return '<tr class="border-b border-slate-50">' +
+      '<td class="py-2 text-[10px] font-bold text-slate-700">' + tLabel + '</td>' +
+      '<td class="py-2 text-[10px] text-right text-slate-500">' + (tRentExp > 0 ? tRentPaid.toFixed(0) + '/' + tRentExp.toFixed(0) : '–') + '</td>' +
+      '<td class="py-2 text-[10px] text-right text-slate-500">' + (tAdvExp > 0 ? tAdvPaid.toFixed(0) + '/' + tAdvExp.toFixed(0) : '–') + '</td>' +
+      (tSettle ? '<td class="py-2 text-[10px] text-right text-orange-500 font-bold">' + tSettle.toFixed(0) + '</td>' : '<td class="py-2 text-center text-slate-200">–</td>') +
+      '<td class="py-2 text-[10px] text-right font-black ' + statusCls + '">' + statusText + '</td>' +
+      '<td class="py-2 text-[10px] text-right text-slate-400">' + paidCount + '/' + totalCount + '</td>' +
+    '</tr>';
+  }).filter(function(r) { return r; });
+
+  if (tenantRows.length > 0) {
+    html += '<div class="bg-white rounded-2xl p-5 shadow-sm">' +
+      '<table class="w-full"><thead><tr class="border-b-2 border-slate-200">' +
+      '<th class="text-left py-1 text-[8px] font-black text-slate-400 uppercase">Nájomca</th>' +
+      '<th class="text-right py-1 text-[8px] font-black text-slate-400 uppercase">Nájomné</th>' +
+      '<th class="text-right py-1 text-[8px] font-black text-slate-400 uppercase">Zálohy</th>' +
+      '<th class="text-right py-1 text-[8px] font-black text-slate-400 uppercase">Vyúčt.</th>' +
+      '<th class="text-right py-1 text-[8px] font-black text-slate-400 uppercase">Stav</th>' +
+      '<th class="text-right py-1 text-[8px] font-black text-slate-400 uppercase">Platby</th>' +
+      '</tr></thead><tbody>' + tenantRows.join('') + '</tbody></table></div>';
+  }
+
+  dashEl.innerHTML = html;
+};
+
+
 init();
   

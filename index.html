@@ -200,7 +200,11 @@
             <div id="v-fin" class="hidden max-w-6xl space-y-4 leading-tight">
                 <div class="flex justify-between items-center">
                     <h2 class="text-2xl font-black uppercase tracking-tighter" id="fin-title">Financie</h2>
+                    <select id="fin-dash-year" onchange="window.loadDashboard()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                 </div>
+
+                <!-- DASHBOARD -->
+                <div id="fin-dashboard" class="space-y-4"></div>
 
                 <!-- ZÓNY - METRAŽE -->
                 <div class="bg-white rounded-[2rem] shadow-sm">
