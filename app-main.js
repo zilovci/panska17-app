@@ -3082,6 +3082,15 @@ window.loadDashboard = async function() {
     else if (p.type === 'settlement') { if (p.paid) settlementTotal += amt; }
   });
 
+  // Add expected amounts for tenants without generated payments
+  tenants.forEach(function(t) {
+    var hasPays = payments.some(function(p) { return p.tenant_id === t.id; });
+    if (!hasPays) {
+      rentExpected += (t.monthly_rent || 0) * 12;
+      advExpected += (t.monthly_advance || 0) * 12;
+    }
+  });
+
   var expTotal = 0;
   expenses.forEach(function(e) { expTotal += parseFloat(e.amount) || 0; });
 
@@ -3119,7 +3128,7 @@ window.loadDashboard = async function() {
   // Per-tenant table
   var tenantRows = tenants.map(function(t) {
     var tPays = payments.filter(function(p) { return p.tenant_id === t.id; });
-    if (tPays.length === 0) return '';
+    if (tPays.length === 0 && !t.monthly_rent && !t.monthly_advance) return '';
 
     var tRentExp = 0, tRentPaid = 0, tAdvExp = 0, tAdvPaid = 0, tSettle = 0;
     tPays.forEach(function(p) {
@@ -3128,6 +3137,12 @@ window.loadDashboard = async function() {
       else if (p.type === 'advance' || !p.type) { tAdvExp += amt; if (p.paid) tAdvPaid += amt; }
       else if (p.type === 'settlement' && p.paid) tSettle += amt;
     });
+
+    // If no payments generated yet, show expected from tenant settings
+    if (tPays.length === 0) {
+      tRentExp = (t.monthly_rent || 0) * 12;
+      tAdvExp = (t.monthly_advance || 0) * 12;
+    }
 
     var tLabel = (t.company_name || t.name).replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?)$/i, '').trim();
     var totalOwed = (tRentExp - tRentPaid) + (tAdvExp - tAdvPaid);
