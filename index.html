@@ -200,13 +200,15 @@
             <div id="v-fin" class="hidden max-w-6xl space-y-4 leading-tight">
                 <div class="flex justify-between items-center">
                     <h2 class="text-2xl font-black uppercase tracking-tighter" id="fin-title">Financie</h2>
-                    <select id="fin-dash-year" onchange="window.loadDashboard()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
                 </div>
 
                 <!-- DASHBOARD -->
                 <div class="bg-white rounded-[2rem] shadow-sm">
                     <div class="flex justify-between items-center p-4 md:p-5 cursor-pointer" onclick="var b=document.getElementById('dashboard-body');var i=document.getElementById('dashboard-chevron');b.classList.toggle('hidden');i.classList.toggle('fa-chevron-down');i.classList.toggle('fa-chevron-up');">
                         <h3 class="font-black text-sm uppercase text-slate-400 tracking-widest"><i id="dashboard-chevron" class="fa-solid fa-chevron-up text-[10px] mr-2"></i>Prehľad</h3>
+                        <div onclick="event.stopPropagation()">
+                            <select id="fin-dash-year" onchange="window.loadDashboard()" class="border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold"></select>
+                        </div>
                     </div>
                     <div id="dashboard-body" class="px-4 md:px-5 pb-4 md:pb-5">
                         <div id="fin-dashboard" class="space-y-4"></div>
