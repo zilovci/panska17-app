@@ -611,6 +611,11 @@ async function loadReports() {
   });
 
   validIssues.sort(function(a,b) {
+    var floorA = a.locations ? a.locations.floor : '';
+    var floorB = b.locations ? b.locations.floor : '';
+    var floorOrdA = floorOrder[floorA] || 0;
+    var floorOrdB = floorOrder[floorB] || 0;
+    if (floorOrdA !== floorOrdB) return floorOrdA - floorOrdB;
     var nameA = a.locations ? a.locations.name : '';
     var nameB = b.locations ? b.locations.name : '';
     if (nameA !== nameB) return nameA.localeCompare(nameB, 'sk');
