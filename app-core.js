@@ -441,6 +441,15 @@ async function loadSections() {
   floors.forEach(floor => {
     const floorLocs = allLocs.filter(l => l.floor === floor);
     const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
+    // Sort by location sort_order, then by created_at within same location
+    floorIssues.sort(function(a, b) {
+      var locA = floorLocs.find(l => l.id === a.location_id);
+      var locB = floorLocs.find(l => l.id === b.location_id);
+      var sortA = locA ? (locA.sort_order || 0) : 999;
+      var sortB = locB ? (locB.sort_order || 0) : 999;
+      if (sortA !== sortB) return sortA - sortB;
+      return new Date(a.created_at) - new Date(b.created_at);
+    });
 
     const div = document.createElement('div');
     var isEmpty = floorIssues.length === 0;
@@ -467,7 +476,7 @@ async function loadSections() {
       const fLog = logs.length > 0 ? logs[0] : null;
 
       return `
-        <div class="flex justify-between items-start leading-tight">
+        <div id="issue-${i.id}" class="flex justify-between items-start leading-tight">
           <div class="flex-1 leading-tight">
             <p class="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">${i.locations?.name || '--'}</p>
             <p class="text-sm font-bold ${i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600' : 'text-slate-800'} leading-tight mb-1">${i.title}</p>
@@ -863,6 +872,8 @@ document.getElementById('f-add').onsubmit = async (e) => {
       pendingAddPhotos = [];
       window.addGalleryFile = null;
       await loadSections();
+      var newEl = document.getElementById('issue-' + data[0].id);
+      if (newEl) newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (err) {
     console.error(err);
@@ -946,6 +957,8 @@ document.getElementById('f-stat').onsubmit = async (e) => {
 
     await syncIssueStatusFromLastEvent(id);
     await loadSections();
+    var editedEl = document.getElementById('issue-' + id);
+    if (editedEl) editedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     window.prepStat(id);
 
   } catch (err) {
