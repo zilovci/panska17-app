@@ -610,7 +610,12 @@ async function loadReports() {
     return true;
   });
 
-  validIssues.sort(function(a,b) { return a.locations.sort_order - b.locations.sort_order; });
+  validIssues.sort(function(a,b) {
+    var nameA = a.locations ? a.locations.name : '';
+    var nameB = b.locations ? b.locations.name : '';
+    if (nameA !== nameB) return nameA.localeCompare(nameB, 'sk');
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
 
   list.innerHTML = validIssues.map(function(i) {
     var logs = updts.filter(function(u) { return u.issue_id === i.id; });
