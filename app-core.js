@@ -441,13 +441,13 @@ async function loadSections() {
   floors.forEach(floor => {
     const floorLocs = allLocs.filter(l => l.floor === floor);
     const floorIssues = allIssues.filter(i => floorLocs.some(l => l.id === i.location_id));
-    // Sort by location sort_order, then by created_at within same location
+    // Sort by location name (group same rooms together), then by created_at
     floorIssues.sort(function(a, b) {
       var locA = floorLocs.find(l => l.id === a.location_id);
       var locB = floorLocs.find(l => l.id === b.location_id);
-      var sortA = locA ? (locA.sort_order || 0) : 999;
-      var sortB = locB ? (locB.sort_order || 0) : 999;
-      if (sortA !== sortB) return sortA - sortB;
+      var nameA = locA ? locA.name : '';
+      var nameB = locB ? locB.name : '';
+      if (nameA !== nameB) return nameA.localeCompare(nameB, 'sk');
       return new Date(a.created_at) - new Date(b.created_at);
     });
 
