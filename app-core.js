@@ -62,13 +62,38 @@ document.getElementById('f-login').onsubmit = async (e) => {
 };
 
 // -------- Photos (orig + thumb) --------
+async function compressImage(file, maxDim = 99999, quality = 0.80) {
+  // Only recompress to lower JPEG quality, no resize (preserve detail for zooming)
+  if (!file.type.startsWith('image/')) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const w = bmp.width;
+    const h = bmp.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close();
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', quality));
+    // Only use compressed if it's actually smaller
+    if (blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+  } catch (e) {
+    console.warn('Compression failed, using original:', e);
+    return file;
+  }
+}
+
 async function uploadPhoto(file) {
   if (!file) return null;
-  const name = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-  const { error } = await sb.storage.from('photos').upload(name, file, { upsert: false });
+  const compressed = await compressImage(file);
+  const name = `${Date.now()}_${compressed.name.replace(/\s/g, '_')}`;
+  const { error } = await sb.storage.from('photos').upload(name, compressed, { upsert: false });
   if (error) return null;
   return `${S_URL}/storage/v1/object/public/photos/${name}`;
 }
+window.compressImage = compressImage;
 
 async function makeThumbnailBlobFromFile(file, maxW = 420, quality = 0.55) {
   const bmp = await createImageBitmap(file);

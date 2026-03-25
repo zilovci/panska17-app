@@ -4304,9 +4304,14 @@ if (expReceipt) expReceipt.addEventListener('change', function(e) {
 
 // Upload receipt to Supabase Storage
 async function uploadReceipt(file) {
-  var ext = file.name.split('.').pop();
+  // Compress images (skip PDFs)
+  var uploadFile = file;
+  if (file.type.startsWith('image/') && window.compressImage) {
+    uploadFile = await window.compressImage(file);
+  }
+  var ext = uploadFile.name.split('.').pop();
   var fileName = 'receipt_' + Date.now() + '.' + ext;
-  var { data, error } = await sb.storage.from('receipts').upload(fileName, file);
+  var { data, error } = await sb.storage.from('receipts').upload(fileName, uploadFile);
   if (error) { console.error('Upload error:', error); return null; }
   var { data: urlData } = sb.storage.from('receipts').getPublicUrl(fileName);
   return urlData.publicUrl;
