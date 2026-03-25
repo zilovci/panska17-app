@@ -10,7 +10,7 @@ const sb = supabase.createClient(S_URL, S_KEY);
 let allLocs = [], allIssues = [], allUpdates = [];
 
 // Lightbox for photos
-window.openLightbox = function(url) {
+window.open = function(url) {
   var lb = document.getElementById('lightbox');
   var img = document.getElementById('lightbox-img');
   img.src = url;
@@ -206,7 +206,7 @@ function renderPhotoGrid(containerId, photos, pending, opts) {
   // Existing photos from DB
   (photos || []).forEach(function(p) {
     html += '<div class="relative inline-block mr-1 mb-1">' +
-      '<img src="' + (p.photo_thumb_url || p.photo_url) + '" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer" onclick="window.openLightbox(\'' + p.photo_url + '\')">' +
+      '<img src="' + (p.photo_thumb_url || p.photo_url) + '" class="w-20 h-20 object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">' +
       (opts.canRemove !== false ? '<button type="button" onclick="window.removeExistingPhoto(\'' + containerId + '\', \'' + p.id + '\')" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center shadow-md hover:bg-red-600"><i class="fa-solid fa-xmark"></i></button>' : '') +
     '</div>';
   });
@@ -461,7 +461,7 @@ async function loadSections() {
         }));
       }
       const photos = issuePhotos
-        .map(l => `<img loading="lazy" decoding="async" src="${l.photo_thumb_url || l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.openLightbox('${l.photo_url}')">`)
+        .map(l => `<img loading="lazy" decoding="async" src="${l.photo_thumb_url || l.photo_url}" class="app-thumb" onclick="event.stopPropagation(); window.open('${l.photo_url}')">`)
         .join('');
 
       const fLog = logs.length > 0 ? logs[0] : null;
@@ -642,7 +642,7 @@ async function loadReports() {
                   uPhotos = [{ photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
                 }
                 return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-0.5 ml-2">' + uPhotos.map(function(p) {
-                  return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.openLightbox(\'' + p.photo_url + '\')">';
+                  return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">';
                 }).join('') + '</div>' : '';
               })() +
             '</div>';
@@ -748,7 +748,7 @@ window.prepStat = (id) => {
           uPhotos = [{ id: u.id, photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
         }
         return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-1 mt-2">' + uPhotos.map(p =>
-          `<img loading="lazy" decoding="async" src="${p.photo_thumb_url || p.photo_url}" class="history-thumb" onclick="window.openLightbox('${p.photo_url}')">`
+          `<img loading="lazy" decoding="async" src="${p.photo_thumb_url || p.photo_url}" class="history-thumb" onclick="window.open('${p.photo_url}')">`
         ).join('') + '</div>' : '';
       })()}
     </div>`;
