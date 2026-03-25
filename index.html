@@ -997,6 +997,12 @@
         </div>
     </div>
 
+    <!-- LIGHTBOX -->
+    <div id="lightbox" class="hidden fixed inset-0 bg-black/90 z-[999] flex items-center justify-center" onclick="this.classList.add('hidden')">
+        <img id="lightbox-img" class="max-w-[95vw] max-h-[95vh] object-contain rounded-lg">
+        <button class="absolute top-4 right-4 text-white text-3xl font-bold" onclick="document.getElementById('lightbox').classList.add('hidden')">&times;</button>
+    </div>
+
     <script src="app-core.js?v=20260305n"></script>
     <script src="app-finance.js?v=20260305n"></script>
     <script src="logo-data.js?v=20260305n"></script>
