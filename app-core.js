@@ -103,6 +103,16 @@ async function uploadPhoto(file) {
 }
 window.compressImage = compressImage;
 
+// Toast notification
+window.showToast = function(msg, duration) {
+  var t = document.getElementById('toast');
+  if (!t) return;
+  t.querySelector('div').innerText = msg || 'Uložené ✓';
+  t.classList.remove('hidden');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(function() { t.classList.add('hidden'); }, duration || 2000);
+};
+
 async function makeThumbnailBlobFromFile(file, maxW = 420, quality = 0.55) {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, maxW / bmp.width);
@@ -884,6 +894,7 @@ document.getElementById('f-add').onsubmit = async (e) => {
       await loadSections();
       var newEl = document.getElementById('issue-' + data[0].id);
       if (newEl) newEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.showToast('Pridané ✓');
     }
   } catch (err) {
     console.error(err);
@@ -969,6 +980,7 @@ document.getElementById('f-stat').onsubmit = async (e) => {
     await loadSections();
     var editedEl = document.getElementById('issue-' + id);
     if (editedEl) editedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.showToast('Uložené ✓');
     window.prepStat(id);
 
   } catch (err) {
@@ -984,6 +996,7 @@ window.archiveIssue = async () => {
     await sb.from('issues').update({ archived: true }).eq('id', document.getElementById('f-stat-id').value);
     hideM('m-status');
     await loadSections();
+    window.showToast('Archivované ✓');
   }
 };
 
@@ -999,6 +1012,7 @@ window.confirmDelete = async () => {
     await sb.from('issues').delete().eq('id', issueId);
     hideM('m-status');
     await loadSections();
+    window.showToast('Vymazané ✓');
   }
 };
 
