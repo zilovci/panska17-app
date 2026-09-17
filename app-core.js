@@ -568,6 +568,11 @@ async function loadReports() {
   var filterStatus = document.getElementById('rep-filter-status').value;
   var filterType = document.getElementById('rep-filter-type').value;
   var filterFloor = document.getElementById('rep-filter-floor').value;
+  var filterResp = document.getElementById('rep-filter-resp').value || 'all';
+  var filterKeyword = (document.getElementById('rep-filter-keyword').value || '').trim();
+  // Porovnávanie bez diakritiky a veľkosti písmen ("vymenit" nájde aj "Vymeniť")
+  var normTxt = function(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); };
+  var kwNorm = normTxt(filterKeyword);
 
   // Načítaj dáta
   var query = sb.from('issues').select('*, locations(*)');
@@ -610,6 +615,20 @@ async function loadReports() {
     return '<option value="' + f + '"' + (f === curFloor ? ' selected' : '') + '>' + f + '</option>';
   }).join('');
 
+  // Naplň dropdown zodpovedných - unikátne hodnoty zo záznamov
+  var respSel = document.getElementById('rep-filter-resp');
+  if (respSel) {
+    var curResp = respSel.value;
+    var resps = [];
+    isss.forEach(function(i) {
+      if (i.responsible_person && resps.indexOf(i.responsible_person) === -1) resps.push(i.responsible_person);
+    });
+    resps.sort(function(a, b) { return a.localeCompare(b, 'sk'); });
+    respSel.innerHTML = '<option value="all">Všetci</option>' + resps.map(function(r) {
+      return '<option value="' + r.replace(/"/g, '&quot;') + '"' + (r === curResp ? ' selected' : '') + '>' + r + '</option>';
+    }).join('');
+  }
+
   var validIssues = isss.filter(function(i) {
     if (!i.locations) return false;
     // Filter podlažie
@@ -617,6 +636,8 @@ async function loadReports() {
     // Filter stav
     if (filterStatus === 'done' && i.status !== 'Opravené' && i.status !== 'Vybavené') return false;
     if (filterStatus === 'active' && (i.status === 'Opravené' || i.status === 'Vybavené')) return false;
+    // Filter zodpovedný
+    if (filterResp !== 'all' && (i.responsible_person || '') !== filterResp) return false;
     return true;
   });
 
@@ -645,6 +666,13 @@ async function loadReports() {
         return true;
       });
       if (logs.length === 0) return '';
+    }
+
+    // Filter kľúčové slovo v poznámke - záznam sa zobrazí, ak aspoň jedna poznámka
+    // (v rámci dátumového rozsahu) obsahuje hľadané slovo; timeline ostáva celý
+    if (kwNorm) {
+      var hasKw = logs.some(function(u) { return normTxt(u.note).indexOf(kwNorm) !== -1; });
+      if (!hasKw) return '';
     }
 
     return '<tr class="rep-row leading-snug">' +
@@ -682,7 +710,22 @@ async function loadReports() {
         '<span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ' + (i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50') + '">' + i.status + '</span>' +
       '</td>' +
     '</tr>';
-  }).join('');
+  }).join('') || '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy pre zvolené filtre</td></tr>';
+
+  // Info o aktívnych filtroch v hlavičke reportu (zobrazí sa aj v tlači)
+  var infoEl = document.getElementById('rep-filter-info');
+  if (infoEl) {
+    var infoParts = [];
+    if (filterResp !== 'all') infoParts.push('Zodpovedný: ' + filterResp);
+    if (filterKeyword) infoParts.push('Kľúčové slovo: „' + filterKeyword + '“');
+    if (infoParts.length > 0) {
+      infoEl.innerText = 'Filter — ' + infoParts.join(' • ');
+      infoEl.classList.remove('hidden');
+    } else {
+      infoEl.classList.add('hidden');
+      infoEl.innerText = '';
+    }
+  }
 }
 
 window.prepAdd = (fN) => {
