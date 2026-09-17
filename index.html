@@ -11,7 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="qrcode-bundle.js"></script>
     <script src="roboto-font.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260917b">
+    <link rel="stylesheet" href="style.css?v=20260917c">
 </head>
 <body>
 <!-- MOBILNÁ LIŠTA S HARMONIKOU -->
@@ -195,13 +195,17 @@
                 </div>
                 <div class="bg-white p-6 md:p-10 rounded-[2.5rem] shadow-sm print-card">
                     <div class="mb-4 flex justify-between items-end">
-                        <h3 class="text-xl font-black text-slate-900">Správa o údržbe a opravách — Panská 17</h3>
+                        <div>
+                            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Panská 17, Bratislava</p>
+                            <h3 class="text-xl font-black text-slate-900">Správa o údržbe a opravách</h3>
+                        </div>
                         <span class="text-[12px] font-bold text-slate-400" id="rep-date-screen"></span>
                     </div>
                     <p id="rep-filter-info" class="hidden text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4"></p>
                     <table class="report-table">
                         <thead><tr class=""><th>Podlažie / Miestnosť</th><th>Timeline & Fotodokumentácia</th><th class="text-center">Stav</th></tr></thead>
                         <tbody id="rep-list"></tbody>
+                        <tfoot class="report-footer"><tr><td colspan="3">Panská 17, Bratislava — Správa o údržbe a opravách</td></tr></tfoot>
                     </table>
                 </div>
             </div>
