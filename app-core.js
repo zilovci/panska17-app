@@ -707,7 +707,7 @@ async function loadReports() {
         '</div>' +
       '</td>' +
       '<td class="py-5 px-1 align-top text-center">' +
-        '<span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase ' + (i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50') + '">' + i.status + '</span>' +
+        '<span class="text-[7px] font-black px-1.5 py-0.5 rounded uppercase whitespace-nowrap ' + (i.status === 'Opravené' || i.status === 'Vybavené' ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50') + '">' + i.status + '</span>' +
       '</td>' +
     '</tr>';
   }).join('') || '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy pre zvolené filtre</td></tr>';
