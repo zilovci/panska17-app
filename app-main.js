@@ -3055,7 +3055,12 @@ window.printReport = async () => {
   // čakaj na obrázky v samotnom liste
   await waitForImages('#rep-list', 25000);
 
+  // Názov dokumentu pre tlač - použije sa ako názov PDF súboru
+  // aj v pätičke prehliadača (ak sú zapnuté "Hlavičky a pätičky" s číslom strany)
+  var prevTitle = document.title;
+  document.title = 'Panská 17, Bratislava — Správa o údržbe a opravách';
   window.print();
+  document.title = prevTitle;
 };
 
 

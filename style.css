@@ -67,9 +67,12 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
 /* Stav v reporte - nezalamovať badge do dvoch riadkov */
 .report-table td:last-child { white-space: nowrap; }
 
-/* Footer reportu - len pri tlaci, opakuje sa na kazdej strane */
-.report-footer { display: none; }
+/* Footer reportu - pripnuty uplne dole na kazdej tlacenej strane */
+.report-footer, .report-print-footer { display: none; }
 @media print {
+  /* neviditelny spacer v tabulke - rezervuje miesto, aby obsah nesiel az pod paticku */
   .report-footer { display: table-footer-group; }
-  .report-footer td { border: none !important; padding: 10px 0 0 0 !important; font-size: 7px; font-weight: 700; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 0.1em; }
+  .report-footer td { border: none !important; height: 26px; padding: 0 !important; }
+  /* samotna paticka - fixed sa pri tlaci opakuje na spodku kazdej strany */
+  .report-print-footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 7px; font-weight: 700; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 0.1em; }
 }
