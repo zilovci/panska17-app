@@ -506,7 +506,205 @@ async function loadSections() {
             <h3 class="font-black text-sm uppercase text-slate-300 leading-tight">${floor}</h3>
             <span class="text-[9px] text-slate-200 font-bold uppercase">OK</span>
           </div>
-          ${canAdd() ? `<button onclick="window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>` : ''}
+          ${canAdd() ? `<button onclick="// ============ PDF EXPORT REPORTU (s číslami strán) ============
+async function repFetchImage(url, cache) {
+  if (url in cache) return cache[url];
+  try {
+    var resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var blob = await resp.blob();
+    var dataUrl = await new Promise(function(res, rej) {
+      var r = new FileReader();
+      r.onload = function() { res(r.result); };
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    cache[url] = dataUrl;
+    return dataUrl;
+  } catch (e) { console.warn('Foto sa nepodarilo načítať:', url, e); cache[url] = null; return null; }
+}
+
+window.downloadReportPDF = async function() {
+  var btn = document.getElementById('btn-rep-pdf');
+  if (btn) { btn.disabled = true; btn.innerText = 'Generujem...'; }
+  try {
+    if (!window.__reportRows) await loadReports();
+    var rows = window.__reportRows || [];
+    var filterParts = window.__reportFilterParts || [];
+
+    var { jsPDF } = window.jspdf;
+    var doc = new jsPDF('p', 'mm', 'a4');
+    if (typeof registerRobotoFont === 'function') registerRobotoFont(doc);
+    doc.setFont('Roboto');
+
+    var ML = 15, MR = 15, MT = 15, MB = 18;
+    var PW = 210, PH = 297;
+    var CW = PW - ML - MR;
+    var C1X = ML, C1W = 34;
+    var C2X = ML + 38, C2W = 104;
+    var C3X = ML + 146, C3W = 34;
+    var BOTTOM = PH - MB;
+    var y = MT;
+
+    var COL_DARK = [15, 23, 42], COL_LIGHT = [148, 163, 184], COL_NOTE = [51, 65, 85],
+        COL_GREEN = [22, 163, 74], COL_RED = [239, 68, 68], COL_LINE = [226, 232, 240];
+
+    function tableHead() {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(ML, y, CW, 7, 'F');
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(7);
+      doc.setTextColor(COL_DARK[0], COL_DARK[1], COL_DARK[2]);
+      doc.text('PODLAŽIE / MIESTNOSŤ', C1X + 2, y + 4.7);
+      doc.text('TIMELINE & FOTODOKUMENTÁCIA', C2X + 2, y + 4.7);
+      doc.text('STAV', C3X + C3W - 2, y + 4.7, { align: 'right' });
+      y += 9;
+    }
+
+    function newPage() { doc.addPage(); y = MT; tableHead(); }
+    function ensureSpace(h) { if (y + h > BOTTOM) newPage(); }
+
+    // Hlavička dokumentu (strana 1)
+    doc.setFont('Roboto', 'bold'); doc.setFontSize(7);
+    doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+    doc.text('PANSKÁ 17, BRATISLAVA', ML, y);
+    y += 6.5;
+    doc.setFontSize(15); doc.setTextColor(COL_DARK[0], COL_DARK[1], COL_DARK[2]);
+    doc.text('Správa o údržbe a opravách', ML, y);
+    doc.setFont('Roboto', 'normal'); doc.setFontSize(9);
+    doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+    doc.text(new Date().toLocaleDateString('sk-SK'), PW - MR, y, { align: 'right' });
+    y += 4;
+    if (filterParts.length > 0) {
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(7);
+      doc.text('FILTER — ' + filterParts.join(' • ').toUpperCase(), ML, y + 3);
+      y += 5;
+    }
+    y += 3;
+    tableHead();
+
+    var imgCache = {};
+
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var i = row.issue;
+      ensureSpace(16);
+      var pagesAtRowStart = doc.getNumberOfPages();
+
+      // Stĺpec 1 - podlažie, miestnosť, zodpovedný
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(6);
+      doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+      doc.text(String(i.locations ? i.locations.floor : '--').toUpperCase(), C1X, y + 3);
+      doc.setFontSize(8.5); doc.setTextColor(COL_DARK[0], COL_DARK[1], COL_DARK[2]);
+      var locLines = doc.splitTextToSize(i.locations ? (i.locations.name || '--') : '--', C1W);
+      doc.text(locLines, C1X, y + 7);
+      var c1y = y + 7 + locLines.length * 3.6;
+      doc.setFontSize(6); doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+      var respLines = doc.splitTextToSize('ZODPOVEDÁ: ' + String(i.responsible_person || '--').toUpperCase(), C1W);
+      doc.text(respLines, C1X, c1y + 1.5);
+      c1y += 1.5 + respLines.length * 2.8;
+
+      // Stĺpec 3 - stav
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(7);
+      var done = (i.status === 'Opravené' || i.status === 'Vybavené');
+      var stCol = done ? COL_GREEN : COL_RED;
+      doc.setTextColor(stCol[0], stCol[1], stCol[2]);
+      doc.text(String(i.status || '').toUpperCase(), C3X + C3W, y + 3, { align: 'right' });
+
+      // Stĺpec 2 - titulok záznamu
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(9);
+      doc.setTextColor(COL_DARK[0], COL_DARK[1], COL_DARK[2]);
+      var titleLines = doc.splitTextToSize(i.title || '', C2W);
+      doc.text(titleLines, C2X, y + 3.5);
+      y += 3.5 + titleLines.length * 4 + 1.5;
+
+      // Timeline
+      for (var li = 0; li < row.logs.length; li++) {
+        var lp = row.logs[li];
+        var u = lp.u;
+        var noteLines = doc.splitTextToSize(u.note || '--', C2W);
+        var photoRowsCnt = lp.photos.length > 0 ? Math.ceil(lp.photos.length / 5) : 0;
+        var blockH = 5 + noteLines.length * 3.4 + (photoRowsCnt > 0 ? 1 + photoRowsCnt * 18 : 1.5);
+        // Ak sa celý update nezmestí a nie je väčší než strana, začni ho na novej strane
+        if (y + blockH > BOTTOM && blockH < (BOTTOM - MT - 12)) newPage();
+
+        doc.setFont('Roboto', 'bold'); doc.setFontSize(6);
+        doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+        var dTxt = fmtD(u.event_date) + '   ';
+        doc.text(dTxt, C2X, y + 2.5);
+        var dW = doc.getTextWidth(dTxt);
+        var uDone = (u.status_to === 'Opravené' || u.status_to === 'Vybavené');
+        var uCol = uDone ? COL_GREEN : COL_LIGHT;
+        doc.setTextColor(uCol[0], uCol[1], uCol[2]);
+        doc.text(String(u.status_to || '').toUpperCase(), C2X + dW, y + 2.5);
+        y += 5;
+
+        doc.setFont('Roboto', 'normal'); doc.setFontSize(8);
+        doc.setTextColor(COL_NOTE[0], COL_NOTE[1], COL_NOTE[2]);
+        doc.text(noteLines, C2X, y);
+        y += noteLines.length * 3.4;
+
+        // Fotky 16x16 mm, 5 na riadok
+        if (lp.photos.length > 0) {
+          y += 1;
+          var px = C2X;
+          for (var pi = 0; pi < lp.photos.length; pi++) {
+            if (px + 16 > C2X + C2W + 0.1) { px = C2X; y += 18; }
+            if (y + 16 > BOTTOM) { newPage(); px = C2X; }
+            var p = lp.photos[pi];
+            var dataUrl = await repFetchImage(p.photo_thumb_url || p.photo_url, imgCache);
+            if (dataUrl) {
+              try { doc.addImage(dataUrl, 'JPEG', px, y, 16, 16); }
+              catch (e1) { try { doc.addImage(dataUrl, 'PNG', px, y, 16, 16); } catch (e2) {} }
+              px += 18;
+            }
+          }
+          y += 18;
+        } else {
+          y += 1.5;
+        }
+      }
+
+      // Stĺpec 1 môže byť vyšší než timeline (len ak sme na tej istej strane)
+      if (doc.getNumberOfPages() === pagesAtRowStart && c1y > y) y = c1y;
+
+      // Oddeľovacia čiara medzi záznamami
+      y += 2;
+      if (y < BOTTOM) {
+        doc.setDrawColor(COL_LINE[0], COL_LINE[1], COL_LINE[2]);
+        doc.setLineWidth(0.2);
+        doc.line(ML, y, PW - MR, y);
+        y += 4;
+      } else if (r < rows.length - 1) {
+        newPage();
+      }
+    }
+
+    if (rows.length === 0) {
+      doc.setFont('Roboto', 'normal'); doc.setFontSize(9);
+      doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+      doc.text('Žiadne záznamy pre zvolené filtre', PW / 2, y + 10, { align: 'center' });
+    }
+
+    // Pätička s číslom strany na každej strane
+    var total = doc.getNumberOfPages();
+    for (var pg = 1; pg <= total; pg++) {
+      doc.setPage(pg);
+      doc.setFont('Roboto', 'bold'); doc.setFontSize(6);
+      doc.setTextColor(COL_LIGHT[0], COL_LIGHT[1], COL_LIGHT[2]);
+      doc.text('PANSKÁ 17, BRATISLAVA — SPRÁVA O ÚDRŽBE A OPRAVÁCH', ML, PH - 8);
+      doc.text('Strana ' + pg + ' z ' + total, PW - MR, PH - 8, { align: 'right' });
+    }
+
+    doc.save('Sprava-o-udrzbe-Panska17-' + new Date().toISOString().split('T')[0] + '.pdf');
+  } catch (err) {
+    console.error('downloadReportPDF error:', err);
+    alert('Chyba pri generovaní PDF: ' + (err && err.message ? err.message : err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = 'Stiahnuť PDF'; }
+  }
+};
+
+window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>` : ''}
         </div>
       `;
     } else {
@@ -653,7 +851,9 @@ async function loadReports() {
     return new Date(a.created_at) - new Date(b.created_at);
   });
 
-  list.innerHTML = validIssues.map(function(i) {
+  // Zostav riadky reportu (záznam + filtrované logy + fotky) - používa ich HTML render aj PDF export
+  var reportRows = [];
+  validIssues.forEach(function(i) {
     var logs = updts.filter(function(u) { return u.issue_id === i.id; });
 
     // Filter dátumový rozsah na update úrovni
@@ -665,16 +865,37 @@ async function loadReports() {
         if (dateTo && ed > dateTo) return false;
         return true;
       });
-      if (logs.length === 0) return '';
+      if (logs.length === 0) return;
     }
 
     // Filter kľúčové slovo v poznámke - záznam sa zobrazí, ak aspoň jedna poznámka
     // (v rámci dátumového rozsahu) obsahuje hľadané slovo; timeline ostáva celý
     if (kwNorm) {
       var hasKw = logs.some(function(u) { return normTxt(u.note).indexOf(kwNorm) !== -1; });
-      if (!hasKw) return '';
+      if (!hasKw) return;
     }
 
+    var logsWithPhotos = logs.map(function(u) {
+      var uPhotos = repPhotos.filter(function(p) { return p.issue_update_id === u.id; });
+      if (uPhotos.length === 0 && u.photo_url) {
+        uPhotos = [{ photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
+      }
+      return { u: u, photos: uPhotos };
+    });
+    reportRows.push({ issue: i, logs: logsWithPhotos });
+  });
+
+  // Info o aktívnych filtroch
+  var infoParts = [];
+  if (filterResp !== 'all') infoParts.push('Zodpovedný: ' + filterResp);
+  if (filterKeyword) infoParts.push('Kľúčové slovo: „' + filterKeyword + '“');
+
+  // Ulož pre PDF export
+  window.__reportRows = reportRows;
+  window.__reportFilterParts = infoParts;
+
+  list.innerHTML = reportRows.map(function(row) {
+    var i = row.issue;
     return '<tr class="rep-row leading-snug">' +
       '<td class="py-5 px-2 align-top border-r border-slate-50">' +
         '<span class="block font-black text-slate-400 uppercase text-[7px]">' + (i.locations ? i.locations.floor : '--') + '</span>' +
@@ -684,7 +905,8 @@ async function loadReports() {
       '<td class="py-5 px-3 align-top leading-snug">' +
         '<p class="font-bold text-slate-900 mb-3">' + i.title + '</p>' +
         '<div class="space-y-4">' +
-          logs.map(function(u) {
+          row.logs.map(function(lp) {
+            var u = lp.u;
             return '<div class="flex justify-between items-start space-x-2 pb-1">' +
               '<div class="flex-1">' +
                 '<div class="flex items-center space-x-2 mb-1">' +
@@ -693,15 +915,9 @@ async function loadReports() {
                 '</div>' +
                 '<p class="text-[9px] text-slate-700 leading-snug">' + (u.note || '--') + '</p>' +
               '</div>' +
-              (function() {
-                var uPhotos = repPhotos.filter(function(p) { return p.issue_update_id === u.id; });
-                if (uPhotos.length === 0 && u.photo_url) {
-                  uPhotos = [{ photo_url: u.photo_url, photo_thumb_url: u.photo_thumb_url }];
-                }
-                return uPhotos.length > 0 ? '<div class="flex flex-wrap gap-0.5 ml-2">' + uPhotos.map(function(p) {
-                  return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">';
-                }).join('') + '</div>' : '';
-              })() +
+              (lp.photos.length > 0 ? '<div class="flex flex-wrap gap-0.5 ml-2">' + lp.photos.map(function(p) {
+                return '<img loading="eager" decoding="async" src="' + (p.photo_thumb_url || p.photo_url) + '" class="report-thumb cursor-pointer" onclick="window.open(\'' + p.photo_url + '\')">';
+              }).join('') + '</div>' : '') +
             '</div>';
           }).join('') +
         '</div>' +
@@ -715,9 +931,6 @@ async function loadReports() {
   // Info o aktívnych filtroch v hlavičke reportu (zobrazí sa aj v tlači)
   var infoEl = document.getElementById('rep-filter-info');
   if (infoEl) {
-    var infoParts = [];
-    if (filterResp !== 'all') infoParts.push('Zodpovedný: ' + filterResp);
-    if (filterKeyword) infoParts.push('Kľúčové slovo: „' + filterKeyword + '“');
     if (infoParts.length > 0) {
       infoEl.innerText = 'Filter — ' + infoParts.join(' • ');
       infoEl.classList.remove('hidden');
