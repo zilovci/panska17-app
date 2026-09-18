@@ -35,8 +35,8 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
   /* zrušiť medzeru nad kartou reportu (po skrytom paneli filtrov) */
   #v-rep > * { margin-top: 0 !important; }
   /* kompaktnejšia hlavička a riadky pri tlači */
-  .print-card .mb-4 { margin-bottom: 6px !important; }
-  .report-table th { padding: 6px 8px !important; }
+  .print-card .mb-4 { margin-bottom: 12px !important; }
+  .report-table th { padding: 8px !important; }
   .report-table td { padding-top: 8px !important; padding-bottom: 8px !important; }
   /* tvrdo zrušiť akýkoľvek “app header” pri tlači */
   #mobile-nav,
