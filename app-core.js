@@ -524,10 +524,7 @@ async function repFetchImage(url, cache) {
   } catch (e) { console.warn('Foto sa nepodarilo načítať:', url, e); cache[url] = null; return null; }
 }
 
-window.downloadReportPDF = async function() {
-  var btn = document.getElementById('btn-rep-pdf');
-  if (btn) { btn.disabled = true; btn.innerText = 'Generujem...'; }
-  try {
+window.buildReportPDF = async function() {
     if (!window.__reportRows) await loadReports();
     var rows = window.__reportRows || [];
     var filterParts = window.__reportFilterParts || [];
@@ -695,13 +692,7 @@ window.downloadReportPDF = async function() {
       doc.text('Strana ' + pg + ' z ' + total, PW - MR, PH - 8, { align: 'right' });
     }
 
-    doc.save('Sprava-o-udrzbe-Panska17-' + new Date().toISOString().split('T')[0] + '.pdf');
-  } catch (err) {
-    console.error('downloadReportPDF error:', err);
-    alert('Chyba pri generovaní PDF: ' + (err && err.message ? err.message : err));
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerText = 'Stiahnuť PDF'; }
-  }
+    return doc;
 };
 
 window.prepAdd('${floor}')" class="bg-slate-900 text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none">+ Pridať</button>` : ''}

@@ -3049,18 +3049,27 @@ async function waitForImages(rootSelector = '#v-rep', timeoutMs = 20000) {
 }
 
 window.printReport = async () => {
-  await switchView('rep');
-  await new Promise(r => setTimeout(r, 50)); // stačí menej
-
-  // čakaj na obrázky v samotnom liste
-  await waitForImages('#rep-list', 25000);
-
-  // Názov dokumentu pre tlač - použije sa ako názov PDF súboru
-  // aj v pätičke prehliadača (ak sú zapnuté "Hlavičky a pätičky" s číslom strany)
-  var prevTitle = document.title;
-  document.title = 'Panská 17, Bratislava — Správa o údržbe a opravách';
-  window.print();
-  document.title = prevTitle;
+  // Okno treba otvoriť synchrónne (inak ho prehliadač zablokuje ako popup),
+  // PDF sa doň načíta po vygenerovaní
+  var w = window.open('', '_blank');
+  if (w) {
+    w.document.write('<title>Správa o údržbe a opravách — Panská 17</title>' +
+      '<body style="font-family:sans-serif;color:#64748b;padding:40px">Generujem PDF report...</body>');
+  }
+  var btn = document.getElementById('btn-rep-pdf');
+  if (btn) { btn.disabled = true; btn.innerText = 'Generujem...'; }
+  try {
+    var doc = await buildReportPDF();
+    var url = doc.output('bloburl');
+    if (w) w.location.href = url;
+    else window.open(url, '_blank');
+  } catch (err) {
+    console.error('printReport error:', err);
+    if (w) w.close();
+    alert('Chyba pri generovaní PDF: ' + (err && err.message ? err.message : err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = 'Tlačiť / PDF'; }
+  }
 };
 
 
