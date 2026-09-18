@@ -730,17 +730,9 @@ async function loadReports() {
     '</tr>';
   }).join('') || '<tr><td colspan="3" class="text-center py-10 text-slate-300 text-[10px] font-bold uppercase">Žiadne záznamy pre zvolené filtre</td></tr>';
 
-  // Info o aktívnych filtroch v hlavičke reportu (zobrazí sa aj v tlači)
-  var infoEl = document.getElementById('rep-filter-info');
-  if (infoEl) {
-    if (infoParts.length > 0) {
-      infoEl.innerText = 'Filter — ' + infoParts.join(' • ');
-      infoEl.classList.remove('hidden');
-    } else {
-      infoEl.classList.add('hidden');
-      infoEl.innerText = '';
-    }
-  }
+  // Kľúčové slovo nenápadne v nadpise: "Správa o údržbe a opravách (maliar)"
+  var kwEl = document.getElementById('rep-kw-suffix');
+  if (kwEl) kwEl.innerText = filterKeyword ? ' (' + filterKeyword + ')' : '';
 }
 
 // ============ PDF EXPORT REPORTU (s číslami strán) ============
