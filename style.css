@@ -31,7 +31,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
 
 @media print {
   /* menšie okraje strany - viac obsahu na stranu (dole nechávame miesto na pätičku) */
-  @page { margin: 10mm 10mm 13mm 10mm; }
+  @page { margin: 10mm; }
   /* zrušiť medzeru nad kartou reportu (po skrytom paneli filtrov) */
   #v-rep > * { margin-top: 0 !important; }
   /* kompaktnejšia hlavička a riadky pri tlači */
@@ -80,7 +80,7 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; font-style: normal; }
 @media print {
   /* neviditelny spacer v tabulke - rezervuje miesto, aby obsah nesiel az pod paticku */
   .report-footer { display: table-footer-group; }
-  .report-footer td { border: none !important; height: 26px; padding: 0 !important; }
+  .report-footer td { border: none !important; height: 16px; padding: 0 !important; }
   /* samotna paticka - fixed sa pri tlaci opakuje na spodku kazdej strany */
   .report-print-footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; font-size: 7px; font-weight: 700; color: #94a3b8; text-align: center; text-transform: uppercase; letter-spacing: 0.1em; }
 }
