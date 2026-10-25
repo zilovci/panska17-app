@@ -1486,7 +1486,7 @@ window.generateInvoice = async function(existingInvoice) {
       var bArea = parseFloat(zone.billing_area_m2) || parseFloat(zone.area_m2) || 0;
       var slice = (parseFloat(e.amount) || 0) / e.amort_years;
       var recalc = slice * (bArea * Math.min(invoiceMonths, 12) / 12) / heatPoolWeighted;
-      a.amount = parseFloat(recalc.toFixed(4));
+      a.amount = parseFloat(recalc.toFixed(2));
       a._amortRecalc = true;
     });
   }
@@ -1546,7 +1546,7 @@ window.generateInvoice = async function(existingInvoice) {
     });
 
     // Tenant's share of redirected kotolňa media: area share × time share of the billing period
-    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * (totalArea * Math.min(invoiceMonths, 12) / 12) / _totalHeatedArea).toFixed(4)) : 0;
+    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * (totalArea * Math.min(invoiceMonths, 12) / 12) / _totalHeatedArea).toFixed(2)) : 0;
     byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
   }
 
@@ -1633,11 +1633,7 @@ window.generateInvoice = async function(existingInvoice) {
   }
 
   var catNames = Object.keys(byCatBase).sort();
-  // Printed category totals are rounded to cents; the SPOLU row (and everything
-  // derived from it: balance, invoice record) must be the sum of those PRINTED
-  // values, so the column always adds up exactly for a reader.
-  var totalCosts = catNames.reduce(function(s, c) { return s + Math.round(byCatBase[c].amount * 100) / 100; }, 0);
-  totalCosts = Math.round(totalCosts * 100) / 100;
+  var totalCosts = catNames.reduce(function(s, c) { return s + byCatBase[c].amount; }, 0);
 
   // (allBuildingAllocs removed - detail pages now show only tenant's own data)
 
