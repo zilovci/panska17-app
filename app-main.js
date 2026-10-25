@@ -2331,6 +2331,12 @@ window.generateInvoice = async function(existingInvoice) {
       // Weighted pool computed once above (time + tempering weighted)
       var totalHeatedArea = heatPoolWeighted;
 
+      // Round the building total to cents BEFORE it is printed and before the
+      // unit price is derived from it, so a reader recomputing
+      // "Celkom / plocha / mesiace" from the printed figures gets the printed
+      // unit price to the last digit.
+      heatingTotal = Math.round(heatingTotal * 100) / 100;
+
       var hRows = [];
       if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy (vážená)'), '', totalHeatedArea.toFixed(2) + ' m2']);
 
@@ -2456,6 +2462,10 @@ window.generateInvoice = async function(existingInvoice) {
           totalProtectedArea += parseFloat(ea.zones && ea.zones.billing_area_m2 || ea.zones && ea.zones.area_m2 || 0);
         });
       }
+
+      // Same rounding rule as heating: printed unit price must be derivable
+      // from the printed building total.
+      epsBuildingTotal = Math.round(epsBuildingTotal * 100) / 100;
 
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), '', totalProtectedArea.toFixed(2) + ' m2']);
