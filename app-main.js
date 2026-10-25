@@ -1434,10 +1434,17 @@ window.generateInvoice = async function(existingInvoice) {
   // --- Weighted heating pool for this billing period (computed once, reused for
   //     the printed area, the unit price, redirected kotolňa shares and the
   //     reallocation of amortization instalments) ---
+  // Months of the billing period, parsed from the date STRINGS (YYYY-MM-DD).
+  // Never via new Date(): ISO strings parse as UTC but getMonth() reads local
+  // time, which shifts "2023-11-01" into October in western timezones and
+  // made a 2-month period count as 3.
   var invoiceMonths = 1;
   {
-    var _ivF = new Date(dateFrom), _ivT = new Date(dateTo);
-    invoiceMonths = Math.max(1, (_ivT.getFullYear() - _ivF.getFullYear()) * 12 + (_ivT.getMonth() - _ivF.getMonth()) + 1);
+    var _ivFy = parseInt((dateFrom || '').substring(0, 4), 10), _ivFm = parseInt((dateFrom || '').substring(5, 7), 10);
+    var _ivTy = parseInt((dateTo || '').substring(0, 4), 10), _ivTm = parseInt((dateTo || '').substring(5, 7), 10);
+    if (!isNaN(_ivFy) && !isNaN(_ivTy)) {
+      invoiceMonths = Math.max(1, (_ivTy - _ivFy) * 12 + (_ivTm - _ivFm) + 1);
+    }
   }
   var heatPoolWeighted = 0;
   {
@@ -2365,30 +2372,7 @@ window.generateInvoice = async function(existingInvoice) {
         hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / heatExpMonths).toFixed(6) + ' EUR']);
       }
 
-      // Per-item breakdown: building cost of the period → tenant share.
-      // Every row is independently verifiable; amortized investments are shown
-      // as their yearly instalment.
-      var _tenShareByExp = {};
-      byCatBase['Vykurovanie'].items.forEach(function(a) {
-        if (!a.expenses) return;
-        _tenShareByExp[a.expenses.id] = (_tenShareByExp[a.expenses.id] || 0) + (parseFloat(a.amount) || 0);
-      });
-      hRows.push(['', '', '']);
-      hRows.push([{content: stripDia('Rozpis položiek (náklad budovy za obdobie → Váš podiel):'), styles: {fontStyle: 'bold'}}, '', '']);
-      heatingInputs.forEach(function(h) {
-        var lbl = (h.desc || '').substring(0, 42);
-        if (h.supplier) lbl += ' (' + h.supplier.substring(0, 16) + ')';
-        if (h.isAmort) lbl += ' - splátka amortizácie, ' + h.amortYears + ' r.';
-        hRows.push([stripDia('  ' + lbl), fmtEur(h.amount) + ' EUR', fmtEur(_tenShareByExp[h.expId] || 0) + ' EUR']);
-      });
-      ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(gKey) {
-        heatGroups[gKey].items.forEach(function(it) {
-          if (!it.isRedirected) return;
-          var tShare = totalHeatedArea > 0 ? it.amount * (totalArea * Math.min(invoiceMonths, 12) / 12) / totalHeatedArea : 0;
-          hRows.push([stripDia('  ' + (it.desc || '').substring(0, 42)), fmtEur(it.amount) + ' EUR', fmtEur(tShare) + ' EUR']);
-        });
-      });
-      hRows.push([{content: stripDia('Vykurovaná plocha je vážená: obsadené priestory sa počítajú plnou plochou podľa počtu mesiacov užívania, neobsadené priestory temperovaním (tempering % z plochy). Amortizované investície vstupujú ročnou splátkou (cena / roky amortizácie) rozpočítanou váhami daného roka.'), colSpan: 3, styles: {fontSize: 6.5, textColor: [120, 120, 120]}}]);
+      hRows.push([{content: stripDia('Vykurovaná plocha je vážená: obsadené priestory sa počítajú plnou plochou podľa počtu mesiacov užívania, neobsadené priestory temperovaním (tempering % z plochy). Amortizované investície do vykurovacej sústavy vstupujú ročnou splátkou (cena / roky amortizácie) rozpočítanou váhami daného roka; sú súčasťou položky „Kurič, revízie a údržba".'), colSpan: 3, styles: {fontSize: 6.5, textColor: [120, 120, 120]}}]);
 
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
