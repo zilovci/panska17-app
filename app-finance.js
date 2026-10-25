@@ -2163,7 +2163,7 @@ window.recalcAllExpenses = async function(dryRun) {
           newAllocs.push({
             expense_id: e.id, zone_id: z.id,
             percentage: parseFloat(combinedPct.toFixed(4)),
-            amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(2)),
+            amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(4)),
             payer: 'owner',
             months_occupied: z.monthsOcc, months_total: totalMonths,
             tempering_used: isHeating ? z.temper : null,
@@ -2176,7 +2176,7 @@ window.recalcAllExpenses = async function(dryRun) {
           newAllocs.push({
             expense_id: e.id, zone_id: z.id,
             percentage: parseFloat(tenantPct.toFixed(4)),
-            amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(2)),
+            amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(4)),
             payer: z.payer,
             months_occupied: z.monthsOcc, months_total: totalMonths,
             tempering_used: isHeating ? z.temper : null,
@@ -2186,7 +2186,7 @@ window.recalcAllExpenses = async function(dryRun) {
             newAllocs.push({
               expense_id: e.id, zone_id: z.id,
               percentage: parseFloat(ownerPct.toFixed(4)),
-              amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(2)),
+              amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(4)),
               payer: 'owner',
               months_occupied: 0, months_total: totalMonths,
               tempering_used: isHeating ? z.temper : null,
@@ -2205,7 +2205,7 @@ window.recalcAllExpenses = async function(dryRun) {
         newAllocs.push({
           expense_id: e.id, zone_id: z.id,
           percentage: parseFloat(pct.toFixed(4)),
-          amount: parseFloat((saveAmount * chargeArea / totalArea).toFixed(2)),
+          amount: parseFloat((saveAmount * chargeArea / totalArea).toFixed(4)),
           payer: z.payer,
           months_occupied: totalMonths,
           months_total: totalMonths,
@@ -2219,7 +2219,7 @@ window.recalcAllExpenses = async function(dryRun) {
       newAllocs.push({
         expense_id: e.id, zone_id: z.id,
         percentage: parseFloat(pct.toFixed(4)),
-        amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(2)),
+        amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(4)),
         payer: 'owner',
         tempering_used: z.temper,
         area_used: z.area
@@ -2231,10 +2231,10 @@ window.recalcAllExpenses = async function(dryRun) {
       if (newAllocs.length > 0) {
         // Remainder correction
         var raSum = newAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
-        var raDiff = parseFloat((saveAmount - raSum).toFixed(2));
-        if (Math.abs(raDiff) > 0.001 && Math.abs(raDiff) < 1) {
+        var raDiff = parseFloat((saveAmount - raSum).toFixed(4));
+        if (Math.abs(raDiff) > 0.0001 && Math.abs(raDiff) < 1) {
           var raLargest = newAllocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, newAllocs[0]);
-          raLargest.amount = parseFloat((raLargest.amount + raDiff).toFixed(2));
+          raLargest.amount = parseFloat((raLargest.amount + raDiff).toFixed(4));
         }
         if (!dryRun) {
           await sb.from('expense_allocations').delete().eq('expense_id', e.id);
@@ -3809,7 +3809,7 @@ window.saveExpense = async function() {
                 expense_id: expenseId,
                 zone_id: z.id,
                 percentage: parseFloat(combinedPct.toFixed(4)),
-                amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(2)),
+                amount: parseFloat((saveAmount * combinedEff / totalArea).toFixed(4)),
                 payer: 'owner',
                 months_occupied: z.monthsOcc,
                 months_total: totalMonths,
@@ -3825,7 +3825,7 @@ window.saveExpense = async function() {
                 expense_id: expenseId,
                 zone_id: z.id,
                 percentage: parseFloat(tenantPct.toFixed(4)),
-                amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(2)),
+                amount: parseFloat((saveAmount * tenantBilling / totalArea).toFixed(4)),
                 payer: z.payer,
                 months_occupied: z.monthsOcc,
                 months_total: totalMonths,
@@ -3837,7 +3837,7 @@ window.saveExpense = async function() {
                   expense_id: expenseId,
                   zone_id: z.id,
                   percentage: parseFloat(ownerPct.toFixed(4)),
-                  amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(2)),
+                  amount: parseFloat((saveAmount * z.ownerEffArea / totalArea).toFixed(4)),
                   payer: 'owner',
                   months_occupied: 0,
                   months_total: totalMonths,
@@ -3880,7 +3880,7 @@ window.saveExpense = async function() {
             expense_id: expenseId,
             zone_id: z.id,
             percentage: parseFloat(pct.toFixed(4)),
-            amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(2)),
+            amount: parseFloat((saveAmount * z.effectiveArea / totalArea).toFixed(4)),
             payer: 'owner',
             tempering_used: z.temper,
             area_used: z.area
@@ -3898,10 +3898,10 @@ window.saveExpense = async function() {
       if (allocs.length > 0) {
         // Remainder correction: adjust largest alloc so sum exactly equals saveAmount
         var allocSum = allocs.reduce(function(s, a) { return s + a.amount; }, 0);
-        var diff = parseFloat((saveAmount - allocSum).toFixed(2));
+        var diff = parseFloat((saveAmount - allocSum).toFixed(4));
         if (Math.abs(diff) > 0.001 && Math.abs(diff) < 1) {
           var largest = allocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, allocs[0]);
-          largest.amount = parseFloat((largest.amount + diff).toFixed(2));
+          largest.amount = parseFloat((largest.amount + diff).toFixed(4));
         }
 
         var insertResult = await sb.from('expense_allocations').insert(allocs);
