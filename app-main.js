@@ -2345,7 +2345,7 @@ window.generateInvoice = async function(existingInvoice) {
       heatingTotal = Math.round(heatingTotal * 100) / 100;
 
       var hRows = [];
-      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy (vážená)'), '', totalHeatedArea.toFixed(2) + ' m2']);
+      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), '', totalHeatedArea.toFixed(2) + ' m2']);
 
       // Show 4 groups
       hRows.push([{content: stripDia('Náklady na vykurovanie budovy:'), styles: {fontStyle: 'bold'}}, '', '']);
@@ -2371,8 +2371,6 @@ window.generateInvoice = async function(existingInvoice) {
         });
         hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / heatExpMonths).toFixed(6) + ' EUR']);
       }
-
-      hRows.push([{content: stripDia('Vykurovaná plocha je vážená: obsadené priestory sa počítajú plnou plochou podľa počtu mesiacov užívania, neobsadené priestory temperovaním (tempering % z plochy). Amortizované investície do vykurovacej sústavy vstupujú ročnou splátkou (cena / roky amortizácie) rozpočítanou váhami daného roka; sú súčasťou položky „Kurič, revízie a údržba".'), colSpan: 3, styles: {fontSize: 6.5, textColor: [120, 120, 120]}}]);
 
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
