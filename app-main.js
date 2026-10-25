@@ -1294,6 +1294,42 @@ function stripDia(s) {
 }
 
 function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' '); }
+
+// Weighted heating pool from an expense's stored allocations.
+// Same semantics as the allocation engine: occupied zone-months count at full
+// billing area, empty zone-months and unoccupied zones count at area × tempering %.
+// This replaces the old "static pool" (full areas, no time-weighting), so the
+// printed "vykurovaná plocha" and unit price reproduce the charged amounts.
+function calcWeightedPoolFromAllocs(allocRows) {
+  var byZone = {};
+  (allocRows || []).forEach(function(r) {
+    if (!byZone[r.zone_id]) byZone[r.zone_id] = { rows: [], zones: r.zones || {} };
+    byZone[r.zone_id].rows.push(r);
+    if (r.zones) byZone[r.zone_id].zones = r.zones;
+  });
+  var pool = 0;
+  Object.keys(byZone).forEach(function(zid) {
+    var g = byZone[zid];
+    var z = g.zones || {};
+    var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
+    var area = parseFloat(z.area_m2) || bArea;
+    var temper = parseFloat(z.tempering_pct) || 0;
+    var tRow = null;
+    g.rows.forEach(function(r) { if (r.payer !== 'owner') tRow = r; });
+    if (tRow && tRow.months_total > 0 && tRow.months_occupied != null) {
+      var mo = parseFloat(tRow.months_occupied) || 0;
+      var mt = parseFloat(tRow.months_total) || 12;
+      if (mo > mt) mo = mt;
+      pool += bArea * mo / mt + area * (temper / 100) * (mt - mo) / mt;
+    } else if (tRow) {
+      pool += bArea;
+    } else {
+      // owner-only zone: tempered share for the whole period
+      pool += area * temper / 100;
+    }
+  });
+  return pool;
+}
 function fmtEur4(n) { var parts = parseFloat(n || 0).toFixed(4).split('.'); parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' '); return parts.join('.'); }
 
 window.redownloadInvoice = async function(invId) {
@@ -1395,6 +1431,59 @@ window.generateInvoice = async function(existingInvoice) {
   // Only tenant-paid allocations with non-zero amounts
   var tenantAllocs = periodAllocs.filter(function(a) { return a.payer !== 'owner' && (parseFloat(a.amount) || 0) > 0.001; });
 
+  // --- Weighted heating pool for this billing period (computed once, reused for
+  //     the printed area, the unit price, redirected kotolňa shares and the
+  //     reallocation of amortization instalments) ---
+  var invoiceMonths = 1;
+  {
+    var _ivF = new Date(dateFrom), _ivT = new Date(dateTo);
+    invoiceMonths = Math.max(1, (_ivT.getFullYear() - _ivF.getFullYear()) * 12 + (_ivT.getMonth() - _ivF.getMonth()) + 1);
+  }
+  var heatPoolWeighted = 0;
+  {
+    var _invYear = (dateFrom || '').substring(0, 4);
+    var _hpSameYear = null, _hpNonAmort = null, _hpAny = null;
+    tenantAllocs.forEach(function(a) {
+      if (!a.expenses || !a.expenses.cost_categories || a.expenses.cost_categories.name !== 'Vykurovanie') return;
+      var e = a.expenses;
+      var isAm = e.cost_type === 'amortized' && e.amort_years > 0;
+      if (!_hpAny) _hpAny = e.id;
+      if (!isAm) {
+        if (!_hpNonAmort) _hpNonAmort = e.id;
+        if (!_hpSameYear && e.period_from && e.period_from.substring(0, 4) === _invYear) _hpSameYear = e.id;
+      }
+    });
+    var _hpExpId = _hpSameYear || _hpNonAmort || _hpAny;
+    if (_hpExpId) {
+      var { data: _hpAllocs = [] } = await sb.from('expense_allocations')
+        .select('zone_id, payer, months_occupied, months_total, zones(name, billing_area_m2, area_m2, tempering_pct)')
+        .eq('expense_id', _hpExpId);
+      heatPoolWeighted = calcWeightedPoolFromAllocs(_hpAllocs);
+    }
+  }
+
+  // --- Amortized heating expenses: recompute the tenant share for THIS billing
+  //     period. Stored allocations carry the first-year occupancy weights; every
+  //     later year of the amortization span must use the current year's occupancy
+  //     and weighted pool (the same rule as every other yearly cost). For the
+  //     first year with unchanged occupancy the formula reproduces the stored
+  //     amount, so this is safe for all invoices. ---
+  if (heatPoolWeighted > 0) {
+    tenantAllocs.forEach(function(a) {
+      if (!a.expenses || !a.expenses.cost_categories) return;
+      if (a.expenses.cost_categories.name !== 'Vykurovanie') return;
+      var e = a.expenses;
+      if (!(e.cost_type === 'amortized' && e.amort_years > 0)) return;
+      var zone = tenantZones.find(function(z) { return z.id === a.zone_id; });
+      if (!zone) return;
+      var bArea = parseFloat(zone.billing_area_m2) || parseFloat(zone.area_m2) || 0;
+      var slice = (parseFloat(e.amount) || 0) / e.amort_years;
+      var recalc = slice * (bArea * Math.min(invoiceMonths, 12) / 12) / heatPoolWeighted;
+      a.amount = parseFloat(recalc.toFixed(2));
+      a._amortRecalc = true;
+    });
+  }
+
   // Group by category + sub_type for cost table rows
   var byCat = {};
   // Also keep grouping by base category name for detail sections
@@ -1416,40 +1505,8 @@ window.generateInvoice = async function(existingInvoice) {
   // This must happen BEFORE summary table so both summary and detail show the same number
   var _redirectedHeatShare = 0;
   if (byCatBase['Vykurovanie']) {
-    // Get heated area from one heating expense's allocations
-    var _heatOneExpId = null;
-    var _seenHeatExp = {};
-    byCatBase['Vykurovanie'].items.forEach(function(a) {
-      if (a.payer === 'owner') return;
-      var eid = a.expenses ? a.expenses.id : null;
-      var isAmort = a.expenses && a.expenses.cost_type === 'amortized';
-      if (eid && !_seenHeatExp[eid]) { _seenHeatExp[eid] = true; if (!_heatOneExpId && !isAmort) _heatOneExpId = eid; }
-    });
-    // Fallback to any
-    if (!_heatOneExpId) {
-      byCatBase['Vykurovanie'].items.forEach(function(a) {
-        var eid = a.expenses ? a.expenses.id : null;
-        if (eid && !_heatOneExpId) _heatOneExpId = eid;
-      });
-    }
-    var _totalHeatedArea = 0;
-    if (_heatOneExpId) {
-      var { data: _heatAllocs = [] } = await sb.from('expense_allocations')
-        .select('zone_id, payer, zones(billing_area_m2, area_m2, tempering_pct)')
-        .eq('expense_id', _heatOneExpId);
-      var _seenHZ = {};
-      _heatAllocs.forEach(function(ha) {
-        if (_seenHZ[ha.zone_id]) return;
-        _seenHZ[ha.zone_id] = true;
-        var z = ha.zones || {};
-        var bA = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-        if (ha.payer === 'owner') {
-          _totalHeatedArea += bA * (parseFloat(z.tempering_pct) || 0) / 100;
-        } else {
-          _totalHeatedArea += bA;
-        }
-      });
-    }
+    // Weighted pool computed once above (time + tempering weighted)
+    var _totalHeatedArea = heatPoolWeighted;
 
     var _seenRedir = {};
     var _redirBuildingTotal = 0;
@@ -1481,7 +1538,8 @@ window.generateInvoice = async function(existingInvoice) {
       _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(re.amount) || 0)).toFixed(2));
     });
 
-    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * totalArea / _totalHeatedArea).toFixed(2)) : 0;
+    // Tenant's share of redirected kotolňa media: area share × time share of the billing period
+    _redirectedHeatShare = _totalHeatedArea > 0 ? parseFloat((_redirBuildingTotal * (totalArea * Math.min(invoiceMonths, 12) / 12) / _totalHeatedArea).toFixed(2)) : 0;
     byCatBase['Vykurovanie'].amount += _redirectedHeatShare;
   }
 
@@ -2270,44 +2328,17 @@ window.generateInvoice = async function(existingInvoice) {
         heatingTotal += redirAmount;
       });
 
-      // Get total heated area by querying ALL allocations for one heating expense
-      var heatOneExpId = null;
-      // Prefer non-amortized expense from current period for pool derivation
-      heatingInputs.forEach(function(h) {
-        if (!heatOneExpId && !h.isAmort) heatOneExpId = h.expId;
-      });
-      // Fallback to any heating expense
-      if (!heatOneExpId) heatingInputs.forEach(function(h) { if (!heatOneExpId) heatOneExpId = h.expId; });
-      var totalHeatedArea = 0;
-      if (heatOneExpId) {
-        var { data: heatAllAllocs = [] } = await sb.from('expense_allocations')
-          .select('zone_id, payer, months_occupied, months_total, zones(name, billing_area_m2, area_m2, tempering_pct)')
-          .eq('expense_id', heatOneExpId);
+      // Weighted pool computed once above (time + tempering weighted)
+      var totalHeatedArea = heatPoolWeighted;
 
-        var hzGroup = {};
-        heatAllAllocs.forEach(function(ha) {
-          if (!hzGroup[ha.zone_id]) hzGroup[ha.zone_id] = { rows: [], zones: ha.zones };
-          hzGroup[ha.zone_id].rows.push(ha);
-        });
-
-        // Static pool: full billing areas (no time-weighting)
-        Object.keys(hzGroup).forEach(function(zid) {
-          var g = hzGroup[zid];
-          var z = g.zones || {};
-          var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
-          var area = parseFloat(z.area_m2) || bArea;
-          var temper = parseFloat(z.tempering_pct) || 0;
-          var hasTenant = g.rows.some(function(r) { return r.payer !== 'owner'; });
-          if (hasTenant) {
-            totalHeatedArea += bArea;
-          } else {
-            totalHeatedArea += area * temper / 100;
-          }
-        });
-      }
+      // Round the building total to cents BEFORE it is printed and before the
+      // unit price is derived from it, so a reader recomputing
+      // "Celkom / plocha / mesiace" from the printed figures gets the printed
+      // unit price to the last digit.
+      heatingTotal = Math.round(heatingTotal * 100) / 100;
 
       var hRows = [];
-      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy'), '', totalHeatedArea.toFixed(2) + ' m2']);
+      if (totalHeatedArea > 0) hRows.push([stripDia('Vykurovaná plocha budovy (vážená)'), '', totalHeatedArea.toFixed(2) + ' m2']);
 
       // Show 4 groups
       hRows.push([{content: stripDia('Náklady na vykurovanie budovy:'), styles: {fontStyle: 'bold'}}, '', '']);
@@ -2333,6 +2364,31 @@ window.generateInvoice = async function(existingInvoice) {
         });
         hRows.push([stripDia('Jednotková cena na m2 / mesiac'), '', (heatingTotal / totalHeatedArea / heatExpMonths).toFixed(6) + ' EUR']);
       }
+
+      // Per-item breakdown: building cost of the period → tenant share.
+      // Every row is independently verifiable; amortized investments are shown
+      // as their yearly instalment.
+      var _tenShareByExp = {};
+      byCatBase['Vykurovanie'].items.forEach(function(a) {
+        if (!a.expenses) return;
+        _tenShareByExp[a.expenses.id] = (_tenShareByExp[a.expenses.id] || 0) + (parseFloat(a.amount) || 0);
+      });
+      hRows.push(['', '', '']);
+      hRows.push([{content: stripDia('Rozpis položiek (náklad budovy za obdobie → Váš podiel):'), styles: {fontStyle: 'bold'}}, '', '']);
+      heatingInputs.forEach(function(h) {
+        var lbl = (h.desc || '').substring(0, 42);
+        if (h.supplier) lbl += ' (' + h.supplier.substring(0, 16) + ')';
+        if (h.isAmort) lbl += ' - splátka amortizácie, ' + h.amortYears + ' r.';
+        hRows.push([stripDia('  ' + lbl), fmtEur(h.amount) + ' EUR', fmtEur(_tenShareByExp[h.expId] || 0) + ' EUR']);
+      });
+      ['plyn', 'kuric', 'elektrina', 'voda'].forEach(function(gKey) {
+        heatGroups[gKey].items.forEach(function(it) {
+          if (!it.isRedirected) return;
+          var tShare = totalHeatedArea > 0 ? it.amount * (totalArea * Math.min(invoiceMonths, 12) / 12) / totalHeatedArea : 0;
+          hRows.push([stripDia('  ' + (it.desc || '').substring(0, 42)), fmtEur(it.amount) + ' EUR', fmtEur(tShare) + ' EUR']);
+        });
+      });
+      hRows.push([{content: stripDia('Vykurovaná plocha je vážená: obsadené priestory sa počítajú plnou plochou podľa počtu mesiacov užívania, neobsadené priestory temperovaním (tempering % z plochy). Amortizované investície vstupujú ročnou splátkou (cena / roky amortizácie) rozpočítanou váhami daného roka.'), colSpan: 3, styles: {fontSize: 6.5, textColor: [120, 120, 120]}}]);
 
       // Tenant's total
       var tenantHeatTotal = byCatBase['Vykurovanie'].amount;
@@ -2406,6 +2462,10 @@ window.generateInvoice = async function(existingInvoice) {
           totalProtectedArea += parseFloat(ea.zones && ea.zones.billing_area_m2 || ea.zones && ea.zones.area_m2 || 0);
         });
       }
+
+      // Same rounding rule as heating: printed unit price must be derivable
+      // from the printed building total.
+      epsBuildingTotal = Math.round(epsBuildingTotal * 100) / 100;
 
       var epsRows = [];
       if (totalProtectedArea > 0) epsRows.push([stripDia('Chránená plocha budovy'), '', totalProtectedArea.toFixed(2) + ' m2']);
