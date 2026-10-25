@@ -237,7 +237,14 @@ async function loadFinance() {
     // Count months (inclusive of partial months)
     var months = (overlapEnd.getFullYear() - overlapStart.getFullYear()) * 12 
       + (overlapEnd.getMonth() - overlapStart.getMonth()) + 1;
-    return Math.max(0, Math.min(months, window.getPeriodMonths()));
+    // Cap by the period's own month count, derived from the ARGUMENTS.
+    // Never from window.getPeriodMonths(): that reads the expense-modal DOM,
+    // which holds stale values during batch recalculation and silently capped
+    // every long lease to the last period opened in the modal.
+    var periodMonths = (pt.getFullYear() - pf.getFullYear()) * 12
+      + (pt.getMonth() - pf.getMonth()) + 1;
+    periodMonths = Math.max(1, Math.min(36, periodMonths));
+    return Math.max(0, Math.min(months, periodMonths));
   };
 
   var monthNamesShort = ['jan','feb','mar','apr','máj','jún','júl','aug','sep','okt','nov','dec'];
