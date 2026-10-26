@@ -2052,9 +2052,38 @@ window.recalcAllExpenses = async function(dryRun) {
     var oldByZone = {};
     allocs.forEach(function(a) {
       var key = a.zone_id + '_' + a.payer;
-      oldByZone[key] = { amount: parseFloat(a.amount) || 0, zone_id: a.zone_id, payer: a.payer };
+      if (!oldByZone[key]) oldByZone[key] = { amount: 0, zone_id: a.zone_id, payer: a.payer };
+      oldByZone[key].amount += parseFloat(a.amount) || 0; // súčet (viac riadkov na zónu pri viacerých nájomcoch)
     });
     var oldTotal = allocs.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
+
+    // Porovnanie starého a nového rozdelenia po zónach. Zmenou je aj iné rozdelenie pri rovnakom súčte
+    // (napr. pridanie B4J k vodomeru bloku B), nie len zmena celkovej sumy.
+    var diffAllocSets = function(newRows, zoneIdKey, zoneIdField) {
+      var newByZone = {};
+      newRows.forEach(function(na) {
+        var zid = na[zoneIdField];
+        if (!zid) return;
+        var key = zid + '_' + na.payer;
+        if (!newByZone[key]) newByZone[key] = { amount: 0, zone_id: zid, payer: na.payer };
+        newByZone[key].amount += parseFloat(na.amount) || 0;
+      });
+      var details = [];
+      var zLabel = function(zid) { var zn = zoneMap[zid]; return zn ? (zn.tenant_name || zn.name) : '?'; };
+      Object.keys(newByZone).forEach(function(key) {
+        var oldAmt = oldByZone[key] ? oldByZone[key].amount : 0;
+        var newAmt = newByZone[key].amount;
+        if (Math.abs(newAmt - oldAmt) > 0.009) {
+          details.push('  ' + zLabel(newByZone[key].zone_id) + ' (' + newByZone[key].payer + '): ' + oldAmt.toFixed(2) + ' → ' + newAmt.toFixed(2));
+        }
+      });
+      Object.keys(oldByZone).forEach(function(key) {
+        if (!newByZone[key] && oldByZone[key].amount > 0.009) {
+          details.push('  ' + zLabel(oldByZone[key].zone_id) + ' (' + oldByZone[key].payer + '): ' + oldByZone[key].amount.toFixed(2) + ' → ODSTRÁNENÉ');
+        }
+      });
+      return details;
+    };
 
     // Meter-based: re-save through editExpense + saveExpense (headless)
     if (e.alloc_method === 'meter') {
@@ -2074,19 +2103,8 @@ window.recalcAllExpenses = async function(dryRun) {
           // Compare old vs calculated
           var newTotal = window._meterAllocations.reduce(function(s, a) { return s + (parseFloat(a.amount) || 0); }, 0);
           var diff = newTotal - oldTotal;
-          if (Math.abs(diff) > 0.5) {
-            var details = [];
-            window._meterAllocations.forEach(function(na) {
-              if (!na.zoneId) return;
-              var key = na.zoneId + '_' + na.payer;
-              var oldAmt = oldByZone[key] ? oldByZone[key].amount : 0;
-              var newAmt = parseFloat(na.amount) || 0;
-              var zn = zoneMap[na.zoneId];
-              var zName = zn ? (zn.tenant_name || zn.name) : '?';
-              if (Math.abs(newAmt - oldAmt) > 0.5) {
-                details.push('  ' + zName + ' (' + na.payer + '): ' + oldAmt.toFixed(2) + ' → ' + newAmt.toFixed(2));
-              }
-            });
+          var details = diffAllocSets(window._meterAllocations, 'zoneId', 'zoneId');
+          if (Math.abs(diff) > 0.009 || details.length > 0) {
             changeLog.push(eLabel.trim() + ' [merač]: ' + oldTotal.toFixed(2) + ' → ' + newTotal.toFixed(2) + ' (' + (diff > 0 ? '+' : '') + diff.toFixed(2) + ')' + (details.length > 0 ? '\n' + details.join('\n') : ''));
           }
           if (!dryRun) {
@@ -2315,27 +2333,9 @@ window.recalcAllExpenses = async function(dryRun) {
       // Compare old vs new
       var newTotal = newAllocs.reduce(function(s, a) { return s + a.amount; }, 0);
       var totalDiff = newTotal - oldTotal;
-      if (Math.abs(totalDiff) > 0.5) {
-        var details = [];
-        newAllocs.forEach(function(na) {
-          var key = na.zone_id + '_' + na.payer;
-          var oldAmt = oldByZone[key] ? oldByZone[key].amount : 0;
-          var zn = zoneMap[na.zone_id];
-          var zName = zn ? (zn.tenant_name || zn.name) : '?';
-          if (Math.abs(na.amount - oldAmt) > 0.5) {
-            details.push('  ' + zName + ' (' + na.payer + '): ' + oldAmt.toFixed(2) + ' → ' + na.amount.toFixed(2));
-          }
-        });
-        // Check for removed zones
-        Object.keys(oldByZone).forEach(function(key) {
-          var found = newAllocs.find(function(na) { return na.zone_id + '_' + na.payer === key; });
-          if (!found && oldByZone[key].amount > 0.5) {
-            var zn = zoneMap[oldByZone[key].zone_id];
-            var zName = zn ? (zn.tenant_name || zn.name) : '?';
-            details.push('  ' + zName + ' (' + oldByZone[key].payer + '): ' + oldByZone[key].amount.toFixed(2) + ' → ODSTRÁNENÉ');
-          }
-        });
-        changeLog.push(eLabel.trim() + ': ' + oldTotal.toFixed(2) + ' → ' + newTotal.toFixed(2) + ' (' + (totalDiff > 0 ? '+' : '') + totalDiff.toFixed(2) + ')' + (details.length > 0 ? '\n' + details.join('\n') : ''));
+      var areaDetails = diffAllocSets(newAllocs, 'zone_id', 'zone_id');
+      if (Math.abs(totalDiff) > 0.009 || areaDetails.length > 0) {
+        changeLog.push(eLabel.trim() + ': ' + oldTotal.toFixed(2) + ' → ' + newTotal.toFixed(2) + ' (' + (totalDiff > 0 ? '+' : '') + totalDiff.toFixed(2) + ')' + (areaDetails.length > 0 ? '\n' + areaDetails.join('\n') : ''));
       }
       updated++;
     } catch(err) {
