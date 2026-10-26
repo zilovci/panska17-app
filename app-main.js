@@ -1367,6 +1367,18 @@ function fmtEur(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+
 // billing area, empty zone-months and unoccupied zones count at area × tempering %.
 // This replaces the old "static pool" (full areas, no time-weighting), so the
 // printed "vykurovaná plocha" and unit price reproduce the charged amounts.
+// Menovateľ jednotkovej ceny meračovej položky - rovnaké pravidlo ako engine (calcMeterAllocation):
+// bežná položka = hlavný merač, ak je aspoň taký ako podmerače + kotolňa, inak podmerače + kotolňa
+// (podmerače nad hlavný merač = nepresnosť meračov, cena sa počíta tak, aby súčet podielov dal faktúru);
+// čistenie / údržba = vždy hlavný merač.
+function meterPriceDenominator(mainC, subC, redirC, subType) {
+  mainC = parseFloat(mainC) || 0; subC = parseFloat(subC) || 0; redirC = parseFloat(redirC) || 0;
+  var isMaint = /[Čč]isten|[Úú]držb/.test(subType || '');
+  if (isMaint && mainC > 0) return mainC;
+  var all = subC + redirC;
+  if (mainC > 0 && mainC >= all) return mainC;
+  return all > 0 ? all : mainC;
+}
 function calcWeightedPoolFromAllocs(allocRows) {
   var byZone = {};
   (allocRows || []).forEach(function(r) {
@@ -1518,7 +1530,7 @@ window.generateInvoice = async function(existingInvoice) {
   var redirectedExpenses = [];
   try {
     var rResult = await sb.from('expenses')
-      .select('id, amount, description, supplier, date, period_from, period_to, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_consumption_unit, cost_categories(name)')
+      .select('id, amount, description, supplier, date, period_from, period_to, alloc_method, sub_type, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_consumption_unit, cost_categories(name)')
       .gt('meter_redirected_consumption', 0)
       .lte('period_from', dateTo).gte('period_to', dateFrom);
     redirectedExpenses = rResult.data || [];
@@ -1623,7 +1635,7 @@ window.generateInvoice = async function(existingInvoice) {
       var subC = parseFloat(e.meter_sub_consumption) || 0;
       var redirC = parseFloat(e.meter_redirected_consumption) || 0;
       if (redirC <= 0) return;
-      var denom = mainC > 0 ? mainC : (subC + redirC);
+      var denom = meterPriceDenominator(mainC, subC, redirC, e.sub_type); // rovnaké pravidlo ako engine
       if (denom <= 0) return;
       _seenRedir[e.id] = true;
       _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(e.amount) || 0)).toFixed(2));
@@ -1635,7 +1647,7 @@ window.generateInvoice = async function(existingInvoice) {
       var subC = parseFloat(re.meter_sub_consumption) || 0;
       var redirC = parseFloat(re.meter_redirected_consumption) || 0;
       if (redirC <= 0) return;
-      var denom = mainC > 0 ? mainC : (subC + redirC);
+      var denom = meterPriceDenominator(mainC, subC, redirC, re.sub_type); // rovnaké pravidlo ako engine
       if (denom <= 0) return;
       _seenRedir[re.id] = true;
       _redirBuildingTotal += parseFloat(((redirC / denom) * (parseFloat(re.amount) || 0)).toFixed(2));
@@ -2153,13 +2165,19 @@ window.generateInvoice = async function(existingInvoice) {
         wRows.push([stripDia('Hlavný merač (budova)'), '', wc.mainCons.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', wc.redirCons.toFixed(2) + ' m3']);
       }
-      // Unit prices - use mainCons if available, otherwise subCons as denominator
-      var wDenominator = wc.mainCons > 0 ? wc.mainCons : (wc.subCons > 0 ? wc.subCons + (wc.redirCons || 0) : 0);
+      // Unit prices - same denominator rule as the allocation engine (see meterPriceDenominator)
+      var wSubAll = (wc.subCons || 0) + (wc.redirCons || 0);
+      if (wc.mainCons > 0 && wSubAll > wc.mainCons + 0.005) {
+        wRows.push([stripDia('Podmerače spolu (vrátane kotolne)'), '', wSubAll.toFixed(2) + ' m3']);
+        wRows.push([{content: stripDia('  podmerače sú nad hlavným meračom, cena sa počíta z podmeračov'), styles: {fontStyle: 'italic', textColor: [120, 120, 120]}}, '', '']);
+      }
+      var wDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, '');
       var wUnitPrice = (wDenominator > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wDenominator) : 0;
       if (wUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
       }
-      var wCistenieUnitPrice = (wDenominator > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wDenominator) : 0;
+      var wMaintDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, 'čistenie');
+      var wCistenieUnitPrice = (wMaintDenominator > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wMaintDenominator) : 0;
       if (wCistenieUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (cistenie)'), '', wCistenieUnitPrice.toFixed(6) + ' EUR/m3']);
       }
@@ -2385,9 +2403,8 @@ window.generateInvoice = async function(existingInvoice) {
         var subCons = parseFloat(e.meter_sub_consumption) || 0;
         var redirCons = parseFloat(e.meter_redirected_consumption) || 0;
         if (redirCons <= 0) return;
-        // For water: mainCons > 0, use it as denominator
-        // For electricity (no main meter): use subCons + redirCons
-        var denominator = mainCons > 0 ? mainCons : (subCons + redirCons);
+        // Rovnaký menovateľ ako engine pri ukladaní položky (podmerače nad hlavný merač → cena z podmeračov)
+        var denominator = meterPriceDenominator(mainCons, subCons, redirCons, e.sub_type);
         if (denominator <= 0) return;
         seenRedirected[e.id] = true;
 
