@@ -2160,18 +2160,16 @@ window.generateInvoice = async function(existingInvoice) {
         wRows.push(['', '', '']);
       }
 
-      // Meter data (building level) - all in 3rd column
-      if (wc.mainCons > 0) {
-        wRows.push([stripDia('Hlavný merač (budova)'), '', wc.mainCons.toFixed(2) + ' m3']);
+      // Meter data (building level) - all in 3rd column.
+      // Zobrazí sa tá spotreba, z ktorej sa naozaj počíta cena (rovnaké pravidlo ako engine): hlavný merač,
+      // alebo súčet meračov, ak je nad hlavným meračom. Vtedy sa hlavný merač neuvádza, aby cena = suma / spotreba.
+      var wSubAll = (wc.subCons || 0) + (wc.redirCons || 0);
+      var wDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, '');
+      if (wDenominator > 0) {
+        var wBasisLabel = (wc.mainCons > 0 && wDenominator <= wc.mainCons + 0.005) ? 'Hlavný merač (budova)' : 'Spotreba budovy (merače)';
+        wRows.push([stripDia(wBasisLabel), '', wDenominator.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', wc.redirCons.toFixed(2) + ' m3']);
       }
-      // Unit prices - same denominator rule as the allocation engine (see meterPriceDenominator)
-      var wSubAll = (wc.subCons || 0) + (wc.redirCons || 0);
-      if (wc.mainCons > 0 && wSubAll > wc.mainCons + 0.005) {
-        wRows.push([stripDia('Podmerače spolu (vrátane kotolne)'), '', wSubAll.toFixed(2) + ' m3']);
-        wRows.push([{content: stripDia('  podmerače sú nad hlavným meračom, cena sa počíta z podmeračov'), styles: {fontStyle: 'italic', textColor: [120, 120, 120]}}, '', '']);
-      }
-      var wDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, '');
       var wUnitPrice = (wDenominator > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wDenominator) : 0;
       if (wUnitPrice > 0) {
         wRows.push([stripDia('Jednotková cena (voda)'), '', wUnitPrice.toFixed(6) + ' EUR/m3']);
