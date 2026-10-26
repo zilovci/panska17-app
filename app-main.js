@@ -168,12 +168,21 @@ window.loadTenants = async function() {
     return;
   }
 
-  // Get zone assignments
+  // Get zone assignments: obsadenosť po úsekoch (zone_tenancies), fallback zones.tenant_id
   var { data: zones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+  var tenancies = await window.loadZoneTenanciesWithFallback(zones);
+  var allTenantsById = {};
+  var { data: allTenantsRows = [] } = await sb.from('tenants').select('id, name, company_name');
+  allTenantsRows.forEach(function(t) { allTenantsById[t.id] = t; });
 
   list.innerHTML = '<p class="text-[9px] text-slate-400 mb-2">' + tenants.length + ' nájomcov' + (filterYear ? ' aktívnych v ' + filterYear : '') + '</p>' +
     tenants.map(function(t) {
-    var tZones = zones.filter(function(z) { return z.tenant_id === t.id; });
+    var tTenancies = tenancies.filter(function(r) { return r.tenant_id === t.id; });
+    var tZones = [];
+    tTenancies.forEach(function(r) {
+      var z = zones.find(function(z) { return z.id === r.zone_id; });
+      if (z && !tZones.some(function(x) { return x.id === z.id; })) tZones.push(z);
+    });
     var zoneNames = tZones.map(function(z) { return z.tenant_name || z.name; }).join(', ');
 
     // Warnings
@@ -182,33 +191,14 @@ window.loadTenants = async function() {
     if (tZones.length === 0 && !t.is_owner && !t.no_billing) {
       warnings.push('<span class="text-[8px] bg-red-100 text-red-600 font-bold px-1.5 py-0.5 rounded-full">⚠ bez priestoru</span>');
     }
-    // 2. Overlapping lease on same zone with another tenant
-    tZones.forEach(function(tz) {
-      var otherTenants = tenants.filter(function(ot) {
-        if (ot.id === t.id) return false;
-        return zones.some(function(oz) { return oz.id === tz.id && oz.tenant_id === ot.id; });
-      });
-      // Check historical: other tenants that had this zone and overlap in time
-      tenants.forEach(function(ot) {
-        if (ot.id === t.id || ot.is_owner) return;
-        // Both have lease dates and share same zone name... but we only know current assignment
-        // Check if another tenant has overlapping lease AND was previously on same zone
-      });
-    });
-    // Check lease overlap: find other tenants assigned to same zones
-    tZones.forEach(function(tz) {
-      tenants.forEach(function(ot) {
-        if (ot.id === t.id) return;
-        var otZones = zones.filter(function(z) { return z.tenant_id === ot.id; });
-        var sharedZone = otZones.find(function(oz) { return oz.id === tz.id; });
-        if (!sharedZone) return;
-        // Same zone, check lease overlap
-        if (t.lease_from && ot.lease_from) {
-          var tEnd = t.lease_to || '2099-12-31';
-          var otEnd = ot.lease_to || '2099-12-31';
-          if (t.lease_from <= otEnd && ot.lease_from <= tEnd) {
-            warnings.push('<span class="text-[8px] bg-yellow-100 text-yellow-700 font-bold px-1.5 py-0.5 rounded-full">⚠ ' + (tz.tenant_name || tz.name) + ': prekrýva sa s ' + (ot.company_name || ot.name) + '</span>');
-          }
+    // 2. Prekrývajúce sa úseky na tom istom priestore s iným nájomcom (nasledovanie za sebou je v poriadku)
+    tTenancies.forEach(function(r) {
+      tenancies.forEach(function(o) {
+        if (o.zone_id !== r.zone_id || o.tenant_id === t.id) return;
+        if (window.tenancyRangesOverlap(r.date_from, r.date_to, o.date_from, o.date_to)) {
+          var z = zones.find(function(z) { return z.id === r.zone_id; });
+          var ot = allTenantsById[o.tenant_id];
+          warnings.push('<span class="text-[8px] bg-yellow-100 text-yellow-700 font-bold px-1.5 py-0.5 rounded-full">⚠ ' + (z ? (z.tenant_name || z.name) : '?') + ': prekrýva sa s ' + (ot ? (ot.company_name || ot.name) : '?') + '</span>');
         }
       });
     });
@@ -318,39 +308,100 @@ window.saveTenant = async function() {
     tenantId = inserted ? inserted.id : null;
   }
 
-  // Update zone assignments
+  // Update zone assignments → obsadenosť po úsekoch (zone_tenancies).
+  // Úsek nájomcu = zaškrtnutý priestor × dátumy zmluvy. Dvaja nájomcovia v jednom priestore sú dovolení,
+  // ak sa ich úseky neprekrývajú (Eiben do 30.4., Gschill od 1.5.).
   if (tenantId) {
-    // Check for conflicts - zones already assigned to another tenant
     var cbs = document.querySelectorAll('.ten-zone-cb:checked');
+    var checkedZoneIds = [];
+    for (var i = 0; i < cbs.length; i++) checkedZoneIds.push(cbs[i].value);
+
+    var { data: zonesNow = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id');
+    var existing = await window.loadZoneTenanciesWithFallback(zonesNow);
+    var { data: tenantNames = [] } = await sb.from('tenants').select('id, name, company_name');
+    var nameById = {};
+    tenantNames.forEach(function(t) { nameById[t.id] = t.company_name || t.name; });
+
     var conflicts = [];
-    for (var i = 0; i < cbs.length; i++) {
-      var zone = allZones.find(function(z) { return z.id === cbs[i].value; });
-      if (zone && zone.tenant_id && zone.tenant_id !== tenantId) {
-        conflicts.push(zone.name + ' (' + (zone.tenant_name || '?') + ')');
-      }
-    }
+    checkedZoneIds.forEach(function(zid) {
+      existing.forEach(function(o) {
+        if (o.zone_id !== zid || o.tenant_id === tenantId) return;
+        if (window.tenancyRangesOverlap(data.lease_from, data.lease_to, o.date_from, o.date_to)) {
+          var z = zonesNow.find(function(z) { return z.id === zid; });
+          conflicts.push((z ? z.name : '?') + ': ' + (nameById[o.tenant_id] || '?') + ' (' + (o.date_from ? fmtD(o.date_from) : '…') + ' – ' + (o.date_to ? fmtD(o.date_to) : '∞') + ')');
+        }
+      });
+    });
     if (conflicts.length > 0) {
-      if (!confirm('⚠️ Tieto priestory už majú iného nájomcu:\n\n' + conflicts.join('\n') + '\n\nChcete ich preradiť?')) {
-        window.closeTenantModal();
-        await window.loadTenants();
-        return;
-      }
+      alert('⚠️ Obdobie nájomcu sa prekrýva s iným nájomcom v tom istom priestore:\n\n' + conflicts.join('\n') + '\n\nUpravte dátumy zmluvy (od – do) tak, aby na seba nadväzovali, a uložte znova.');
+      await window.loadTenants();
+      return;
     }
-    // Clear old assignments
-    await sb.from('zones').update({ tenant_id: null }).eq('tenant_id', tenantId);
-    // Set new
-    for (var i = 0; i < cbs.length; i++) {
-      await sb.from('zones').update({ tenant_id: tenantId }).eq('id', cbs[i].value);
+
+    // Priestory, ktorých sa zmena týka (staré aj nové), pre prepočet aktuálneho nájomcu zóny
+    var affectedZoneIds = checkedZoneIds.slice();
+    existing.forEach(function(r) { if (r.tenant_id === tenantId && affectedZoneIds.indexOf(r.zone_id) < 0) affectedZoneIds.push(r.zone_id); });
+
+    // Nahradiť úseky tohto nájomcu
+    await sb.from('zone_tenancies').delete().eq('tenant_id', tenantId);
+    if (checkedZoneIds.length > 0) {
+      var ins = await sb.from('zone_tenancies').insert(checkedZoneIds.map(function(zid) {
+        return { zone_id: zid, tenant_id: tenantId, date_from: data.lease_from, date_to: data.lease_to };
+      }));
+      if (ins.error) { alert('Priradenie priestorov sa nepodarilo uložiť: ' + ins.error.message); }
     }
+    await window.syncZoneCurrentTenants(affectedZoneIds);
+
     // Refresh allZones
     var { data: z2 } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
     allZones = z2 || [];
+    if (window.invalidateTenancies) window.invalidateTenancies();
   }
 
   window.closeTenantModal();
   await window.loadTenants();
   // Refresh zone lease dates for expense allocation (tenant assignments may have changed)
   if (window.refreshZoneLeaseDates) await window.refreshZoneLeaseDates();
+};
+
+// Úseky obsadenosti; zóna bez úsekov v tabuľke → jej zones.tenant_id so zmluvou nájomcu (pôvodné priradenie)
+window.loadZoneTenanciesWithFallback = async function(zones) {
+  var { data: rows = [] } = await sb.from('zone_tenancies').select('id, zone_id, tenant_id, date_from, date_to');
+  rows = rows || [];
+  var missing = (zones || []).filter(function(z) { return z.tenant_id && !rows.some(function(r) { return r.zone_id === z.id; }); });
+  if (missing.length > 0) {
+    var { data: ts = [] } = await sb.from('tenants').select('id, lease_from, lease_to').in('id', missing.map(function(z) { return z.tenant_id; }));
+    missing.forEach(function(z) {
+      var t = (ts || []).find(function(t) { return t.id === z.tenant_id; });
+      rows.push({ zone_id: z.id, tenant_id: z.tenant_id, date_from: t ? t.lease_from : null, date_to: t ? t.lease_to : null, _fallback: true });
+    });
+  }
+  return rows;
+};
+
+// Prekrývajú sa dva úseky? null = otvorený začiatok / koniec
+window.tenancyRangesOverlap = function(aFrom, aTo, bFrom, bTo) {
+  var aS = aFrom || '0000-01-01', aE = aTo || '9999-12-31';
+  var bS = bFrom || '0000-01-01', bE = bTo || '9999-12-31';
+  return aS <= bE && bS <= aE;
+};
+
+// zones.tenant_id = najnovší (aktuálny) nájomca podľa úsekov; bez úsekov → null
+window.syncZoneCurrentTenants = async function(zoneIds) {
+  if (!zoneIds || zoneIds.length === 0) return;
+  var { data: rows = [] } = await sb.from('zone_tenancies').select('zone_id, tenant_id, date_from, date_to').in('zone_id', zoneIds);
+  for (var i = 0; i < zoneIds.length; i++) {
+    var zr = (rows || []).filter(function(r) { return r.zone_id === zoneIds[i]; });
+    var current = null;
+    zr.forEach(function(r) {
+      if (!current) { current = r; return; }
+      // trvajúci úsek má prednosť, inak najneskorší začiatok
+      var rOpen = !r.date_to, cOpen = !current.date_to;
+      if (rOpen && !cOpen) { current = r; return; }
+      if (rOpen === cOpen && (r.date_from || '') > (current.date_from || '')) current = r;
+    });
+    await sb.from('zones').update({ tenant_id: current ? current.tenant_id : null }).eq('id', zoneIds[i]);
+  }
 };
 
 window.editTenant = async function(id) {
@@ -380,8 +431,14 @@ window.editTenant = async function(id) {
   document.getElementById('ten-service-account').value = t.service_account || '';
   document.getElementById('ten-no-billing').checked = t.no_billing || false;
 
-  // Zone checkboxes
-  var assignedZoneIds = allZones.filter(function(z) { return z.tenant_id === id; }).map(function(z) { return z.id; });
+  // Zone checkboxes: priestory z úsekov obsadenosti (fallback zones.tenant_id)
+  var assignedZoneIds = [];
+  try {
+    var tenRows = await window.loadZoneTenanciesWithFallback(allZones);
+    tenRows.forEach(function(r) { if (r.tenant_id === id && assignedZoneIds.indexOf(r.zone_id) < 0) assignedZoneIds.push(r.zone_id); });
+  } catch (e) {
+    assignedZoneIds = allZones.filter(function(z) { return z.tenant_id === id; }).map(function(z) { return z.id; });
+  }
   window.renderTenantZones(assignedZoneIds);
 
   document.getElementById('modal-tenant').classList.remove('hidden');
@@ -389,8 +446,16 @@ window.editTenant = async function(id) {
 
 window.deleteTenant = async function(id) {
   if (!confirm('Vymazať nájomcu?')) return;
+  var { data: tRows = [] } = await sb.from('zone_tenancies').select('zone_id').eq('tenant_id', id);
+  var zoneIds = (tRows || []).map(function(r) { return r.zone_id; });
+  allZones.forEach(function(z) { if (z.tenant_id === id && zoneIds.indexOf(z.id) < 0) zoneIds.push(z.id); });
+  await sb.from('zone_tenancies').delete().eq('tenant_id', id);
   await sb.from('zones').update({ tenant_id: null }).eq('tenant_id', id);
   await sb.from('tenants').delete().eq('id', id);
+  await window.syncZoneCurrentTenants(zoneIds);
+  var { data: z2 } = await sb.from('zones').select('*').order('sort_order', { ascending: true });
+  allZones = z2 || [];
+  if (window.invalidateTenancies) window.invalidateTenancies();
   await window.loadTenants();
 };
 
@@ -416,7 +481,7 @@ window.loadOverview = async function() {
   if (!yearSel) return;
   var year = yearSel.value || new Date().getFullYear();
 
-  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, is_auto_generated, cost_type, amort_years, sub_type, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
+  var selectFields = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, alloc_method, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, is_auto_generated, cost_type, amort_years, sub_type, cost_categories(name), expense_allocations(zone_id, amount, payer, tenant_id, zones(name, tenant_name, tenant_id))';
   var selectFieldsFallback = 'id, amount, supplier, description, date, invoice_number, period_from, period_to, category_id, sub_type, cost_categories(name), expense_allocations(zone_id, amount, payer, zones(name, tenant_name, tenant_id))';
   var allExp = [];
 
@@ -486,8 +551,10 @@ window.loadOverview = async function() {
   allExp.forEach(function(e) {
     if (!e.expense_allocations) return;
     e.expense_allocations.forEach(function(a) {
-      if (!a.zones || !a.zones.tenant_id || a.payer === 'owner') return;
-      var tid = a.zones.tenant_id;
+      if (a.payer === 'owner') return;
+      // Riadok patrí nájomcovi (tenant_id); staré riadky → nájomca zóny
+      var tid = a.tenant_id || (a.zones ? a.zones.tenant_id : null);
+      if (!tid) return;
       if (!tenantMap[tid]) {
         var tName = a.zones.tenant_name || a.zones.name || '?';
         tName = tName.replace(/,?\s*(s\.?\s*r\.?\s*o\.?|a\.?\s*s\.?|spol\.\s*s\s*r\.?\s*o\.?|s\.\s*r\.\s*o\.)$/i, '').trim();
@@ -538,7 +605,7 @@ window.loadOverview = async function() {
       // Apply tenant filter
       if (selectedTenantId) {
         if (a.payer === 'owner') return; // hide owner rows when filtering by tenant
-        if (a.zones.tenant_id !== selectedTenantId) return;
+        if ((a.tenant_id || a.zones.tenant_id) !== selectedTenantId) return;
       }
 
       var zName = a.zones.name;
@@ -1314,10 +1381,15 @@ function calcWeightedPoolFromAllocs(allocRows) {
     var bArea = parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0;
     var area = parseFloat(z.area_m2) || bArea;
     var temper = parseFloat(z.tempering_pct) || 0;
-    var tRow = null;
-    g.rows.forEach(function(r) { if (r.payer !== 'owner') tRow = r; });
-    if (tRow && tRow.months_total > 0 && tRow.months_occupied != null) {
-      var mo = parseFloat(tRow.months_occupied) || 0;
+    // Nájomné riadky zóny: pri viacerých nájomcoch za sebou (jeden riadok na nájomcu) sa ich mesiace sčítajú
+    var tRow = null, moSum = 0, hasMonths = false;
+    g.rows.forEach(function(r) {
+      if (r.payer === 'owner') return;
+      tRow = r;
+      if (r.months_total > 0 && r.months_occupied != null) { hasMonths = true; moSum += parseFloat(r.months_occupied) || 0; }
+    });
+    if (tRow && hasMonths) {
+      var mo = moSum;
       var mt = parseFloat(tRow.months_total) || 12;
       if (mo > mt) mo = mt;
       pool += bArea * mo / mt + area * (temper / 100) * (mt - mo) / mt;
@@ -1388,8 +1460,15 @@ window.generateInvoice = async function(existingInvoice) {
   var { data: owners = [] } = await sb.from('tenants').select('*').eq('is_owner', true).limit(1);
   var owner = owners.length > 0 ? owners[0] : null;
 
-  // Load zones for this tenant
-  var { data: tenantZones = [] } = await sb.from('zones').select('id, name, tenant_name, area_m2, billing_area_m2').eq('tenant_id', tenantId);
+  // Load zones for this tenant: úseky obsadenosti (zone_tenancies) prekrývajúce sa s obdobím,
+  // fallback zones.tenant_id (zóna bez úsekov v evidencii)
+  if (window.loadTenancies) await window.loadTenancies(true);
+  var { data: allZonesInv = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id, area_m2, billing_area_m2');
+  var tenantZones = (allZonesInv || []).filter(function(z) {
+    var rows = window.zoneTenancyRows ? window.zoneTenancyRows(z.id) : [];
+    if (rows.length === 0) return z.tenant_id === tenantId;
+    return rows.some(function(r) { return r.tenant_id === tenantId && window.tenancyRangesOverlap(r.date_from, r.date_to, dateFrom, dateTo); });
+  });
   var zoneIds = tenantZones.map(function(z) { return z.id; });
   // Display area: use billing_area_m2 (what tenant is charged for) if set, otherwise area_m2
   var totalArea = tenantZones.reduce(function(s, z) { return s + (parseFloat(z.billing_area_m2) || parseFloat(z.area_m2) || 0); }, 0);
@@ -1397,9 +1476,26 @@ window.generateInvoice = async function(existingInvoice) {
 
   // Load allocations for this tenant's zones in period
   var { data: allocs = [] } = await sb.from('expense_allocations')
-    .select('amount, percentage, payer, zone_id, consumption, consumption_unit, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, sub_type, cost_categories(name))')
+    .select('amount, percentage, payer, zone_id, tenant_id, consumption, consumption_unit, months_occupied, months_total, expenses(id, amount, description, date, period_from, period_to, supplier, invoice_number, alloc_method, cost_type, amort_years, is_auto_generated, auto_source_meter_id, meter_main_consumption, meter_sub_consumption, meter_redirected_consumption, meter_losses, meter_consumption_unit, sub_type, cost_categories(name))')
     .in('zone_id', zoneIds.length > 0 ? zoneIds : ['none']);
   if (!allocs) allocs = [];
+
+  // Riadky patria konkrétnemu nájomcovi: cudzie vynechať; staré riadky bez nájomcu (tenant_id null) v zóne,
+  // kde sa v období nákladu vystriedali nájomcovia, sa tomuto nájomcovi pripočítajú pomerne podľa jeho mesiacov.
+  allocs = allocs.filter(function(a) { return !a.tenant_id || a.tenant_id === tenantId; });
+  allocs.forEach(function(a) {
+    if (a.tenant_id || a.payer === 'owner' || !a.expenses || !window.zoneSegments) return;
+    var e = a.expenses;
+    var ePf = e.period_from || e.date, ePt = e.period_to || e.date;
+    if (!ePf || !ePt) return;
+    var seg = window.zoneSegments(a.zone_id, ePf, ePt);
+    if (!seg.hasTenancy || seg.segments.length <= 1 || seg.occupied <= 0) return;
+    var mine = seg.segments.filter(function(s) { return s.tenantId === tenantId; }).reduce(function(s, x) { return s + x.months; }, 0);
+    var f = mine / seg.occupied;
+    a.amount = parseFloat(((parseFloat(a.amount) || 0) * f).toFixed(2));
+    if (a.consumption != null) a.consumption = parseFloat(((parseFloat(a.consumption) || 0) * f).toFixed(4));
+    a._tenancyShare = f;
+  });
 
   // Filter by period overlap
   var periodAllocs = allocs.filter(function(a) {

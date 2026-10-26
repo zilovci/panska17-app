@@ -1376,3 +1376,123 @@ var allCategories = [];
 var editingExpenseId = null;
 
 
+
+// ============ OBSADENOSŤ PRIESTOROV (zone_tenancies) ============
+// Jeden priestor môže mať viac nájomcov za sebou (úseky od-do, bez prekrytia).
+// Tieto funkcie sú čisté (bez DOM), aby sa dali testovať v node.
+var _tenancyRows = null;      // riadky zone_tenancies
+var _tenancyTenants = {};     // tenant id -> { id, name, lease_from, lease_to }
+
+window.loadTenancies = async function(force) {
+  if (_tenancyRows && !force) return _tenancyRows;
+  var tRes = await sb.from('zone_tenancies').select('id, zone_id, tenant_id, date_from, date_to').order('date_from', { ascending: true, nullsFirst: true });
+  var nRes = await sb.from('tenants').select('id, name, lease_from, lease_to, is_owner');
+  _tenancyTenants = {};
+  (nRes.data || []).forEach(function(t) { _tenancyTenants[t.id] = t; });
+  _tenancyRows = tRes.data || [];
+  return _tenancyRows;
+};
+window.invalidateTenancies = function() { _tenancyRows = null; };
+window.tenancyTenant = function(tenantId) { return _tenancyTenants[tenantId] || null; };
+window._setTenancyDataForTest = function(rows, tenants) {
+  _tenancyRows = rows || []; _tenancyTenants = {};
+  (tenants || []).forEach(function(t) { _tenancyTenants[t.id] = t; });
+};
+
+// Počet mesiacov obdobia (vrátane začiatočného aj koncového mesiaca), z reťazcov YYYY-MM-DD, nie cez new Date()
+window.periodMonthCount = function(periodFrom, periodTo) {
+  if (!periodFrom || !periodTo) return 12;
+  var fy = parseInt(periodFrom.substring(0, 4), 10), fm = parseInt(periodFrom.substring(5, 7), 10);
+  var ty = parseInt(periodTo.substring(0, 4), 10), tm = parseInt(periodTo.substring(5, 7), 10);
+  if (isNaN(fy) || isNaN(ty)) return 12;
+  return Math.max(1, Math.min(36, (ty - fy) * 12 + (tm - fm) + 1));
+};
+
+// Mesiace prekrytia úseku [from, to] s obdobím [periodFrom, periodTo]; čiastočný mesiac sa ráta celý.
+// from = null → od začiatku obdobia, to = null → trvá.
+window.overlapMonths = function(from, to, periodFrom, periodTo) {
+  if (!periodFrom || !periodTo) return 0;
+  var total = window.periodMonthCount(periodFrom, periodTo);
+  var s = (from && from > periodFrom) ? from : periodFrom;
+  var e = (to && to < periodTo) ? to : periodTo;
+  if (s > e) return 0;
+  var sy = parseInt(s.substring(0, 4), 10), sm = parseInt(s.substring(5, 7), 10);
+  var ey = parseInt(e.substring(0, 4), 10), em = parseInt(e.substring(5, 7), 10);
+  var m = (ey - sy) * 12 + (em - sm) + 1;
+  return Math.max(0, Math.min(m, total));
+};
+
+// Úseky obsadenosti zóny. Zóna bez úsekov v tabuľke → pôvodné správanie (zones.tenant_id + zmluva nájomcu).
+window.zoneTenancyRows = function(zoneId) {
+  var rows = (_tenancyRows || []).filter(function(r) { return r.zone_id === zoneId; });
+  if (rows.length > 0) return rows;
+  var z = (typeof allZones !== 'undefined' ? allZones : []).find(function(z) { return z.id === zoneId; });
+  if (z && z.tenant_id) {
+    var t = _tenancyTenants[z.tenant_id];
+    return [{ zone_id: zoneId, tenant_id: z.tenant_id, date_from: t ? t.lease_from : null, date_to: t ? t.lease_to : null, _fallback: true }];
+  }
+  return [];
+};
+
+// Rozklad obdobia pre zónu: { total, occupied, empty, segments: [{ tenantId, tenantName, months, dateFrom, dateTo }], hasTenancy }
+// hasTenancy = false znamená, že zóna nemá žiadneho nájomcu v evidencii (nikdy) → volajúci ponechá pôvodné správanie.
+window.zoneSegments = function(zoneId, periodFrom, periodTo) {
+  var total = window.periodMonthCount(periodFrom, periodTo);
+  var rows = window.zoneTenancyRows(zoneId);
+  var segs = [];
+  rows.forEach(function(r) {
+    var m = window.overlapMonths(r.date_from, r.date_to, periodFrom, periodTo);
+    if (m <= 0) return;
+    var t = _tenancyTenants[r.tenant_id];
+    segs.push({ tenantId: r.tenant_id, tenantName: t ? t.name : '?', months: m, dateFrom: r.date_from, dateTo: r.date_to });
+  });
+  segs.sort(function(a, b) { return (a.dateFrom || '') < (b.dateFrom || '') ? -1 : 1; });
+  // Pri výmene v jednom mesiaci by obaja rátali ten mesiac → neskorší úsek sa skráti, súčet neprekročí obdobie
+  var sum = 0;
+  segs.forEach(function(s) {
+    if (sum + s.months > total) s.months = Math.max(0, total - sum);
+    sum += s.months;
+  });
+  segs = segs.filter(function(s) { return s.months > 0; });
+  return { total: total, occupied: sum, empty: total - sum, segments: segs, hasTenancy: rows.length > 0 };
+};
+
+// Obsadené mesiace zóny v období; null = zóna nemá nájomcu v evidencii (volajúci rozhodne, zvyčajne celé obdobie)
+window.zoneOccupiedMonths = function(zoneId, periodFrom, periodTo) {
+  var s = window.zoneSegments(zoneId, periodFrom, periodTo);
+  if (!s.hasTenancy) return null;
+  return s.occupied;
+};
+
+// Text pre zobrazenie: "Eiben 4 + Gschill 8 mes."
+window.zoneSegmentsLabel = function(seg) {
+  if (!seg || seg.segments.length === 0) return '';
+  return seg.segments.map(function(s) { return (s.tenantName || '?').split(' ').pop() + ' ' + s.months; }).join(' + ') + ' / ' + seg.total + ' mes.';
+};
+
+// Rozdelí riadok rozpočtu zóny (nájomná časť) medzi úseky nájomcov pomerne podľa mesiacov.
+// vals = { amount, consumption, percentage } (čísla alebo null). Posledný riadok dostane zvyšok zaokrúhlenia.
+// Vráti pole riadkov { tenant_id, months_occupied, amount, consumption, percentage }.
+window.splitByTenancy = function(zoneId, periodFrom, periodTo, vals) {
+  var seg = window.zoneSegments(zoneId, periodFrom, periodTo);
+  var z = (typeof allZones !== 'undefined' ? allZones : []).find(function(z) { return z.id === zoneId; });
+  var baseTenant = z && z.tenant_id ? z.tenant_id : null;
+  if (seg.segments.length <= 1) {
+    var one = seg.segments[0];
+    return [{ tenant_id: one ? one.tenantId : baseTenant, months_occupied: one ? one.months : null,
+      amount: vals.amount, consumption: vals.consumption, percentage: vals.percentage }];
+  }
+  var r2 = function(x) { return Math.round((x + 1e-9) * 100) / 100; };
+  var r4 = function(x) { return Math.round((x + 1e-9) * 10000) / 10000; };
+  var out = [], accA = 0, accC = 0, accP = 0;
+  seg.segments.forEach(function(s, i) {
+    var last = i === seg.segments.length - 1;
+    var f = s.months / seg.occupied;
+    var row = { tenant_id: s.tenantId, months_occupied: s.months };
+    if (vals.amount != null) { row.amount = last ? r2(vals.amount - accA) : r2(vals.amount * f); accA += row.amount; } else row.amount = null;
+    if (vals.consumption != null) { row.consumption = last ? r4(vals.consumption - accC) : r4(vals.consumption * f); accC += row.consumption; } else row.consumption = null;
+    if (vals.percentage != null) { row.percentage = last ? r2(vals.percentage - accP) : r2(vals.percentage * f); accP += row.percentage; } else row.percentage = null;
+    out.push(row);
+  });
+  return out;
+};

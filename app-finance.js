@@ -109,6 +109,8 @@ async function loadFinance() {
   // Must be called before any expense edit to ensure correct dates
   window.refreshZoneLeaseDates = async function() {
     try {
+      // Obsadenosť po úsekoch (zone_tenancies) - zdroj pravdy pre mesiace a nájomcov zón
+      if (window.loadTenancies) await window.loadTenancies(true);
       var { data: freshZones = [] } = await sb.from('zones').select('id, name, tenant_name, tenant_id, area_m2, billing_area_m2, tempering_pct');
       var { data: freshTenants = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
       var leaseMap = {};
@@ -133,6 +135,8 @@ async function loadFinance() {
           memZone.area_m2 = zone.area_m2;
           memZone.billing_area_m2 = zone.billing_area_m2;
           memZone.tempering_pct = zone.tempering_pct;
+          memZone.tenant_id = zone.tenant_id;
+          memZone.tenant_name = zone.tenant_name;
         }
         var label = zone.tenant_name || zone.name;
         var span = cbs[i].nextElementSibling;
@@ -191,7 +195,21 @@ async function loadFinance() {
     var periodFrom = document.getElementById('exp-period-from').value;
     var periodTo = document.getElementById('exp-period-to').value;
     var leaseExpired = periodFrom && ((leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo));
+    // Obsadenosť po úsekoch má prednosť: nikto v období → vlastník
+    if (periodFrom && periodTo && window.zoneSegments) {
+      var segInfo = window.zoneSegments(cb.value, periodFrom, periodTo);
+      if (segInfo.hasTenancy) { hasTenant = true; leaseExpired = segInfo.occupied === 0; }
+    }
     payerSel.value = (!hasTenant || leaseExpired) ? 'owner' : 'tenant';
+  };
+
+  // Automatické mesiace zóny z obsadenosti po úsekoch (zone_tenancies).
+  // Vráti { months, label } alebo null, ak zóna nemá v evidencii nájomcu (volajúci ponechá pôvodný výpočet).
+  window.zoneAutoMonths = function(zoneId, periodFrom, periodTo) {
+    if (!periodFrom || !periodTo || !window.zoneSegments) return null;
+    var seg = window.zoneSegments(zoneId, periodFrom, periodTo);
+    if (!seg.hasTenancy) return null;
+    return { months: seg.occupied, total: seg.total, label: window.zoneSegmentsLabel(seg), segments: seg.segments };
   };
 
   window.onZoneCheck = function(cb) {
@@ -249,6 +267,40 @@ async function loadFinance() {
 
   var monthNamesShort = ['jan','feb','mar','apr','máj','jún','júl','aug','sep','okt','nov','dec'];
 
+  // Rozdelí pripravené riadky rozpočtu podľa obsadenosti po úsekoch: nájomná časť zóny, v ktorej sa
+  // v období vystriedali nájomcovia, sa rozdelí pomerne podľa mesiacov (B4S 2023 = Eiben 4 + Gschill 8).
+  // Každý nájomný riadok dostane tenant_id; riadky vlastníka ostávajú bez nájomcu.
+  window.splitAllocRowsByTenancy = function(rows, periodFrom, periodTo) {
+    if (!window.splitByTenancy) return rows;
+    var out = [];
+    rows.forEach(function(r) {
+      if (!r.zone_id || r.payer === 'owner') { out.push(r); return; }
+      var parts;
+      try {
+        parts = window.splitByTenancy(r.zone_id, periodFrom, periodTo, {
+          amount: r.amount != null ? r.amount : null,
+          consumption: r.consumption != null ? r.consumption : null,
+          percentage: r.percentage != null ? r.percentage : null
+        });
+      } catch (splitErr) { console.warn('splitByTenancy error:', splitErr); out.push(r); return; }
+      if (!parts || parts.length === 0) { out.push(r); return; }
+      parts.forEach(function(p) {
+        var copy = {};
+        for (var k in r) copy[k] = r[k];
+        copy.tenant_id = p.tenant_id || null;
+        if (p.amount != null) copy.amount = p.amount;
+        if (p.consumption != null) copy.consumption = p.consumption;
+        if (p.percentage != null) copy.percentage = p.percentage;
+        if (parts.length > 1 && p.months_occupied != null) {
+          copy.months_occupied = p.months_occupied;
+          if (copy.months_total == null && window.periodMonthCount) copy.months_total = window.periodMonthCount(periodFrom, periodTo);
+        }
+        out.push(copy);
+      });
+    });
+    return out;
+  };
+
   // Show/hide months inputs based on period and lease dates
   window.updateMonthsVisibility = function() {
     var totalMonths = window.getPeriodMonths();
@@ -276,6 +328,9 @@ async function loadFinance() {
       var isOwner = payerSel && payerSel.value === 'owner';
 
       var autoMonths = isOwner ? totalMonths : window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
+      // Obsadenosť po úsekoch (viac nájomcov za sebou) má prednosť pred zmluvou aktuálneho nájomcu
+      var segAuto = isOwner ? null : window.zoneAutoMonths(zoneId, periodFrom, periodTo);
+      if (segAuto) autoMonths = segAuto.months;
 
       var zoneName = cb.nextElementSibling ? cb.nextElementSibling.textContent.trim() : zoneId;
       
@@ -302,7 +357,9 @@ async function loadFinance() {
       if (detailEl) {
         try {
           var detailText = '';
-          if (leaseFrom) {
+          if (segAuto && segAuto.segments.length > 0) {
+            detailText = segAuto.label;
+          } else if (leaseFrom) {
             var lf = parseDate(leaseFrom);
             detailText = 'zmluva od ' + lf.getDate() + '.' + (lf.getMonth()+1) + '.' + lf.getFullYear();
             if (autoMonths !== null && autoMonths < totalMonths) {
@@ -336,7 +393,8 @@ async function loadFinance() {
       // Warning if manual != auto
       if (inp && autoMonths !== null && parseInt(inp.value) !== autoMonths) {
         inp.classList.add('border-red-500', 'bg-red-50');
-        inp.title = 'Podľa zmluvy by malo byť ' + autoMonths + ' mes. (zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')';
+        inp.title = segAuto ? ('Podľa obsadenosti by malo byť ' + autoMonths + ' mes. (' + segAuto.label + ')')
+          : ('Podľa zmluvy by malo byť ' + autoMonths + ' mes. (zmluva: ' + leaseFrom + ' – ' + (leaseTo || '∞') + ')');
       } else if (inp) {
         inp.classList.remove('border-red-500', 'bg-red-50');
         inp.title = '';
@@ -1943,6 +2001,7 @@ window.recalcAllExpenses = async function(dryRun) {
   var { data: recalcTenants = [] } = await sb.from('tenants').select('id, lease_from, lease_to');
   var recalcLeaseMap = {};
   recalcTenants.forEach(function(t) { recalcLeaseMap[t.id] = t; });
+  if (window.loadTenancies) await window.loadTenancies(true);
 
   // Load categories
   var { data: cats = [] } = await sb.from('cost_categories').select('*');
@@ -2058,12 +2117,10 @@ window.recalcAllExpenses = async function(dryRun) {
       saveAmount = e.amount / e.amort_years;
     }
 
-    // Calculate period months
+    // Calculate period months (from the date strings, same rule as everywhere else)
     var totalMonths = 12;
     if (e.period_from && e.period_to) {
-      var pf = new Date(e.period_from), pt = new Date(e.period_to);
-      totalMonths = Math.round((pt - pf) / (30.44 * 24 * 60 * 60 * 1000));
-      if (totalMonths < 1) totalMonths = 1;
+      totalMonths = window.periodMonthCount ? window.periodMonthCount(e.period_from, e.period_to) : 12;
       if (totalMonths > 24) totalMonths = 24;
     }
 
@@ -2087,9 +2144,13 @@ window.recalcAllExpenses = async function(dryRun) {
       var z = zoneMap[zid];
       if (!z) return;
       var aInfo = zoneAllocMap[zid];
-      // Recalculate months from lease dates (DB values may be buggy)
+      // Recalculate months from occupancy (DB values may be buggy)
       var mOcc = totalMonths; // default: full period
-      if (z.tenant_id && recalcLeaseMap[z.tenant_id]) {
+      var segRecalc = (window.zoneAutoMonths && e.period_from && e.period_to) ? window.zoneAutoMonths(zid, e.period_from, e.period_to) : null;
+      if (segRecalc) {
+        // Obsadenosť po úsekoch: súčet mesiacov všetkých nájomcov zóny (0 = nikto → prázdne mesiace)
+        mOcc = aInfo.payer === 'owner' ? totalMonths : segRecalc.months;
+      } else if (z.tenant_id && recalcLeaseMap[z.tenant_id]) {
         var tl = recalcLeaseMap[z.tenant_id];
         var leaseOverlap = window.calcLeaseOverlapMonths(
           tl.lease_from || '', tl.lease_to || '',
@@ -2243,6 +2304,8 @@ window.recalcAllExpenses = async function(dryRun) {
           var raLargest = newAllocs.reduce(function(max, a) { return Math.abs(a.amount) > Math.abs(max.amount) ? a : max; }, newAllocs[0]);
           raLargest.amount = parseFloat((raLargest.amount + raDiff).toFixed(2));
         }
+        // Nájomné riadky zón s viacerými nájomcami v období → jeden riadok na nájomcu
+        newAllocs = window.splitAllocRowsByTenancy(newAllocs, e.period_from || e.date, e.period_to || e.date);
         if (!dryRun) {
           await sb.from('expense_allocations').delete().eq('expense_id', e.id);
           var ins = await sb.from('expense_allocations').insert(newAllocs);
@@ -2510,7 +2573,11 @@ window.loadCategoryPreset = async function(catId) {
       var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
       var leaseFrom = cbs[i].getAttribute('data-lease-from') || '';
       var hasTenant = cbs[i].getAttribute('data-has-tenant') === 'true';
-      if (!hasTenant || (leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo)) {
+      var skipZone = !hasTenant || (leaseTo && leaseTo < periodFrom) || (leaseFrom && leaseFrom > periodTo);
+      // Obsadenosť po úsekoch má prednosť (napr. B4S: Eiben do 4/2023, Gschill od 5/2023 → stále nájomca)
+      var presetSeg = window.zoneSegments ? window.zoneSegments(cbs[i].value, periodFrom, periodTo) : null;
+      if (presetSeg && presetSeg.hasTenancy) skipZone = presetSeg.occupied === 0;
+      if (skipZone) {
         isPreset = false;
       }
     }
@@ -2935,6 +3002,26 @@ window.calcMeterAllocation = async function() {
     mzByMeter[mz.meter_id].push(mz.zone_id);
   });
 
+  // Obsadenosť po úsekoch: spoločný merač sa delí podľa plochy × obsadené mesiace.
+  // Prázdne mesiace priestoru do pooľu nevstupujú (prázdny byt vodu nespotrebuje), nikto ich neplatí.
+  if (window.loadTenancies) { try { await window.loadTenancies(); } catch (tErr) { console.warn('loadTenancies:', tErr); } }
+  var meterPeriodMonths = window.periodMonthCount ? window.periodMonthCount(periodFrom, periodTo) : 12;
+  // Vráti { area (vážená), occ, total, label } pre zónu; zóna bez nájomcu v evidencii = celé obdobie (pôvodné správanie)
+  function weightedZoneArea(zId) {
+    var z = allZones.find(function(az) { return az.id === zId; });
+    var area = z ? (parseFloat(z.area_m2) || 0) : 0;
+    var name = z ? (z.tenant_name || z.name) : '?';
+    var occ = meterPeriodMonths;
+    if (window.zoneAutoMonths) {
+      var am = window.zoneAutoMonths(zId, periodFrom, periodTo);
+      if (am) occ = am.months;
+    }
+    return { id: zId, name: name, fullArea: area, area: area * occ / meterPeriodMonths, occ: occ, total: meterPeriodMonths };
+  }
+  function zoneAreaNote(zw) {
+    return zw.occ < zw.total ? (zw.fullArea + ' m² × ' + zw.occ + '/' + zw.total + ' mes.') : (zw.fullArea + ' m²');
+  }
+
   // Calculate consumption per meter
   var meterConsumption = [];
   var meterWarnings = []; // { meter, type, message }
@@ -3215,21 +3302,22 @@ window.calcMeterAllocation = async function() {
             note: 'zvyšok (' + mc.consumption.toFixed(0) + ' - ' + childTotal.toFixed(0) + ')'
           });
         } else if (uncoveredZones.length > 1) {
-          // Multiple uncovered zones - split remainder by area
-          var uncZonesWithArea = uncoveredZones.map(function(zId) {
-            var z = allZones.find(function(az) { return az.id === zId; });
-            return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
-          });
+          // Multiple uncovered zones - split remainder by area × occupied months
+          var uncZonesWithArea = uncoveredZones.map(weightedZoneArea);
           var uncTotalArea = uncZonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+          var uncAllEmpty = uncTotalArea <= 0 && remainder > 0.001;
+          if (uncAllEmpty) uncTotalArea = uncZonesWithArea.reduce(function(s, z) { return s + z.fullArea; }, 0);
           uncZonesWithArea.forEach(function(z) {
-            var share = uncTotalArea > 0 ? (z.area / uncTotalArea) : (1 / uncoveredZones.length);
+            var wArea = uncAllEmpty ? z.fullArea : z.area;
+            if (wArea <= 0) return; // nikto v období → bez podielu
+            var share = uncTotalArea > 0 ? (wArea / uncTotalArea) : (1 / uncoveredZones.length);
             zoneAllocs.push({
               zoneId: z.id,
               zoneName: z.name,
               consumption: remainder * share,
               meterName: mc.meter.name,
-              payer: 'tenant',
-              note: 'zvyšok podľa m²'
+              payer: uncAllEmpty ? 'owner' : 'tenant',
+              note: 'zvyšok podľa m²' + (z.occ < z.total ? ' × ' + z.occ + '/' + z.total + ' mes.' : '') + (uncAllEmpty ? ' (bez nájomcov → vlastník)' : '')
             });
           });
         }
@@ -3242,23 +3330,25 @@ window.calcMeterAllocation = async function() {
           });
         }
       } else {
-        // No child meters - split by area
-        var zonesWithArea = mc.zones.map(function(zId) {
-          var z = allZones.find(function(az) { return az.id === zId; });
-          return { id: zId, name: z ? (z.tenant_name || z.name) : '?', area: z ? (parseFloat(z.area_m2) || 0) : 0 };
-        });
+        // No child meters - split by area × occupied months (plocha × mesiace / pool)
+        var zonesWithArea = mc.zones.map(weightedZoneArea);
         var totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.area; }, 0);
+        var allEmpty = totalZoneArea <= 0 && mc.consumption > 0.001;
+        if (allEmpty) totalZoneArea = zonesWithArea.reduce(function(s, z) { return s + z.fullArea; }, 0);
+        var poolLabel = (Math.round(totalZoneArea * 100) / 100) + ' m²';
 
         zonesWithArea.forEach(function(z) {
-          var share = totalZoneArea > 0 ? (z.area / totalZoneArea) : 0;
+          var wArea = allEmpty ? z.fullArea : z.area;
+          if (wArea <= 0) return; // nikto v období → bez podielu
+          var share = totalZoneArea > 0 ? (wArea / totalZoneArea) : 0;
           var zoneCons = mc.consumption * share;
           zoneAllocs.push({
             zoneId: z.id,
             zoneName: z.name,
             consumption: zoneCons,
             meterName: mc.meter.name,
-            payer: 'tenant',
-            note: z.area + ' m² z ' + totalZoneArea + ' m²'
+            payer: allEmpty ? 'owner' : 'tenant',
+            note: zoneAreaNote(z) + ' z ' + poolLabel + (allEmpty ? ' (bez nájomcov → vlastník)' : '')
           });
         });
       }
@@ -3684,9 +3774,12 @@ window.saveExpense = async function() {
 
       if (currentAllocMethod === 'meter' && window._meterAllocations && window._meterAllocations.length > 0) {
         // Meter-based allocations
+        var _mPeriodMonths = window.periodMonthCount ? window.periodMonthCount(data.period_from, data.period_to) : null;
         window._meterAllocations.forEach(function(a) {
           if (!a.zoneId) return;
           var mZone = allZones.find(function(z) { return z.id === a.zoneId; });
+          // Obsadené mesiace zóny (voda podľa plochy × mesiacov) - informatívne pre vyúčtovanie
+          var _mAuto = (a.payer !== 'owner' && window.zoneAutoMonths && data.period_from && data.period_to) ? window.zoneAutoMonths(a.zoneId, data.period_from, data.period_to) : null;
           allocs.push({
             expense_id: expenseId,
             zone_id: a.zoneId,
@@ -3695,7 +3788,9 @@ window.saveExpense = async function() {
             payer: a.payer,
             consumption: parseFloat(a.consumption.toFixed(4)),
             consumption_unit: a.unit || 'm³',
-            area_used: mZone ? mZone.area_m2 : null
+            area_used: mZone ? mZone.area_m2 : null,
+            months_occupied: _mAuto ? _mAuto.months : null,
+            months_total: _mAuto ? _mAuto.total : (_mPeriodMonths || null)
           });
         });
         var lossAlloc = window._meterAllocations.find(function(a) { return !a.zoneId && a.payer === 'owner'; });
@@ -3911,6 +4006,9 @@ window.saveExpense = async function() {
           largest.amount = parseFloat((largest.amount + diff).toFixed(2));
         }
 
+        // Nájomné riadky zón s viacerými nájomcami v období → jeden riadok na nájomcu (tenant_id)
+        allocs = window.splitAllocRowsByTenancy(allocs, data.period_from || data.date, data.period_to || data.date);
+
         var insertResult = await sb.from('expense_allocations').insert(allocs);
         if (insertResult.error) {
           console.warn('Allocation insert failed, retrying without new columns:', insertResult.error);
@@ -4081,7 +4179,11 @@ window.editExpense = async function(id) {
         var leaseTo = cbs[i].getAttribute('data-lease-to') || '';
         var periodFrom = document.getElementById('exp-period-from').value;
         var periodTo = document.getElementById('exp-period-to').value;
-        if (leaseFrom || leaseTo) {
+        var segAutoE = window.zoneAutoMonths ? window.zoneAutoMonths(cbs[i].value, periodFrom, periodTo) : null;
+        if (segAutoE) {
+          // Obsadenosť po úsekoch: súčet mesiacov všetkých nájomcov zóny v období (0 = nikto → prázdne)
+          monthsInput.value = segAutoE.months;
+        } else if (leaseFrom || leaseTo) {
           var autoMonths = window.calcLeaseOverlapMonths(leaseFrom, leaseTo, periodFrom, periodTo);
           if (autoMonths !== null && autoMonths > 0) {
             monthsInput.value = autoMonths;
