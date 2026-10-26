@@ -2166,8 +2166,9 @@ window.generateInvoice = async function(existingInvoice) {
       var wSubAll = (wc.subCons || 0) + (wc.redirCons || 0);
       var wDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, '');
       if (wDenominator > 0) {
-        var wBasisLabel = (wc.mainCons > 0 && wDenominator <= wc.mainCons + 0.005) ? 'Hlavný merač (budova)' : 'Spotreba budovy (merače)';
-        wRows.push([stripDia(wBasisLabel), '', wDenominator.toFixed(2) + ' m3']);
+        // Vždy rovnaký riadok bez ohľadu na rok: spotreba, z ktorej sa počíta cena (hlavný merač vrátane strát,
+        // ktoré hradí vlastník, alebo súčet meračov, ak je nad hlavným). Nájomca vidí každý rok tie isté riadky.
+        wRows.push([stripDia('Spotreba budovy (merače)'), '', wDenominator.toFixed(2) + ' m3']);
         if (wc.redirCons > 0) wRows.push([stripDia('  z toho kotolňa (vykurovanie)'), '', wc.redirCons.toFixed(2) + ' m3']);
       }
       var wUnitPrice = (wDenominator > 0 && waterGroups.voda.amount > 0) ? (waterGroups.voda.amount / wDenominator) : 0;
