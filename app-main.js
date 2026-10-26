@@ -2178,7 +2178,7 @@ window.generateInvoice = async function(existingInvoice) {
       var wMaintDenominator = meterPriceDenominator(wc.mainCons, wc.subCons, wc.redirCons, 'čistenie');
       var wCistenieUnitPrice = (wMaintDenominator > 0 && waterGroups.cistenie.amount > 0) ? (waterGroups.cistenie.amount / wMaintDenominator) : 0;
       if (wCistenieUnitPrice > 0) {
-        wRows.push([stripDia('Jednotková cena (cistenie)'), '', wCistenieUnitPrice.toFixed(6) + ' EUR/m3']);
+        wRows.push([stripDia('Jednotková cena (čistenie, údržba)'), '', wCistenieUnitPrice.toFixed(6) + ' EUR/m3']);
       }
 
       // Group allocations by zone
